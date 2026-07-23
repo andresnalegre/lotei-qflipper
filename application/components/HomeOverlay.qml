@@ -79,7 +79,7 @@ AbstractOverlay {
     }
 
     TabPane {
-        z: fileButton.z + 1
+        z: 100
         anchors.top: tabs.bottom
         anchors.left: tabs.left
         anchors.topMargin: -2
@@ -96,12 +96,13 @@ AbstractOverlay {
     }
 
     LoteiChat {
-        z: 50
+        z: 150
         visible: tabs.currentIndex === 0
     }
 
     TabBar {
         id: tabs
+        z: 101
         x: 28
         y: 18
 

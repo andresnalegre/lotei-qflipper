@@ -9,8 +9,8 @@ import QFlipper 1.0
 Item {
     id: control
 
-    implicitWidth: 745
-    implicitHeight: 320
+    implicitWidth: 742
+    implicitHeight: 344
 
     property MessageDialog messageDialog
     property ConfirmationDialog confirmationDialog

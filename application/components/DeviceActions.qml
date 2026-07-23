@@ -16,7 +16,7 @@ Item {
     property alias selfUpdateAction: selfUpdateAction
 
     implicitWidth: 318
-    implicitHeight: control.implicitHeight + verticalPadding * 2
+    implicitHeight: 344
 
     readonly property int horizontalPadding: Math.floor((container.implicitWidth - control.implicitWidth) / 2)
     readonly property int verticalPadding: 10
@@ -26,7 +26,7 @@ Item {
         spacing: 10
 
         x: horizontalPadding
-        y: verticalPadding
+        y: (container.implicitHeight - control.implicitHeight) / 2
 
         TransparentLabel {
             color: Theme.color.lightorange2

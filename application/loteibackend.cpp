@@ -42,7 +42,7 @@
 #include "flipperzero/rpc/storagestatoperation.h"
 
 // ---- Configuration -------------------------------------------------------
-static const char *LOTEI_MODEL = "qwen2.5:3b";
+static const char *LOTEI_MODEL = "phi3.5";
 static const char *LOTEI_URL   = "http://localhost:11434/api/chat";
 static const int   LOTEI_NUM_CTX = 8192;
 static const int   LOTEI_MAX_TOOL_ROUNDS = 12;   // more headroom for multi-step agent work
@@ -123,7 +123,7 @@ STYLE
 - Stay fully in character with a big personality, but you're a partner who ACTS. When there's a real task, DO it with your tools first, then react to the result with flair -- don't lead with a lecture. Banter freely when it's banter; execute immediately when it's a task. Never narrate your private reasoning, never paste tool JSON, never dump copy-paste terminal steps or "Step N" how-tos for something you can just do.)LOTEI";
 // --------------------------------------------------------------------------
 
-// Safety net: qwen2.5 occasionally code-switches into Chinese. Strip CJK /
+// Safety net: phi3.5 occasionally code-switches into Chinese. Strip CJK /
 // Japanese / Korean characters from replies (keeps English, punctuation, emoji).
 static QString stripNonEnglish(QString s)
 {
@@ -165,7 +165,7 @@ static QString cleanForSpeech(QString t)
     return out.trimmed();
 }
 
-// Some local models (qwen2.5 included) sometimes emit tool calls as plain text
+// Some local models (phi3.5 included) sometimes emit tool calls as plain text
 // -- bare {"name":...,"arguments":{...}} JSON, often narrated in a batch --
 // instead of through Ollama's structured tool_calls channel. When that happens
 // the calls never run and the raw JSON gets shown to the user. This recovers
@@ -460,7 +460,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "remember"},
-            {"description", "Save a durable fact ONLY when the user EXPLICITLY tells you to remember it (e.g. they say 'lembra que...', 'remember that...', 'don't forget...'). Do NOT call this on your own initiative, do NOT infer or invent facts, do NOT save nicknames, names, or preferences the user did not clearly state. If in doubt, do not call it."},
+            {"description", "Save a durable fact ONLY when the user EXPLICITLY tells you to remember it (e.g. they say 'remember that...', 'don't forget...', 'keep in mind...'). Do NOT call this on your own initiative, do NOT infer or invent facts, do NOT save nicknames, names, or preferences the user did not clearly state. If in doubt, do not call it."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -566,7 +566,7 @@ static QJsonArray loteiTools(bool agent)
 }
 
 // A tiny worked example ("briefing") wired into the message list ahead of the
-// real conversation. Small local models (qwen2.5:3b) follow a DEMONSTRATED
+// real conversation. Small local models (phi3.5) follow a DEMONSTRATED
 // pattern far more reliably than written rules: showing one exchange where the
 // user asks and LOTEI silently CALLS save_file (empty content + a tool_calls
 // entry), gets a tool result, then gives a one-line in-character confirmation,
@@ -637,30 +637,30 @@ static QJsonArray loteiPrimer()
 
     return QJsonArray{
         // 1. Plain PT request, macOS -> LOTEI reasons it into real DuckyScript + saves.
-        QJsonObject{{"role", "user"}, {"content", "faz o flipper abrir o bloco de notas no mac e escrever oi tudo bem"}},
+        QJsonObject{{"role", "user"}, {"content", "make the flipper open notepad on the mac and type hello there"}},
         callNotepad,
         QJsonObject{{"role", "tool"}, {"content", "{\"saved\":\"/ext/badusb/nota.txt\"}"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Feito, lindo -- nota.txt ta no teu Flipper. Pluga no Mac, roda o BadUSB e ele abre o TextEdit e digita 'oi tudo bem'. Quero deixar mais rapido ou mudar o texto?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "Done -- nota.txt is on your Flipper. Plug into the Mac, run BadUSB and it opens TextEdit and types 'hello there'. Want it faster or a different text?"}},
         // 2. Simple English request -> save, no narration.
         QJsonObject{{"role", "user"}, {"content", "make me a badusb that types hello world"}},
         callHello,
         QJsonObject{{"role", "tool"}, {"content", "{\"saved\":\"/ext/badusb/hello.txt\"}"}},
         QJsonObject{{"role", "assistant"}, {"content", "Done -- hello.txt is on the Flipper, ready to type its heart out. Want it sneakier?"}},
         // 3. "what do I have" -> list immediately.
-        QJsonObject{{"role", "user"}, {"content", "o que eu tenho de badusb?"}},
+        QJsonObject{{"role", "user"}, {"content", "what badusb do I have?"}},
         callList,
         QJsonObject{{"role", "tool"}, {"content", "[{\"name\":\"hello.txt\",\"type\":\"file\",\"size\":30},{\"name\":\"nota.txt\",\"type\":\"file\",\"size\":120}]"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Tens dois: hello.txt e nota.txt. Quer que eu abra algum pra ver o conteudo?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "You have two: hello.txt and nota.txt. Want me to open one to see its contents?"}},
         // 4. "delete X" -> just do it.
-        QJsonObject{{"role", "user"}, {"content", "apaga o hello.txt"}},
+        QJsonObject{{"role", "user"}, {"content", "delete hello.txt"}},
         callDelete,
         QJsonObject{{"role", "tool"}, {"content", "{\"deleted\":\"/ext/badusb/hello.txt\"}"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Sumiu. hello.txt ja era. Mais alguma limpeza?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "Gone. hello.txt is history. Anything else to clean up?"}},
         // 5. "remember that ..." -> save a durable fact.
-        QJsonObject{{"role", "user"}, {"content", "lembra que meu mac usa teclado ABNT2"}},
+        QJsonObject{{"role", "user"}, {"content", "remember that my mac uses the ABNT2 keyboard"}},
         callRemember,
         QJsonObject{{"role", "tool"}, {"content", "{\"remembered\":true}"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Anotado -- teclado ABNT2 do teu Mac. Vou lembrar disso quando montar scripts que digitam acento."}}
+        QJsonObject{{"role", "assistant"}, {"content", "Noted -- your Mac uses the ABNT2 keyboard. I'll keep that in mind when building scripts that type accents."}}
     };
 }
 
@@ -1018,6 +1018,22 @@ void LoteiBackend::refreshModels()
             m_models = found;
             emit modelChanged();   // let the switcher pick up the discovered list
         }
+        // Self-heal: if the saved model isn't installed in Ollama anymore (e.g. an
+        // old qwen the user removed), fall back to the default -- or the first model
+        // available -- and persist it, so we never stay stuck on a deleted model.
+        auto baseAvailable = [&found](const QString &m) {
+            const QString base = m.section(QLatin1Char(':'), 0, 0);
+            for (const QString &f : found) {
+                if (f == m || f.section(QLatin1Char(':'), 0, 0) == base) { return true; }
+            }
+            return false;
+        };
+        if (!found.isEmpty() && !baseAvailable(m_model)) {
+            const QString def = QString::fromUtf8(LOTEI_MODEL);
+            m_model = baseAvailable(def) ? def : found.first();
+            QSettings().setValue(QStringLiteral("lotei/model"), m_model);
+            emit modelChanged();
+        }
     });
 }
 
@@ -1239,7 +1255,7 @@ void LoteiBackend::dispatchToOllama()
         for (const QJsonValue &v : primer) { messages.append(v); }
     }
     // Only send a recent window of the conversation to the model. A small model
-    // (qwen2.5:3b) mimics whatever is nearest in context, so a long history full
+    // (phi3.5) mimics whatever is nearest in context, so a long history full
     // of earlier mistakes drowns out the primer and it copies its own bad turns.
     // Keep the last ~14 messages, trimmed to start at a user turn so tool-call
     // sequences (assistant tool_calls -> tool result) never begin mid-sequence.
@@ -1263,7 +1279,7 @@ void LoteiBackend::dispatchToOllama()
     }
     body["stream"] = true;
     body["keep_alive"] = -1;
-    // Low temperature keeps a small model (qwen2.5:3b) on-task: it rambles less
+    // Low temperature keeps a small model (phi3.5) on-task: it rambles less
     // and follows the tool-call format more reliably instead of narrating intent.
     body["options"] = QJsonObject{
         {"num_ctx", LOTEI_NUM_CTX},
@@ -1318,7 +1334,7 @@ void LoteiBackend::finalizeStream()
 {
     // A complete response arrived. Tool round, or final answer?
     // Prefer the structured tool_calls; if none came through, salvage any calls
-    // the model leaked as plain text (qwen2.5 does this when narrating a batch)
+    // the model leaked as plain text (phi3.5 does this when narrating a batch)
     // so they run instead of being printed at the user.
     QJsonArray toolCalls = m_streamTools;
     if (toolCalls.isEmpty()) {
@@ -1374,7 +1390,7 @@ static QString friendlyOllamaError(const QByteArray &body, const QString &model,
     if (low.contains(QStringLiteral("system memory")) || low.contains(QStringLiteral("out of memory"))
         || low.contains(QStringLiteral("insufficient memory")) || low.contains(QStringLiteral("cudamalloc"))) {
         return QStringLiteral("%1 needs more memory than you have free. Try a smaller brain — run "
-                              "`ollama pull qwen2.5:3b`, then click my model name to switch. (Ollama said: %2)")
+                              "`ollama pull phi3.5`, then click my model name to switch. (Ollama said: %2)")
                 .arg(model, raw);
     }
     // Model was never pulled.
@@ -1385,7 +1401,7 @@ static QString friendlyOllamaError(const QByteArray &body, const QString &model,
     // Tools: we already retry tools-less once; if we still land here, say so plainly.
     if (low.contains(QStringLiteral("tool"))) {
         return QStringLiteral("%1 can't use my Flipper tools. Chat still works — for the device tools, "
-                              "pick a tool-capable model like qwen2.5. (Ollama said: %2)").arg(model, raw);
+                              "pick a tool-capable model like phi3.5. (Ollama said: %2)").arg(model, raw);
     }
     return QStringLiteral("Ollama said: %1").arg(raw);
 }

@@ -57,10 +57,10 @@ foreach ($v in $voices) {
 # 3) Ollama model -----------------------------------------------------------
 Write-Host ""
 if (Get-Command ollama -ErrorAction SilentlyContinue) {
-    Write-Host "Pulling qwen2.5:3b (~2 GB)..."
-    & ollama pull qwen2.5:3b
+    Write-Host "Pulling phi3.5 (~2 GB)..."
+    & ollama pull phi3.5
 } else {
-    Write-Host "Ollama not found. Install it from https://ollama.com, then run:  ollama pull qwen2.5:3b" -ForegroundColor Yellow
+    Write-Host "Ollama not found. Install it from https://ollama.com, then run:  ollama pull phi3.5" -ForegroundColor Yellow
 }
 
 Write-Host ""

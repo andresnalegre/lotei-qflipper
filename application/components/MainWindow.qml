@@ -1058,9 +1058,9 @@ Item {
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
                             font.family: "Share Tech Mono"; font.pixelSize: 13; color: Theme.color.lightorange2
                             text: !Lotei.ollamaOnline
-                                  ? "Ollama isn't running. Install it from ollama.com, then run:  ollama pull qwen2.5:3b  — then hit re-check. (You can skip and set this up later.)"
+                                  ? "Ollama isn't running. Install it from ollama.com, then run:  ollama pull phi3.5  — then hit re-check. (You can skip and set this up later.)"
                                   : (Lotei.availableModels().length === 0
-                                     ? "Ollama's running, but no models yet. Run:  ollama pull qwen2.5:3b  — then re-check."
+                                     ? "Ollama's running, but no models yet. Run:  ollama pull phi3.5  — then re-check."
                                      : "Found Ollama. Pick LOTEI's model:")
                         }
                         Flow {

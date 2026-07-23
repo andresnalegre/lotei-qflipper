@@ -134,9 +134,8 @@ Rectangle {
     // whenever a Flipper becomes available (startup, connect, or reconnect).
     Timer { interval: 2000; repeat: true; running: true; onTriggered: root.maybeHealthCheck() }
 
-    Component.onCompleted: {
-        appendMessage("lotei", root.aiName + " inicializando… sistemas online, faminto por RAM. Me diz o que vamos aprontar com o teu Flipper.");
-    }
+    // No greeting: a "Loading system…" placeholder shows until the first real
+    // message arrives (see loadingHint over the message list).
 
     ColumnLayout {
         anchors.fill: parent
@@ -277,6 +276,33 @@ Rectangle {
             spacing: 6
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { }
+
+            // "Loading system…" placeholder — shown until the first real message
+            // arrives, then it disappears and the chat takes over.
+            Row {
+                anchors.centerIn: parent
+                visible: chatModel.count === 0 && root.viewState !== "min"
+                spacing: 0
+                Text {
+                    text: "Loading system, please wait"
+                    color: Theme.color.lightorange2
+                    font.family: "Share Tech Mono"
+                    font.pixelSize: 14
+                }
+                Text {
+                    id: loadingDots
+                    color: Theme.color.lightorange2
+                    font.family: "Share Tech Mono"
+                    font.pixelSize: 14
+                    property int step: 0
+                    text: ["   ", ".  ", ".. ", "..."][step]
+                }
+                Timer {
+                    running: chatModel.count === 0
+                    interval: 400; repeat: true
+                    onTriggered: loadingDots.step = (loadingDots.step + 1) % 4
+                }
+            }
 
             delegate: Column {
                 width: ListView.view.width
@@ -438,7 +464,7 @@ Rectangle {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: input.text.length === 0 && !input.activeFocus
-                        text: "Talk to LOTEI…"
+                        text: "Talk to " + root.aiName + "…"
                         color: Theme.color.mediumorange1
                         font: input.font
                     }

@@ -20,10 +20,12 @@ Item {
 
     property alias controls: windowControls
 
-    readonly property int baseWidth: 830
-    readonly property int baseHeight: 500
+    readonly property int baseWidth: 850
+    readonly property int baseHeight: 540
 
-    readonly property int logHeight: 200
+    // Open height = exactly the content "screen" box (mainContent), top aligned to
+    // its top edge so there's no sliver showing above the log.
+    readonly property int logHeight: mainContent.height + 13
     readonly property int minimumLogHeight: 200
 
     readonly property int shadowSize: 16
@@ -66,10 +68,10 @@ Item {
         id: logExpand
 
         duration: 500
-        target: mainWindow
+        target: logView
         property: "height"
 
-        to: target.baseHeight + logHeight
+        to: logHeight
         easing.type: Easing.InOutQuad
 
         onStarted: mainWindow.expandStarted()
@@ -83,7 +85,7 @@ Item {
         duration: logExpand.duration
         property: logExpand.property
 
-        to: target.baseHeight
+        to: 0
 
         onStarted: mainWindow.collapseStarted()
         onFinished: mainWindow.collapseFinished()
@@ -151,10 +153,11 @@ Item {
         y: 38
 
         width: 800 + border.width * 2
-        height: 390 + border.width * 2
+        height: 430 + border.width * 2
 
         TextLabel {
             id: versionLabel
+            visible: false
 
             anchors.top: parent.top
             anchors.right: parent.right
@@ -174,6 +177,7 @@ Item {
 
         TextLabel {
             id: colorsButton
+            visible: false
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.margins: 10
@@ -198,10 +202,10 @@ Item {
 
         TextLabel {
             id: portToggle
-            anchors.top: parent.top
-            anchors.left: colorsButton.right
-            anchors.leftMargin: 20
-            anchors.topMargin: 10
+            anchors.top: mainContent.top
+            anchors.left: mainContent.left
+            anchors.leftMargin: 195
+            anchors.topMargin: 36
 
             visible: Backend.portReleased || (Backend.deviceState && Backend.backendState === ApplicationBackend.Ready)
             color: Backend.portReleased ? Theme.color.lightgreen : Theme.color.lightorange2
@@ -224,10 +228,9 @@ Item {
         // BLE connection panel trigger
         TextLabel {
             id: bleButton
-            anchors.top: parent.top
+            anchors.top: portToggle.top
             anchors.left: portToggle.right
             anchors.leftMargin: 20
-            anchors.topMargin: 10
 
             color: (Ble.sessionActive || Ble.connected) ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (bleMouse.containsMouse || Ble.sessionActive) ? 1.0 : 0.5
@@ -249,10 +252,9 @@ Item {
         // In-app Flipper CLI terminal trigger
         TextLabel {
             id: cliButton
-            anchors.top: parent.top
+            anchors.top: portToggle.top
             anchors.left: bleButton.right
             anchors.leftMargin: 20
-            anchors.topMargin: 10
 
             color: Cli.active ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (cliMouse.containsMouse || Cli.active) ? 1.0 : 0.5
@@ -277,7 +279,7 @@ Item {
                      Backend.backendState !== ApplicationBackend.ErrorOccured ? 1 : 0
 
             x: Backend.backendState === ApplicationBackend.Ready ? Math.round(mainContent.width / 2) : 216
-            y: 82
+            y: 94
 
             onScreenStreamRequested: Backend.startFullScreenStreaming()
         }
@@ -394,14 +396,19 @@ Item {
     TextView {
         id: logView
         visible: height > 0
+        clip: true
+        z: 10001   // above the tabs/menu (which sit at z ~9999) so it covers all
 
-        anchors.top: footerLayour.bottom
+        // Overlay that slides UP from the footer over the content (Game-Boy style:
+        // the window never changes size). Height is animated 0 <-> logHeight.
         anchors.left: mainContent.left
         anchors.right: mainContent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: footerLayour.top
+        anchors.bottomMargin: 0
 
-        anchors.topMargin: 14
-        anchors.bottomMargin: 28
+        height: 0
+
+        background: Rectangle { color: "#0A0010"; radius: 8 }
 
         content.textFormat: TextArea.RichText
         content.text: Logger.logText
@@ -435,7 +442,7 @@ Item {
         width: parent.width
         height: 28
 
-        visible: logView.visible && !logCollapse.running && !logExpand.running
+        visible: false   // window is fixed size now; no drag-to-resize
         cursorShape: Qt.SizeVerCursor
 
         anchors.bottom: parent.bottom
@@ -724,19 +731,16 @@ Item {
     // ---- in-app Flipper CLI terminal (pauses RPC while open; USB only) ----
     Item {
         id: cliOverlay
-        anchors.fill: parent
+        anchors.left: mainContent.left
+        anchors.right: mainContent.right
+        anchors.top: mainContent.top
+        anchors.bottom: mainContent.bottom
         visible: Cli.open
         z: 9996
 
         Rectangle {
-            anchors.fill: parent; color: "#000000"; opacity: 0.72
-            MouseArea { anchors.fill: parent; onClicked: Cli.open = false }
-        }
-
-        Rectangle {
-            anchors.centerIn: parent
-            width: 640; height: 470
-            color: "#0b0410"; radius: 12; border.width: 2; border.color: Theme.color.mediumorange2
+            anchors.fill: parent
+            color: "#0b0410"; radius: 8; border.width: 2; border.color: Theme.color.mediumorange2
             MouseArea { anchors.fill: parent }
 
             ColumnLayout {
@@ -744,7 +748,7 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "⌨  FLIPPER CLI"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true }
+                    Text { text: "FLIPPER CLI"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: "✕"; color: closeCliMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
@@ -754,6 +758,7 @@ Item {
                 }
 
                 Text {
+                    visible: false
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                     text: Cli.status.length > 0 ? Cli.status
                         : "Flipper text CLI over USB. qFlipper's session pauses while this is open, and resumes when you close it."
@@ -821,7 +826,10 @@ Item {
     // ---- custom-firmware store (Official / Momentum / Unleashed / RogueMaster) ----
     Item {
         id: firmwareOverlay
-        anchors.fill: parent
+        anchors.left: mainContent.left
+        anchors.right: mainContent.right
+        anchors.top: mainContent.top
+        anchors.bottom: mainContent.bottom
         visible: Firmware.open
         z: 9990
 
@@ -843,24 +851,17 @@ Item {
         }
 
         Rectangle {
-            anchors.fill: parent; color: "#000000"; opacity: 0.72
-            MouseArea { anchors.fill: parent; onClicked: Firmware.open = false }
-        }
-
-        Rectangle {
-            anchors.centerIn: parent
-            width: 560
-            height: 488
-            color: "#0b0410"; radius: 12
+            anchors.fill: parent
+            color: "#0b0410"; radius: 8
             border.width: 2; border.color: Theme.color.mediumorange2
-            MouseArea { anchors.fill: parent }   // swallow backdrop clicks over the panel
+            MouseArea { anchors.fill: parent }   // swallow clicks behind the panel
 
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 22; spacing: 12
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "⚡  CUSTOM FIRMWARE"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true }
+                    Text { text: "CUSTOM FIRMWARE"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: "✕"; color: closeFwMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
@@ -873,7 +874,7 @@ Item {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                     color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 12
                     text: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.firmware)
-                          ? ("On your Flipper now:  " + Backend.deviceState.info.firmware.version)
+                          ? ("Your Flipper version:  " + Backend.deviceState.info.firmware.version)
                           : "Connect your Flipper to flash. Latest builds are shown below."
                 }
 
@@ -897,10 +898,11 @@ Item {
                                     Text { text: modelData.blurb; color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 11 }
                                 }
                                 Rectangle {
-                                    visible: (modelData.channelCount || 0) > 1
+                                    opacity: (modelData.channelCount || 0) > 1 ? 1 : 0
+                                    enabled: (modelData.channelCount || 0) > 1
                                     Layout.alignment: Qt.AlignVCenter
+                                    Layout.preferredWidth: 116
                                     implicitHeight: 24
-                                    implicitWidth: Math.min(chLbl.implicitWidth + 28, 116)
                                     radius: 5
                                     color: chMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
                                     border.width: 1; border.color: Theme.color.mediumorange2
@@ -927,7 +929,8 @@ Item {
                                     color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
                                     font.family: "Share Tech Mono"; font.pixelSize: 12
                                     elide: Text.ElideRight
-                                    Layout.maximumWidth: 150
+                                    Layout.preferredWidth: 160
+                                    horizontalAlignment: Text.AlignLeft
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                                 Rectangle {

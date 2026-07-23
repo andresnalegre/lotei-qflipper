@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"v1.4.2\" -DAPP_COMMIT=\"1501be09\" -DAPP_TIMESTAMP=1784382566 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_SERIALPORT_LIB -DQT_NETWORK_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"unknown\" -DAPP_TIMESTAMP=0 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_SERIALPORT_LIB -DQT_NETWORK_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 -fPIC $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -fPIC -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../backend -I. -I../../dfu -I../../plugins/protobufinterface -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib

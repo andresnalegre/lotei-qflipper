@@ -10,7 +10,7 @@ Item {
     id: control
 
     implicitWidth: 745
-    implicitHeight: 290
+    implicitHeight: 320
 
     property MessageDialog messageDialog
     property ConfirmationDialog confirmationDialog

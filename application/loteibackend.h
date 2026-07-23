@@ -66,6 +66,10 @@ public:
     QString agentDir() const;                        // workspace root LOTEI may touch
     void setAgentEnabled(bool on);
     void setAgentDir(const QString &dir);
+    Q_INVOKABLE QString extractScript(const QString &text) const;   // pull code from a message
+    Q_INVOKABLE void saveScriptToFlipper(const QString &folder,     // manual, model-free save
+                                         const QString &filename,
+                                         const QString &content);
 
     Q_INVOKABLE void send(const QString &userText, const QString &deviceContext);
     Q_INVOKABLE void reset();
@@ -95,6 +99,8 @@ signals:
     void setupCompleteChanged();
     void manualNameChanged();
     void agentChanged();
+    void scriptSaved(const QString &path);        // manual save succeeded
+    void scriptSaveError(const QString &message);  // manual save failed
     void partialReceived(const QString &text);   // live-typing: reply text so far
 
 private:
@@ -125,6 +131,8 @@ private:
     QString resolveAgentPath(const QString &rel, bool mustExist) const; // contain to workspace
     void runHostTool(const QString &name, const QJsonObject &args,
                      std::function<void(const QString &)> done);
+    void rememberFact(const QString &fact);   // append a durable fact to memory
+    int  forgetFacts(const QString &match);    // remove matching facts (or all); returns count
 
     QNetworkAccessManager m_net;
     ApplicationBackend *m_appBackend = nullptr;
@@ -144,6 +152,7 @@ private:
     QString     m_manualName;   // Flipper name from setup (fallback when no device)
     bool        m_agentEnabled = false;  // host-workspace self-edit tools opt-in
     QString     m_agentRoot;             // absolute workspace folder LOTEI may edit
+    QString     m_memory;                // durable facts to remember across sessions
 #ifdef HZUI_VOICE
     QTextToSpeech m_tts;   // SAPI fallback engine
 #endif

@@ -12,10 +12,10 @@ Rectangle {
     // "normal" = docked in the corner, "max" = big read view, "min" = collapsed
     property string viewState: "normal"
 
-    readonly property int dockX: 28
-    readonly property int dockY: 250
-    readonly property int dockW: 424
-    readonly property int dockH: 130
+    readonly property int dockX: 24
+    readonly property int dockY: 272
+    readonly property int dockW: 384
+    readonly property int dockH: 146
     readonly property int minH: 44
 
     property bool healthChecked: false
@@ -26,10 +26,10 @@ Rectangle {
                                      ? Backend.deviceState.info.name
                                      : (Lotei.manualName.length > 0 ? Lotei.manualName : "LOTEI")
 
-    x: dockX
-    y: viewState === "max" ? 76 : dockY
-    width:  viewState === "max" ? ((parent ? parent.width  : 804) - 56) : dockW
-    height: viewState === "max" ? ((parent ? parent.height : 394) - 88)
+    x: viewState === "max" ? 14 : dockX
+    y: viewState === "max" ? 78 : dockY
+    width:  viewState === "max" ? ((parent ? parent.width  : 804) - 28) : dockW
+    height: viewState === "max" ? ((parent ? parent.height : 394) - 92)
             : (viewState === "min" ? minH : dockH)
 
     Behavior on width  { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
@@ -119,6 +119,15 @@ Rectangle {
                 root.appendMessage("lotei", text);
             }
         }
+        // Feedback from the manual save panel (model-free save straight to SD).
+        function onScriptSaved(path) {
+            root.appendMessage("lotei", "✅ Salvo em " + path);
+            listView.positionViewAtEnd();
+        }
+        function onScriptSaveError(message) {
+            root.appendMessage("lotei", "⚠️ Não consegui salvar: " + message);
+            listView.positionViewAtEnd();
+        }
     }
 
     // Robust connect detection: poll device state; fires the health check once
@@ -126,7 +135,7 @@ Rectangle {
     Timer { interval: 2000; repeat: true; running: true; onTriggered: root.maybeHealthCheck() }
 
     Component.onCompleted: {
-        appendMessage("lotei", root.aiName + " online and famished for RAM. Ask about your Flipper, or tell me what to script.");
+        appendMessage("lotei", root.aiName + " inicializando… sistemas online, faminto por RAM. Me diz o que vamos aprontar com o teu Flipper.");
     }
 
     ColumnLayout {
@@ -139,116 +148,55 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 5
 
-            Text {
-                text: root.aiName
-                color: Theme.color.lightorange2
-                font.family: "Share Tech Mono"
-                font.pixelSize: 18
-                font.bold: true
-            }
-            Text {
-                text: Lotei.thinking ? "thinking…" : "ready"
-                color: Theme.color.mediumorange4
-                font.family: "Share Tech Mono"
-                font.pixelSize: 12
-                Layout.alignment: Qt.AlignVCenter
-            }
-            // click-to-cycle local AI model (Ollama)
-            Text {
-                text: Lotei.modelName
-                color: modelMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
-                font.family: "Share Tech Mono"
-                font.pixelSize: 11
-                Layout.alignment: Qt.AlignVCenter
-                MouseArea {
-                    id: modelMouse
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Lotei.cycleModel()
-                }
-            }
-            Text {
-                text: "voice"
-                color: Lotei.muted ? Theme.color.mediumorange1 : Theme.color.lightorange2
-                font.family: "Share Tech Mono"
-                font.pixelSize: 11
-                font.strikeout: Lotei.muted
-                Layout.alignment: Qt.AlignVCenter
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Lotei.muted = !Lotei.muted
-                }
-            }
-            Text {
-                visible: !Lotei.muted
-                text: Lotei.voiceName
-                color: voiceNameMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
-                font.family: "Share Tech Mono"
-                font.pixelSize: 11
-                elide: Text.ElideRight
-                Layout.maximumWidth: 84
-                Layout.alignment: Qt.AlignVCenter
-                MouseArea {
-                    id: voiceNameMouse
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Lotei.cycleVoice()
-                }
-            }
-
-            // voice volume slider
+            // ---- cyberpunk model badge (status dot + glitch text + cursor) ----
             Item {
-                id: voiceVol
-                visible: !Lotei.muted
+                id: modelBadge
                 Layout.alignment: Qt.AlignVCenter
-                implicitWidth: 40
-                implicitHeight: 16
-                Rectangle {   // track
+                implicitWidth: dot.width + 8 + modelFg.implicitWidth + 10
+                implicitHeight: Math.max(modelFg.implicitHeight, 8) + 2
+
+                QtObject { id: glitch; property real off: 0 }
+                Timer {
+                    interval: 110; running: true; repeat: true
+                    onTriggered: glitch.off = (Math.random() < 0.16) ? (Math.random() * 2.4) : 0
+                }
+
+                // pulsing status dot: green idle, magenta while thinking
+                Rectangle {
+                    id: dot
+                    width: 6; height: 6; radius: 3
+                    anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width; height: 4; radius: 2
-                    color: Theme.color.mediumorange1
-                    Rectangle {   // fill
-                        width: parent.width * Lotei.voiceVolume
-                        height: parent.height; radius: 2
-                        color: Theme.color.lightorange2
+                    color: Lotei.thinking ? "#ff2fb0" : "#39ff14"
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite; running: true
+                        NumberAnimation { from: 1.0; to: 0.2; duration: 850; easing.type: Easing.InOutSine }
+                        NumberAnimation { from: 0.2; to: 1.0; duration: 850; easing.type: Easing.InOutSine }
                     }
                 }
-                Rectangle {   // handle
-                    width: 9; height: 9; radius: 5
-                    color: Theme.color.lightorange2
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: parent.width * Lotei.voiceVolume - width / 2
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onPressed: Lotei.voiceVolume = Math.max(0, Math.min(1, mouseX / voiceVol.width))
-                    onPositionChanged: if (pressed) Lotei.voiceVolume = Math.max(0, Math.min(1, mouseX / voiceVol.width))
-                }
-            }
 
-            // toggle the live Flipper-screen mirror
-            Text {
-                visible: Backend.screenStreamer && Backend.screenStreamer.isEnabled
-                text: "screen"
-                color: root.showScreen ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                font.family: "Share Tech Mono"
-                font.pixelSize: 11
-                Layout.alignment: Qt.AlignVCenter
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.showScreen = !root.showScreen
+                // chromatic-aberration layers (magenta + cyan behind, bright on top)
+                Text {
+                    text: Lotei.modelName
+                    color: "#ff2fb0"; opacity: 0.7
+                    anchors.left: dot.right; anchors.leftMargin: 8 + glitch.off
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                }
+                Text {
+                    text: Lotei.modelName
+                    color: "#00e5ff"; opacity: 0.7
+                    anchors.left: dot.right; anchors.leftMargin: 8 - glitch.off
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                }
+                Text {
+                    id: modelFg
+                    text: Lotei.modelName
+                    color: "#eaffea"
+                    anchors.left: dot.right; anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                 }
             }
             Item { Layout.fillWidth: true }
@@ -344,40 +292,6 @@ Rectangle {
                         font.family: "Share Tech Mono"
                         font.pixelSize: 11
                     }
-                    Text {
-                        visible: model.role === "lotei"
-                        text: "copy"
-                        color: copyMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                        font.family: "Share Tech Mono"
-                        font.pixelSize: 11
-                        MouseArea {
-                            id: copyMouse
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: { clip.text = model.text; clip.selectAll(); clip.copy(); }
-                        }
-                    }
-                    Text {
-                        visible: model.role === "lotei" && model.text.indexOf("```") >= 0
-                        text: "save→Flipper"
-                        color: saveMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                        font.family: "Share Tech Mono"
-                        font.pixelSize: 11
-                        MouseArea {
-                            id: saveMouse
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if(Lotei.thinking) return;
-                                root.appendMessage("you", "save that to my Flipper");
-                                Lotei.send("Save the script or code from this message onto my Flipper SD card using the save_file tool. Choose the correct folder (e.g. /ext/badusb for BadUSB, /ext/subghz for Sub-GHz, otherwise /ext) and a clear filename, then tell me where it landed. The message: " + model.text, root.deviceContext());
-                            }
-                        }
-                    }
                 }
                 Text {
                     width: parent.width
@@ -388,6 +302,106 @@ Rectangle {
                     font.family: "Share Tech Mono"
                     font.pixelSize: 13
                     onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                }
+
+                // ---- Manual save panel (model-free) --------------------------
+                // Shown for LOTEI replies that contain a code block. YOU pick the
+                // folder + name and hit Salvar; the app writes straight to the SD.
+                // The AI drafts, you save -- no fumbled tool calls.
+                Rectangle {
+                    visible: model.role === "lotei" && model.text.indexOf("```") >= 0
+                    width: parent.width
+                    implicitHeight: panelCol.implicitHeight + 16
+                    color: "#0A0010"
+                    border.color: Theme.color.mediumorange2
+                    border.width: 1
+                    radius: 3
+
+                    Column {
+                        id: panelCol
+                        x: 8; y: 8
+                        width: parent.width - 16
+                        spacing: 6
+
+                        // top bar: folder (left) + buttons (right)
+                        Item {
+                            width: parent.width
+                            height: 26
+
+                            Row {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                ComboBox {
+                                    id: folderBox
+                                    width: 130
+                                    height: 24
+                                    model: ["badusb", "subghz", "nfc", "infrared", "lfrfid", "ibutton", "ext"]
+                                }
+                                TextField {
+                                    id: nameField
+                                    width: 150
+                                    height: 24
+                                    text: "script.txt"
+                                    font.family: "Share Tech Mono"
+                                    font.pixelSize: 12
+                                }
+                            }
+
+                            Row {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 12
+                                Text {
+                                    text: "⧉ copiar"
+                                    color: copyBtn.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
+                                    font.family: "Share Tech Mono"; font.pixelSize: 12
+                                    MouseArea {
+                                        id: copyBtn; anchors.fill: parent; anchors.margins: -4
+                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: { clip.text = scriptArea.text; clip.selectAll(); clip.copy(); }
+                                    }
+                                }
+                                Text {
+                                    text: "▼ salvar"
+                                    color: saveBtn.containsMouse ? Theme.color.lightgreen : Theme.color.lightorange2
+                                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                                    MouseArea {
+                                        id: saveBtn; anchors.fill: parent; anchors.margins: -4
+                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: Lotei.saveScriptToFlipper(folderBox.currentText, nameField.text, scriptArea.text)
+                                    }
+                                }
+                            }
+                        }
+
+                        // the script itself, editable, terminal-styled
+                        Rectangle {
+                            width: parent.width
+                            implicitHeight: Math.min(scriptArea.implicitHeight + 12, 260)
+                            color: "#000000"
+                            border.color: Theme.color.mediumorange1
+                            border.width: 1
+                            radius: 2
+                            Flickable {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                contentHeight: scriptArea.implicitHeight
+                                clip: true
+                                TextArea {
+                                    id: scriptArea
+                                    width: parent.width
+                                    text: Lotei.extractScript(model.text)
+                                    wrapMode: TextArea.NoWrap
+                                    color: Theme.color.lightgreen
+                                    selectByMouse: true
+                                    font.family: "Share Tech Mono"
+                                    font.pixelSize: 12
+                                    background: null
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

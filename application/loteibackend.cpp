@@ -180,7 +180,9 @@ static QJsonArray salvageToolCalls(const QString &content)
         QStringLiteral("make_dir"), QStringLiteral("delete_file"),
         QStringLiteral("rename_file"), QStringLiteral("file_info"),
         QStringLiteral("host_list"), QStringLiteral("host_read"),
-        QStringLiteral("host_write"), QStringLiteral("host_run")
+        QStringLiteral("host_write"), QStringLiteral("host_run"),
+        QStringLiteral("remember"), QStringLiteral("list_memory"),
+        QStringLiteral("forget")
     };
 
     QJsonArray calls;
@@ -206,10 +208,16 @@ static QJsonArray salvageToolCalls(const QString &content)
             QJsonDocument::fromJson(content.mid(i, j - i).toUtf8()).object();
         const QJsonObject fn = obj.contains(QStringLiteral("function"))
                              ? obj.value(QStringLiteral("function")).toObject() : obj;
-        const QString name = fn.value(QStringLiteral("name")).toString();
-        const QJsonValue argsVal = fn.contains(QStringLiteral("arguments"))
-                                 ? fn.value(QStringLiteral("arguments"))
-                                 : fn.value(QStringLiteral("parameters"));
+        // Small models are inconsistent about key names -- accept the common
+        // variants so a genuine attempt to act still becomes a real tool call.
+        QString name = fn.value(QStringLiteral("name")).toString();
+        if (name.isEmpty()) { name = fn.value(QStringLiteral("tool")).toString(); }
+        if (name.isEmpty()) { name = fn.value(QStringLiteral("tool_name")).toString(); }
+        if (name.isEmpty()) { name = fn.value(QStringLiteral("action")).toString(); }
+        QJsonValue argsVal = fn.value(QStringLiteral("arguments"));
+        if (argsVal.isUndefined()) { argsVal = fn.value(QStringLiteral("parameters")); }
+        if (argsVal.isUndefined()) { argsVal = fn.value(QStringLiteral("args")); }
+        if (argsVal.isUndefined()) { argsVal = fn.value(QStringLiteral("input")); }
 
         if (known.contains(name) && !argsVal.isUndefined()) {
             const QJsonObject args = argsVal.isObject() ? argsVal.toObject()
@@ -236,6 +244,87 @@ static QString badStoragePath(const QString &p)
         "Firmware, radio/BLE stack and hardware versions are NOT files -- they are already in your "
         "device diagnostics; read them from there. Do not browse or press buttons to find them.\"}").arg(p);
 }
+
+// Clean up a DuckyScript the model produced before it lands on the Flipper. A
+// small model writes sloppy Ducky (lowercase keywords, missing the leading
+// DELAY so the first keystrokes get eaten before the host enumerates the
+// keyboard, stray ``` fences or prose). This makes the mechanical part reliable
+// regardless of how careless the model was -- the engineering lives in code,
+// not in the model's head. Only applied to files under /ext/badusb/.
+static QString sanitizeDuckyScript(const QString &in)
+{
+    static const QStringList commands = {
+        "REM", "DELAY", "STRING", "STRINGLN", "ENTER", "GUI", "WINDOWS", "COMMAND",
+        "CTRL", "CONTROL", "SHIFT", "ALT", "TAB", "SPACE", "ESC", "ESCAPE",
+        "UP", "DOWN", "LEFT", "RIGHT", "UPARROW", "DOWNARROW", "LEFTARROW", "RIGHTARROW",
+        "DELETE", "BACKSPACE", "CAPSLOCK", "HOME", "END", "INSERT", "PAGEUP", "PAGEDOWN",
+        "PRINTSCREEN", "MENU", "APP", "REPEAT", "DEFAULT_DELAY", "DEFAULTDELAY",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
+    };
+
+    QString s = in;
+    // Strip Markdown code fences and a leading language tag if the model added them.
+    s.remove(QRegularExpression(QStringLiteral("```[a-zA-Z]*")));
+    s.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+
+    QStringList out;
+    bool sawAction = false;   // any real keystroke-producing line yet?
+    bool hasLeadingDelay = false;
+
+    const QStringList lines = s.split(QLatin1Char('\n'));
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.isEmpty()) { continue; }
+
+        // First whitespace-separated token decides if this is a Ducky command.
+        const int sp = line.indexOf(QLatin1Char(' '));
+        const QString head = (sp < 0 ? line : line.left(sp));
+        const QString upper = head.toUpper();
+
+        if (commands.contains(upper)) {
+            // Normalise the keyword to canonical upper-case, keep the argument as-is.
+            QString rest = (sp < 0 ? QString() : line.mid(sp + 1));
+            // After a modifier (GUI/CTRL/ALT/SHIFT...) a NAMED key must be upper
+            // ("GUI SPACE", "CTRL TAB") or the Flipper won't recognise it -- but a
+            // single literal letter ("GUI r" = Win+R) must stay as typed.
+            static const QStringList modifiers = {
+                "GUI", "WINDOWS", "COMMAND", "CTRL", "CONTROL", "ALT", "SHIFT"
+            };
+            if (modifiers.contains(upper) && !rest.contains(QLatin1Char(' '))
+                && commands.contains(rest.toUpper())) {
+                rest = rest.toUpper();
+            }
+            line = rest.isEmpty() ? upper : (upper + QLatin1Char(' ') + rest);
+
+            if (upper == QLatin1String("DELAY") && !sawAction && !hasLeadingDelay) {
+                hasLeadingDelay = true;   // model already gave us a warm-up delay
+            }
+            if (upper != QLatin1String("REM") && upper != QLatin1String("DELAY")
+                && upper != QLatin1String("DEFAULT_DELAY") && upper != QLatin1String("DEFAULTDELAY")) {
+                sawAction = true;
+            }
+        } else {
+            // Not a recognised command. If it looks like prose the model leaked
+            // ("Here's the script:", "Step 1"), drop it; otherwise treat it as
+            // literal text to type via STRING so nothing is silently lost.
+            if (line.endsWith(QLatin1Char(':')) || line.startsWith(QLatin1String("Step "))
+                || line.startsWith(QLatin1String("#"))) {
+                continue;
+            }
+            line = QStringLiteral("STRING ") + line;
+            sawAction = true;
+        }
+        out << line;
+    }
+
+    // Guarantee a warm-up DELAY so the first keystrokes aren't dropped while the
+    // host is still enumerating the Flipper as a USB keyboard.
+    if (!hasLeadingDelay) {
+        out.prepend(QStringLiteral("DELAY 800"));
+    }
+    return out.join(QLatin1Char('\n'));
+}
+
 
 // "en_US-ryan-high.onnx" -> "Ryan" for the voice-switcher label.
 static QString piperVoiceLabel(const QString &onnxPath)
@@ -367,8 +456,45 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
+    const QJsonObject remember{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "remember"},
+            {"description", "Save a durable fact ONLY when the user EXPLICITLY tells you to remember it (e.g. they say 'lembra que...', 'remember that...', 'don't forget...'). Do NOT call this on your own initiative, do NOT infer or invent facts, do NOT save nicknames, names, or preferences the user did not clearly state. If in doubt, do not call it."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise fact to remember, e.g. 'User's Mac uses the ABNT2 keyboard layout'"}}}
+                }},
+                {"required", QJsonArray{"fact"}}
+            }}
+        }}
+    };
+    const QJsonObject listMemory{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "list_memory"},
+            {"description", "Show everything you currently remember about the user. Call it when they ask what you remember/know about them."},
+            {"parameters", QJsonObject{{"type", "object"}, {"properties", QJsonObject{}}}}
+        }}
+    };
+    const QJsonObject forget{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "forget"},
+            {"description", "Delete remembered facts. Pass a word/phrase to remove only matching facts, or pass \"all\" to wipe memory. Call it when the user says to forget something."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"match", QJsonObject{{"type", "string"}, {"description", "Text to match facts to delete, or 'all' to clear everything"}}}
+                }},
+                {"required", QJsonArray{"match"}}
+            }}
+        }}
+    };
+
     QJsonArray tools{listFiles, readFile, pressButton, saveFile,
-                     makeDir, deleteFile, renameFile, fileInfo};
+                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget};
 
     if (!agent) { return tools; }
 
@@ -498,6 +624,17 @@ static QJsonArray loteiPrimer()
         }}}
     };
 
+    const QJsonObject callRemember{
+        {"role", "assistant"},
+        {"content", ""},
+        {"tool_calls", QJsonArray{ QJsonObject{
+            {"function", QJsonObject{
+                {"name", "remember"},
+                {"arguments", QJsonObject{{"fact", "User's Mac uses the ABNT2 (Brazilian) keyboard layout"}}}
+            }}
+        }}}
+    };
+
     return QJsonArray{
         // 1. Plain PT request, macOS -> LOTEI reasons it into real DuckyScript + saves.
         QJsonObject{{"role", "user"}, {"content", "faz o flipper abrir o bloco de notas no mac e escrever oi tudo bem"}},
@@ -518,9 +655,16 @@ static QJsonArray loteiPrimer()
         QJsonObject{{"role", "user"}, {"content", "apaga o hello.txt"}},
         callDelete,
         QJsonObject{{"role", "tool"}, {"content", "{\"deleted\":\"/ext/badusb/hello.txt\"}"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Sumiu. hello.txt ja era. Mais alguma limpeza?"}}
+        QJsonObject{{"role", "assistant"}, {"content", "Sumiu. hello.txt ja era. Mais alguma limpeza?"}},
+        // 5. "remember that ..." -> save a durable fact.
+        QJsonObject{{"role", "user"}, {"content", "lembra que meu mac usa teclado ABNT2"}},
+        callRemember,
+        QJsonObject{{"role", "tool"}, {"content", "{\"remembered\":true}"}},
+        QJsonObject{{"role", "assistant"}, {"content", "Anotado -- teclado ABNT2 do teu Mac. Vou lembrar disso quando montar scripts que digitam acento."}}
     };
 }
+
+static QString loteiMemoryPath();   // fwd decl: defined below, used in the ctor
 
 LoteiBackend::LoteiBackend(QObject *parent)
     : QObject(parent)
@@ -538,6 +682,13 @@ LoteiBackend::LoteiBackend(QObject *parent)
     m_manualName = QSettings().value(QStringLiteral("lotei/manualName")).toString();
     m_agentEnabled = QSettings().value(QStringLiteral("lotei/agentEnabled"), false).toBool();
     m_agentRoot = QSettings().value(QStringLiteral("lotei/agentDir")).toString();
+    {   // load long-term memory (facts the user asked LOTEI to remember)
+        QFile mf(loteiMemoryPath());
+        if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            m_memory = QString::fromUtf8(mf.readAll()).trimmed();
+            mf.close();
+        }
+    }
 #ifdef HZUI_VOICE
     m_tts.setVolume(m_voiceVolume);
 
@@ -957,6 +1108,18 @@ static QString loteiHistoryPath()
     return dir + QStringLiteral("/lotei-history.json");
 }
 
+// Long-term memory: durable facts the user asked LOTEI to remember. Kept in a
+// local file (always available, loaded into every system prompt so a forgetful
+// small model "remembers" for free) and mirrored to the Flipper SD at
+// /ext/lotei/memoria.txt so it's portable with the device.
+static QString loteiMemoryPath()
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dir.isEmpty()) { dir = QDir::tempPath(); }
+    QDir().mkpath(dir);
+    return dir + QStringLiteral("/lotei-memory.txt");
+}
+
 void LoteiBackend::loadHistory()
 {
     QFile f(loteiHistoryPath());
@@ -1025,8 +1188,11 @@ QString LoteiBackend::systemPrompt() const
     if (name.isEmpty()) { name = m_manualName; }
     if (!name.isEmpty()) {
         sys += QStringLiteral("\n\nYOUR NAME -- IMPORTANT: you are bonded to a Flipper Zero named "
-            "\"%1\". \"%1\" is YOUR name now: introduce yourself as %1 and refer to yourself as %1, "
-            "NOT LOTEI (LOTEI is just your underlying model line).").arg(name);
+            "\"%1\", so your name is %1 (NOT LOTEI -- that's just your underlying model line). "
+            "Introduce yourself as %1 when greeting. But ALWAYS speak in the FIRST PERSON -- say "
+            "\"I\", \"me\", \"my\", never talk about yourself in the third person. NEVER write things "
+            "like \"%1 is on it\" or \"%1 garante\"; say \"I'm on it\", \"I've got it\". You ARE %1, "
+            "so refer to yourself as \"I\", the way a person named %1 says \"I\" not their own name.").arg(name);
     }
 
     if (agentReady()) {
@@ -1037,6 +1203,11 @@ QString LoteiBackend::systemPrompt() const
             "- host_run(command): run a shell command in the workspace (build, tests, git). You get the exit code and combined stdout/stderr back. It BLOCKS until the command finishes, so prefer fast, targeted commands.\n"
             "- Your core lives in application/loteibackend.cpp + .h and application/components/LoteiChat.qml. To fix a bug: host_read the file, host_write the corrected version, then host_run the incremental build (e.g. build_pink_inc.bat on Windows) and read the errors.\n"
             "- You physically canNOT touch anything outside the workspace folder -- attempts to escape it are blocked. Never claim you edited files you didn't. Say what you changed and why, plainly.").arg(m_agentRoot);
+    }
+
+    if (!m_memory.isEmpty()) {
+        sys += QStringLiteral("\n\nWHAT YOU REMEMBER about this user (durable facts from past sessions -- "
+            "use them without being asked; they're already true):\n") + m_memory;
     }
 
     if (!m_deviceContext.isEmpty()) {
@@ -1287,6 +1458,32 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         return;
     }
 
+    // Remembering a fact is local (+ best-effort SD mirror); no device required.
+    if (name == QLatin1String("remember")) {
+        const QString fact = args.value("fact").toString().trimmed();
+        if (fact.isEmpty()) { done(QStringLiteral("{\"error\":\"no fact given\"}")); return; }
+        rememberFact(fact);
+        done(QStringLiteral("{\"remembered\":true}"));
+        return;
+    }
+    if (name == QLatin1String("list_memory")) {
+        if (m_memory.trimmed().isEmpty()) {
+            done(QStringLiteral("{\"memory\":\"(empty -- I don't have any saved facts yet)\"}"));
+        } else {
+            // Wrap in an object to get a properly JSON-escaped string value.
+            const QByteArray js = QJsonDocument(QJsonObject{{"memory", m_memory}})
+                                      .toJson(QJsonDocument::Compact);
+            done(QString::fromUtf8(js));
+        }
+        return;
+    }
+    if (name == QLatin1String("forget")) {
+        const QString match = args.value("match").toString().trimmed();
+        const int removed = forgetFacts(match);
+        done(QStringLiteral("{\"forgotten\":%1}").arg(removed));
+        return;
+    }
+
     Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
     const bool ready = m_appBackend && dev &&
                        m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
@@ -1384,13 +1581,25 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         }
 
     } else if (name == QLatin1String("save_file")) {
-        const QByteArray path = args.value("path").toString().toUtf8();
-        const QString content = args.value("content").toString();
+        QByteArray path = args.value("path").toString().toUtf8();
+        QString content = args.value("content").toString();
         if (path.isEmpty()) {
             done(QStringLiteral("{\"error\":\"no path given\"}"));
             return;
         }
         if (const QString err = badStoragePath(QString::fromUtf8(path)); !err.isEmpty()) { done(err); return; }
+        // BadUSB payloads MUST be .txt on the Flipper -- .duk (or anything else the
+        // model picks) simply won't run. Force the extension and clean the Ducky,
+        // so a sloppy model still produces a file that actually works.
+        if (QString::fromUtf8(path).startsWith(QLatin1String("/ext/badusb/"), Qt::CaseInsensitive)) {
+            QString p = QString::fromUtf8(path);
+            const int slash = p.lastIndexOf(QLatin1Char('/'));
+            const int dot = p.lastIndexOf(QLatin1Char('.'));
+            if (dot > slash) { p = p.left(dot) + QStringLiteral(".txt"); }
+            else            { p += QStringLiteral(".txt"); }
+            path = p.toUtf8();
+            content = sanitizeDuckyScript(content);
+        }
         // Make sure the parent folder exists (best-effort) so saving a script into
         // a fresh path just works instead of failing on a missing directory.
         const QByteArray parent = QString::fromUtf8(path).section('/', 0, -2).toUtf8();
@@ -1641,8 +1850,7 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
     }
 }
 
-bool LoteiBackend::agentEnabled() const { return m_agentEnabled; }
-QString LoteiBackend::agentDir() const  { return m_agentRoot; }
+bool LoteiBackend::agentEnabled() const { return m_agentEnabled; }QString LoteiBackend::agentDir() const  { return m_agentRoot; }
 
 void LoteiBackend::setAgentEnabled(bool on)
 {
@@ -1661,6 +1869,182 @@ void LoteiBackend::setAgentDir(const QString &dir)
     m_agentRoot = path;
     QSettings().setValue(QStringLiteral("lotei/agentDir"), m_agentRoot);
     emit agentChanged();
+}
+
+// Append a durable fact to long-term memory: update the in-memory copy (so it's
+// in the very next system prompt), persist it locally, and mirror the whole
+// memory to the Flipper SD at /ext/lotei/memoria.txt when a device is around.
+void LoteiBackend::rememberFact(const QString &fact)
+{
+    QString clean = fact.trimmed();
+    // Strip a leading bullet the model sometimes includes.
+    while (clean.startsWith(QLatin1String("- ")) || clean.startsWith(QLatin1String("* "))) {
+        clean = clean.mid(2).trimmed();
+    }
+    if (clean.isEmpty()) { return; }
+
+    // --- Quality gate: reject junk so memory stays trustworthy, not a dump. ---
+    // 1. Too short or too long to be a real, useful fact.
+    if (clean.size() < 6 || clean.size() > 200) { return; }
+    // 2. Must contain letters (not just symbols/numbers/emoji).
+    if (!clean.contains(QRegularExpression(QStringLiteral("[A-Za-zÀ-ÿ]")))) { return; }
+    // 3. Reject obvious conversational filler the model might try to store as a "fact".
+    static const QRegularExpression filler(
+        QStringLiteral("^(ok|okay|sure|yes|no|sim|nao|não|thanks|obrigad|hello|oi|hi|hey|done|pronto|"
+                       "got it|entendi|beleza|blz|tudo bem|hmm+|lol|kk+|test(e|ing)?)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (filler.match(clean).hasMatch()) { return; }
+    // 4. A fact is a statement, not a question or a command back to the user.
+    if (clean.endsWith(QLatin1Char('?'))) { return; }
+
+    // De-dupe (case-insensitive), and replace a near-identical prior fact instead
+    // of stacking a second copy.
+    QStringList lines = m_memory.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        QString l = line.trimmed();
+        while (l.startsWith(QLatin1String("- "))) { l = l.mid(2).trimmed(); }
+        if (l.compare(clean, Qt::CaseInsensitive) == 0) { return; }   // exact dupe
+    }
+
+    // --- Cap total memory so it never balloons: keep the most recent 40 facts. ---
+    lines << (QStringLiteral("- ") + clean);
+    const int kMaxFacts = 40;
+    while (lines.size() > kMaxFacts) { lines.removeFirst(); }
+    m_memory = lines.join(QLatin1Char('\n'));
+
+    // Persist locally (authoritative, always available).
+    QFile mf(loteiMemoryPath());
+    if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        mf.write(m_memory.toUtf8());
+        mf.close();
+    }
+
+    // Best-effort mirror onto the SD so memory travels with the Flipper.
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (ready) {
+        const QByteArray memPath = "/ext/lotei/memoria.txt";
+        const QString memBody = m_memory;
+        ensureFlipperDir("/ext/lotei", [this, dev, memPath, memBody]() {
+            QBuffer *buf = new QBuffer(this);
+            buf->setData(memBody.toUtf8());
+            buf->open(QIODevice::ReadOnly);
+            auto *op = dev->rpc()->storageWrite(memPath, buf);
+            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+        });
+    }
+}
+
+// Remove facts from memory: those containing `match`, or ALL if match is "all"
+// (or empty). Returns how many were removed. Persists locally + mirrors to SD.
+int LoteiBackend::forgetFacts(const QString &match)
+{
+    if (m_memory.trimmed().isEmpty()) { return 0; }
+    QStringList lines = m_memory.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    const int before = lines.size();
+
+    const QString m = match.trimmed();
+    if (m.isEmpty() || m.compare(QLatin1String("all"), Qt::CaseInsensitive) == 0
+        || m.compare(QLatin1String("tudo"), Qt::CaseInsensitive) == 0) {
+        lines.clear();
+    } else {
+        QStringList kept;
+        for (const QString &line : lines) {
+            if (!line.contains(m, Qt::CaseInsensitive)) { kept << line; }
+        }
+        lines = kept;
+    }
+    const int removed = before - lines.size();
+    if (removed == 0) { return 0; }
+
+    m_memory = lines.join(QLatin1Char('\n'));
+
+    // Persist locally.
+    QFile mf(loteiMemoryPath());
+    if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        mf.write(m_memory.toUtf8());
+        mf.close();
+    }
+    // Mirror to SD (writes the whole current memory, even if now empty).
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (ready) {
+        const QByteArray memPath = "/ext/lotei/memoria.txt";
+        const QString memBody = m_memory;
+        ensureFlipperDir("/ext/lotei", [this, dev, memPath, memBody]() {
+            QBuffer *buf = new QBuffer(this);
+            buf->setData(memBody.toUtf8());
+            buf->open(QIODevice::ReadOnly);
+            auto *op = dev->rpc()->storageWrite(memPath, buf);
+            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+        });
+    }
+    return removed;
+}
+
+// Pull the script out of a chat message: the first fenced ``` code block if
+// present, otherwise the whole text. Used by the manual "save to Flipper" panel.
+QString LoteiBackend::extractScript(const QString &text) const
+{
+    const int a = text.indexOf(QStringLiteral("```"));
+    if (a < 0) { return text.trimmed(); }
+    const int nl = text.indexOf(QLatin1Char('\n'), a);
+    if (nl < 0) { return text.trimmed(); }
+    const int b = text.indexOf(QStringLiteral("```"), nl + 1);
+    if (b < 0) { return text.mid(nl + 1).trimmed(); }
+    return text.mid(nl + 1, b - nl - 1).trimmed();
+}
+
+// Manual, deterministic save: the USER picks the folder + filename and we write
+// straight to the SD -- the model is never involved, so it can't fumble it. This
+// is the reliable path: the 3b is great at drafting a script, bad at saving it,
+// so we take the saving out of its hands entirely.
+void LoteiBackend::saveScriptToFlipper(const QString &folder, const QString &filename, const QString &content)
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { emit scriptSaveError(QStringLiteral("No Flipper connected or ready.")); return; }
+
+    // Normalise the folder into an /ext/<folder> path.
+    QString fld = folder.trimmed();
+    while (fld.startsWith(QLatin1Char('/'))) { fld = fld.mid(1); }
+    if (fld.startsWith(QLatin1String("ext/"))) { fld = fld.mid(4); }
+    if (fld.isEmpty()) { fld = QStringLiteral("badusb"); }
+
+    // Sanitise the filename (no path separators or illegal chars).
+    QString fn = filename.trimmed();
+    fn.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
+    if (fn.isEmpty()) { fn = QStringLiteral("script.txt"); }
+
+    QString path = QStringLiteral("/ext/") + fld + QLatin1Char('/') + fn;
+    QString body = content;
+
+    // BadUSB must be .txt and gets the DuckyScript cleaner.
+    if (path.startsWith(QLatin1String("/ext/badusb/"), Qt::CaseInsensitive)) {
+        const int slash = path.lastIndexOf(QLatin1Char('/'));
+        const int dot = path.lastIndexOf(QLatin1Char('.'));
+        if (dot > slash) { path = path.left(dot) + QStringLiteral(".txt"); }
+        else            { path += QStringLiteral(".txt"); }
+        body = sanitizeDuckyScript(body);
+    }
+
+    const QByteArray p = path.toUtf8();
+    const QString finalBody = body;
+    const QByteArray parent = path.section('/', 0, -2).toUtf8();
+    ensureFlipperDir(parent, [this, dev, p, finalBody, path]() {
+        QBuffer *buf = new QBuffer(this);
+        buf->setData(finalBody.toUtf8());
+        buf->open(QIODevice::ReadOnly);
+        auto *op = dev->rpc()->storageWrite(p, buf);
+        connect(op, &AbstractOperation::finished, this, [this, op, buf, path]() {
+            if (op->isError()) { emit scriptSaveError(op->errorString()); }
+            else               { emit scriptSaved(path); }
+            buf->deleteLater();
+        });
+    });
 }
 
 // ---- LoteiPalette ---------------------------------------------------------

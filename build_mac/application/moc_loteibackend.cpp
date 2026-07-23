@@ -53,7 +53,16 @@ template <> constexpr inline auto LoteiBackend::qt_create_metaobjectdata<qt_meta
         "setupCompleteChanged",
         "manualNameChanged",
         "agentChanged",
+        "scriptSaved",
+        "path",
+        "scriptSaveError",
+        "message",
         "partialReceived",
+        "extractScript",
+        "saveScriptToFlipper",
+        "folder",
+        "filename",
+        "content",
         "send",
         "userText",
         "deviceContext",
@@ -113,70 +122,86 @@ template <> constexpr inline auto LoteiBackend::qt_create_metaobjectdata<qt_meta
         QtMocHelpers::SignalData<void()>(12, 2, QMC::AccessPublic, QMetaType::Void),
         // Signal 'agentChanged'
         QtMocHelpers::SignalData<void()>(13, 2, QMC::AccessPublic, QMetaType::Void),
-        // Signal 'partialReceived'
+        // Signal 'scriptSaved'
         QtMocHelpers::SignalData<void(const QString &)>(14, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 15 },
+        }}),
+        // Signal 'scriptSaveError'
+        QtMocHelpers::SignalData<void(const QString &)>(16, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 17 },
+        }}),
+        // Signal 'partialReceived'
+        QtMocHelpers::SignalData<void(const QString &)>(18, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 3 },
         }}),
+        // Method 'extractScript'
+        QtMocHelpers::MethodData<QString(const QString &) const>(19, 2, QMC::AccessPublic, QMetaType::QString, {{
+            { QMetaType::QString, 3 },
+        }}),
+        // Method 'saveScriptToFlipper'
+        QtMocHelpers::MethodData<void(const QString &, const QString &, const QString &)>(20, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 21 }, { QMetaType::QString, 22 }, { QMetaType::QString, 23 },
+        }}),
         // Method 'send'
-        QtMocHelpers::MethodData<void(const QString &, const QString &)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 16 }, { QMetaType::QString, 17 },
+        QtMocHelpers::MethodData<void(const QString &, const QString &)>(24, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 25 }, { QMetaType::QString, 26 },
         }}),
         // Method 'reset'
-        QtMocHelpers::MethodData<void()>(18, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(27, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'cycleVoice'
-        QtMocHelpers::MethodData<void()>(19, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(28, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'cycleModel'
-        QtMocHelpers::MethodData<void()>(20, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(29, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'setModel'
-        QtMocHelpers::MethodData<void(const QString &)>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 22 },
+        QtMocHelpers::MethodData<void(const QString &)>(30, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 31 },
         }}),
         // Method 'availableModels'
-        QtMocHelpers::MethodData<QStringList() const>(23, 2, QMC::AccessPublic, QMetaType::QStringList),
+        QtMocHelpers::MethodData<QStringList() const>(32, 2, QMC::AccessPublic, QMetaType::QStringList),
         // Method 'musicFolderUrl'
-        QtMocHelpers::MethodData<QString() const>(24, 2, QMC::AccessPublic, QMetaType::QString),
+        QtMocHelpers::MethodData<QString() const>(33, 2, QMC::AccessPublic, QMetaType::QString),
         // Method 'completeSetup'
-        QtMocHelpers::MethodData<void()>(25, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(34, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'resetSetup'
-        QtMocHelpers::MethodData<void()>(26, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(35, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'recheckOllama'
-        QtMocHelpers::MethodData<void()>(27, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(36, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'personalityPresets'
-        QtMocHelpers::MethodData<QStringList() const>(28, 2, QMC::AccessPublic, QMetaType::QStringList),
+        QtMocHelpers::MethodData<QStringList() const>(37, 2, QMC::AccessPublic, QMetaType::QStringList),
         // Method 'applyPreset'
-        QtMocHelpers::MethodData<void(const QString &)>(29, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 30 },
+        QtMocHelpers::MethodData<void(const QString &)>(38, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 39 },
         }}),
         // Method 'applyNamePersonality'
-        QtMocHelpers::MethodData<void()>(31, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(40, 2, QMC::AccessPublic, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'thinking'
-        QtMocHelpers::PropertyData<bool>(32, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<bool>(41, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
         // property 'configured'
-        QtMocHelpers::PropertyData<bool>(33, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
+        QtMocHelpers::PropertyData<bool>(42, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
         // property 'hasAudio'
-        QtMocHelpers::PropertyData<bool>(34, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
+        QtMocHelpers::PropertyData<bool>(43, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
         // property 'muted'
-        QtMocHelpers::PropertyData<bool>(35, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 3),
+        QtMocHelpers::PropertyData<bool>(44, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 3),
         // property 'voiceName'
-        QtMocHelpers::PropertyData<QString>(36, QMetaType::QString, QMC::DefaultPropertyFlags, 4),
+        QtMocHelpers::PropertyData<QString>(45, QMetaType::QString, QMC::DefaultPropertyFlags, 4),
         // property 'modelName'
-        QtMocHelpers::PropertyData<QString>(37, QMetaType::QString, QMC::DefaultPropertyFlags, 5),
+        QtMocHelpers::PropertyData<QString>(46, QMetaType::QString, QMC::DefaultPropertyFlags, 5),
         // property 'voiceVolume'
-        QtMocHelpers::PropertyData<qreal>(38, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 6),
+        QtMocHelpers::PropertyData<qreal>(47, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 6),
         // property 'musicVolume'
-        QtMocHelpers::PropertyData<qreal>(39, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 7),
+        QtMocHelpers::PropertyData<qreal>(48, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 7),
         // property 'setupComplete'
-        QtMocHelpers::PropertyData<bool>(40, QMetaType::Bool, QMC::DefaultPropertyFlags, 8),
+        QtMocHelpers::PropertyData<bool>(49, QMetaType::Bool, QMC::DefaultPropertyFlags, 8),
         // property 'ollamaOnline'
-        QtMocHelpers::PropertyData<bool>(41, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
+        QtMocHelpers::PropertyData<bool>(50, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
         // property 'manualName'
-        QtMocHelpers::PropertyData<QString>(42, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 9),
+        QtMocHelpers::PropertyData<QString>(51, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 9),
         // property 'agentEnabled'
-        QtMocHelpers::PropertyData<bool>(43, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
+        QtMocHelpers::PropertyData<bool>(52, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
         // property 'agentDir'
-        QtMocHelpers::PropertyData<QString>(44, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
+        QtMocHelpers::PropertyData<QString>(53, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -209,23 +234,28 @@ void LoteiBackend::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id
         case 8: _t->setupCompleteChanged(); break;
         case 9: _t->manualNameChanged(); break;
         case 10: _t->agentChanged(); break;
-        case 11: _t->partialReceived((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 12: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
-        case 13: _t->reset(); break;
-        case 14: _t->cycleVoice(); break;
-        case 15: _t->cycleModel(); break;
-        case 16: _t->setModel((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 17: { QStringList _r = _t->availableModels();
-            if (_a[0]) *reinterpret_cast<QStringList*>(_a[0]) = std::move(_r); }  break;
-        case 18: { QString _r = _t->musicFolderUrl();
+        case 11: _t->scriptSaved((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 12: _t->scriptSaveError((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 13: _t->partialReceived((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 14: { QString _r = _t->extractScript((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])));
             if (_a[0]) *reinterpret_cast<QString*>(_a[0]) = std::move(_r); }  break;
-        case 19: _t->completeSetup(); break;
-        case 20: _t->resetSetup(); break;
-        case 21: _t->recheckOllama(); break;
-        case 22: { QStringList _r = _t->personalityPresets();
+        case 15: _t->saveScriptToFlipper((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 16: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 17: _t->reset(); break;
+        case 18: _t->cycleVoice(); break;
+        case 19: _t->cycleModel(); break;
+        case 20: _t->setModel((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 21: { QStringList _r = _t->availableModels();
             if (_a[0]) *reinterpret_cast<QStringList*>(_a[0]) = std::move(_r); }  break;
-        case 23: _t->applyPreset((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 24: _t->applyNamePersonality(); break;
+        case 22: { QString _r = _t->musicFolderUrl();
+            if (_a[0]) *reinterpret_cast<QString*>(_a[0]) = std::move(_r); }  break;
+        case 23: _t->completeSetup(); break;
+        case 24: _t->resetSetup(); break;
+        case 25: _t->recheckOllama(); break;
+        case 26: { QStringList _r = _t->personalityPresets();
+            if (_a[0]) *reinterpret_cast<QStringList*>(_a[0]) = std::move(_r); }  break;
+        case 27: _t->applyPreset((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 28: _t->applyNamePersonality(); break;
         default: ;
         }
     }
@@ -252,7 +282,11 @@ void LoteiBackend::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id
             return;
         if (QtMocHelpers::indexOfMethod<void (LoteiBackend::*)()>(_a, &LoteiBackend::agentChanged, 10))
             return;
-        if (QtMocHelpers::indexOfMethod<void (LoteiBackend::*)(const QString & )>(_a, &LoteiBackend::partialReceived, 11))
+        if (QtMocHelpers::indexOfMethod<void (LoteiBackend::*)(const QString & )>(_a, &LoteiBackend::scriptSaved, 11))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (LoteiBackend::*)(const QString & )>(_a, &LoteiBackend::scriptSaveError, 12))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (LoteiBackend::*)(const QString & )>(_a, &LoteiBackend::partialReceived, 13))
             return;
     }
     if (_c == QMetaObject::ReadProperty) {
@@ -307,14 +341,14 @@ int LoteiBackend::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 25)
+        if (_id < 29)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 25;
+        _id -= 29;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 25)
+        if (_id < 29)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 25;
+        _id -= 29;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty
@@ -392,9 +426,21 @@ void LoteiBackend::agentChanged()
 }
 
 // SIGNAL 11
-void LoteiBackend::partialReceived(const QString & _t1)
+void LoteiBackend::scriptSaved(const QString & _t1)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 11, nullptr, _t1);
+}
+
+// SIGNAL 12
+void LoteiBackend::scriptSaveError(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 12, nullptr, _t1);
+}
+
+// SIGNAL 13
+void LoteiBackend::partialReceived(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 13, nullptr, _t1);
 }
 namespace {
 struct qt_meta_tag_ZN12LoteiPaletteE_t {};

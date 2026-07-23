@@ -11,7 +11,7 @@ AbstractOverlay {
 
     signal selfUpdateRequested
     readonly property int centerX: 590
-    readonly property int centerOffset: Math.min(overlay.width - (centerX + systemPathLabel.width + 12), 0)
+    readonly property int centerOffset: Math.min(overlay.width - (centerX + systemPathLabel.width + 34), 0)
 
     onDeviceInfoChanged: tabs.currentIndex = 0;
 
@@ -103,7 +103,7 @@ AbstractOverlay {
     TabBar {
         id: tabs
         x: 28
-        y: 28
+        y: 18
 
         layer.enabled: true
 
@@ -148,8 +148,8 @@ AbstractOverlay {
 
     TextLabel {
         id: nameLabel
-        x: centerX + centerOffset - width - 4
-        y: 19
+        x: centerX + centerOffset - width - 38
+        y: 31
 
         color: Theme.color.lightorange2
 
@@ -161,8 +161,9 @@ AbstractOverlay {
     }
 
     ColumnLayout {
-        x: centerX + centerOffset + 4
+        x: centerX + centerOffset - 22
         anchors.bottom: nameLabel.baseline
+        spacing: 6
 
         TransparentLabel {
             id: connectionLabel
@@ -206,7 +207,7 @@ AbstractOverlay {
         action: updateButtonAction
 
         x: Math.round(centerX - width / 2)
-        y: 265
+        y: 277
 
         accent: {
             switch(Backend.firmwareUpdateState) {

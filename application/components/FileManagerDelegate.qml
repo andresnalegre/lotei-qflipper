@@ -288,11 +288,14 @@ Item {
     }
 
     function doubleClick(mouse) {
-        if(mouse.button === Qt.RightButton || !delegate.isDirectory) {
+        if(mouse.button === Qt.RightButton) {
             return;
         }
-
-        Backend.fileManager.cd(delegate.fileName)
+        if(delegate.isDirectory) {
+            Backend.fileManager.cd(delegate.fileName)
+        } else {
+            Lotei.openFileForEdit(delegate.filePath)   // open in the in-app editor
+        }
     }
 
     function beginEdit() {

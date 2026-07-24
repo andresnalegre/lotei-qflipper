@@ -69,6 +69,11 @@ Rectangle {
         listView.positionViewAtEnd();
     }
 
+    function clearChat() {
+        chatModel.clear();
+        Lotei.clearHistory();
+    }
+
     function sendCurrent() {
         var t = input.text.trim();
         if(t.length === 0 || Lotei.thinking) {
@@ -80,13 +85,9 @@ Rectangle {
     }
 
     // Auto health-check once per connection.
-    function maybeHealthCheck() {
-        var ds = Backend.deviceState;
-        if(!ds || !ds.isOnline) { healthChecked = false; return; }
-        if(healthChecked || Lotei.thinking) { return; }
-        healthChecked = true;
-        Lotei.send("A Flipper Zero just connected. Give me a brief, in-character health check: firmware, SD card space, radio firmware, and anything worth flagging. Keep it short.", deviceContext());
-    }
+    // Auto health-check on connect is disabled: the chat opens with one fixed
+    // greeting and stays quiet until the user actually says something.
+    function maybeHealthCheck() { }
 
     ListModel { id: chatModel }
 
@@ -134,8 +135,10 @@ Rectangle {
     // whenever a Flipper becomes available (startup, connect, or reconnect).
     Timer { interval: 2000; repeat: true; running: true; onTriggered: root.maybeHealthCheck() }
 
-    // No greeting: a "Loading system…" placeholder shows until the first real
-    // message arrives (see loadingHint over the message list).
+    // One fixed greeting on startup; everything after that is the model talking.
+    Component.onCompleted: {
+        appendMessage("lotei", "Hey boss, how can I help you today?");
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -199,6 +202,29 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
+
+            // Clear conversation
+            Rectangle {
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 18
+                radius: 3
+                color: clearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "clear"
+                    color: Theme.color.lightorange2
+                    font.family: "Share Tech Mono"; font.pixelSize: 11
+                }
+                MouseArea {
+                    id: clearMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.clearChat()
+                }
+                ToolTip { text: "Clear chat"; visible: clearMouse.containsMouse; delay: 400 }
+            }
 
             // Minimize / restore (collapse to title bar)
             Rectangle {
@@ -277,30 +303,32 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { }
 
-            // "Loading system…" placeholder — shown until the first real message
-            // arrives, then it disappears and the chat takes over.
-            Row {
-                anchors.centerIn: parent
-                visible: chatModel.count === 0 && root.viewState !== "min"
-                spacing: 0
-                Text {
-                    text: "Loading system, please wait"
-                    color: Theme.color.lightorange2
-                    font.family: "Share Tech Mono"
-                    font.pixelSize: 14
-                }
-                Text {
-                    id: loadingDots
-                    color: Theme.color.lightorange2
-                    font.family: "Share Tech Mono"
-                    font.pixelSize: 14
-                    property int step: 0
-                    text: ["   ", ".  ", ".. ", "..."][step]
-                }
-                Timer {
-                    running: chatModel.count === 0
-                    interval: 400; repeat: true
-                    onTriggered: loadingDots.step = (loadingDots.step + 1) % 4
+            // Shown while the model is generating -- the only real wait in the UI.
+            footer: Item {
+                width: ListView.view ? ListView.view.width : 0
+                height: Lotei.thinking ? 20 : 0
+                visible: Lotei.thinking
+                Row {
+                    spacing: 0
+                    Text {
+                        text: root.aiName + " is thinking"
+                        color: Theme.color.mediumorange4
+                        font.family: "Share Tech Mono"
+                        font.pixelSize: 12
+                    }
+                    Text {
+                        id: thinkDots
+                        color: Theme.color.mediumorange4
+                        font.family: "Share Tech Mono"
+                        font.pixelSize: 12
+                        property int step: 0
+                        text: ["   ", ".  ", ".. ", "..."][step]
+                    }
+                    Timer {
+                        running: Lotei.thinking
+                        interval: 380; repeat: true
+                        onTriggered: thinkDots.step = (thinkDots.step + 1) % 4
+                    }
                 }
             }
 
@@ -319,11 +347,14 @@ Rectangle {
                         font.pixelSize: 11
                     }
                 }
-                Text {
+                TextEdit {
                     width: parent.width
                     text: model.text
-                    wrapMode: Text.Wrap
-                    textFormat: model.role === "lotei" ? Text.MarkdownText : Text.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    wrapMode: TextEdit.Wrap
+                    textFormat: model.role === "lotei" ? TextEdit.MarkdownText : TextEdit.PlainText
                     color: "white"
                     font.family: "Share Tech Mono"
                     font.pixelSize: 13

@@ -70,6 +70,9 @@ public:
     Q_INVOKABLE void saveScriptToFlipper(const QString &folder,     // manual, model-free save
                                          const QString &filename,
                                          const QString &content);
+    Q_INVOKABLE void openFileForEdit(const QString &path);          // read a file into the editor
+    Q_INVOKABLE void clearHistory();                                // wipe the chat conversation
+    Q_INVOKABLE void writeFile(const QString &path, const QString &content); // save edits back
 
     Q_INVOKABLE void send(const QString &userText, const QString &deviceContext);
     Q_INVOKABLE void reset();
@@ -101,6 +104,9 @@ signals:
     void agentChanged();
     void scriptSaved(const QString &path);        // manual save succeeded
     void scriptSaveError(const QString &message);  // manual save failed
+    void fileOpened(const QString &path, const QString &content); // editor: file read
+    void fileSaved(const QString &path);           // editor: file written
+    void fileEditError(const QString &message);    // editor: read/write failed
     void partialReceived(const QString &text);   // live-typing: reply text so far
 
 private:
@@ -140,6 +146,7 @@ private:
     QJsonArray m_history;        // running messages (user / assistant / tool)
     QString    m_deviceContext;  // latest diagnostics snapshot from QML
     int        m_toolRounds = 0;
+    bool       m_turnNeedsTools = false;   // set per turn by the intent router
     bool       m_thinking = false;
     bool       m_muted = false;
     qreal      m_voiceVolume = 1.0;

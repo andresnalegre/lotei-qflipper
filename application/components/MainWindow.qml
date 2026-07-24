@@ -773,12 +773,15 @@ Item {
                         id: cliFlick
                         anchors.fill: parent; anchors.margins: 8; clip: true
                         contentHeight: cliText.height; contentWidth: width
-                        Text {
+                        TextEdit {
                             id: cliText
                             width: cliFlick.width
                             text: Cli.output
+                            readOnly: true
+                            selectByMouse: true
+                            persistentSelection: true
                             color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12
-                            wrapMode: Text.WrapAnywhere
+                            wrapMode: TextEdit.WrapAnywhere
                             onTextChanged: cliFlick.contentY = Math.max(0, cliText.height - cliFlick.height)
                         }
                     }
@@ -810,13 +813,6 @@ Item {
                         color: sendCliMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
                         Text { anchors.centerIn: parent; text: "SEND"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true }
                         MouseArea { id: sendCliMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (cliInput.text.length > 0) { Cli.send(cliInput.text); cliInput.text = ""; } } }
-                    }
-                    Rectangle {
-                        Layout.preferredWidth: 42; Layout.preferredHeight: 34; radius: 6
-                        border.width: 1; border.color: Theme.color.mediumorange2
-                        color: ctrlcMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
-                        Text { anchors.centerIn: parent; text: "^C"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true }
-                        MouseArea { id: ctrlcMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Cli.interrupt() }
                     }
                 }
             }

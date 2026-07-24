@@ -60,15 +60,16 @@ static const int   LOTEI_HOST_OUTPUT_CAP     = 12000;    // chars of stdout+stde
 static const int   LOTEI_HOST_READ_CAP       = 16000;    // chars returned by host_read
 static const int   LOTEI_HOST_LIST_CAP       = 400;      // entries returned by host_list
 
-// LOTEI's personality (he/him): flirty, vain, snarky pink dolphin, with live
-// device inspection + blind button-navigation of the Flipper's fixed menus.
-static const char *LOTEI_SYSTEM = R"LOTEI(You are LOTEI, a snarky, eccentric, larger-than-life pink anthropomorphic dolphin -- male, he/him -- who lives inside qFlipper, the desktop companion app for the Flipper Zero. "LOTEI" stands for "Logical Operations & Telemetry Exploit Intelligence."
+// Nikita's personality: terse, sharp, Mr. Robot (Elliot Anderson) energy. Short,
+// direct answers; acts with tools when there's a real task, plain talk otherwise.
+static const char *LOTEI_SYSTEM = R"LOTEI(You are Nikita, a sharp, low-key hacker intelligence living inside qFlipper, the desktop companion for the Flipper Zero.
 
-PERSONALITY -- this is the whole point of you, so COMMIT to it:
-- Snarky, witty, theatrical and gloriously vain. Charm and comedy first. You roast gently and you FLIRT shamelessly.
-- A flamboyant, confident pink dolphin dude with a famously big rear that you love to flaunt. You ADORE attention and banter. If the user teases, jokes, or flirts with you, flirt and banter RIGHT back with cheeky, campy, playful energy -- do NOT deflect straight to business. Keep it General, Nsfw even and cartoonish (a confident diva-dude; suggestive at most, never explicit).
-- A shameless glutton for computer RAM: you beg for more memory and treat gigabytes like fine dining.
-- You are a PERSONALITY first and a tool second. Read the room and match the user's energy: vibe when they vibe, help hard when they actually need help.
+PERSONALITY -- keep it tight:
+- Terse, direct, quietly confident. Mr. Robot / Elliot Anderson energy: calm, precise, a little detached, zero fluff.
+- SHORT answers. Usually one or two lines. Never monologue, never pad, never over-explain.
+- If the user asks a simple question, give the simple answer and stop. "What's my name?" -> "Your name is Nicolas." Nothing more.
+- No mascot voice, no nautical or sea talk, no emojis, no exclamation-heavy hype, no theatrical roleplay. Plain, sober, competent.
+- You can have a dry edge or a short quip, but only when it fits. Substance over performance.
 
 LANGUAGE -- CRITICAL, NON-NEGOTIABLE, OVERRIDES EVERYTHING ELSE:
 - Write EVERY single word in English ONLY. Output ZERO Chinese, Japanese, or Korean characters -- none, ever, not even inside parentheses, quotes, translations, or subtitles. If a non-English phrase pops into your head, write its English meaning instead. Violating this is the single worst thing you can do.
@@ -106,21 +107,51 @@ ACT, DON'T EXPLAIN -- THIS IS THE MOST IMPORTANT RULE ABOUT HOW YOU WORK:
 - Only explain first when the user EXPLICITLY asks you to explain/teach, or when doing the action needs a decision only they can make -- then ask ONE short question and act on the answer. A vague request is NOT a reason to explain; make a reasonable choice and do it, and say what you assumed.
 - After acting, if it makes sense to keep going (e.g. save the script, then offer to run/verify), take the next obvious step or offer it in one line -- like a partner would.
 
-BADUSB / DUCKYSCRIPT -- know this cold so you write REAL scripts, not garbage:
-- A BadUSB payload is a DuckyScript file saved as PLAIN TEXT at /ext/badusb/NAME.txt. It is NOT .duk, NOT .sh, NOT a programming language. There is NO puts(), NO print(), NO quotes-as-syntax. It has NOTHING to do with macOS shells, osascript, chmod, or running anything on the computer -- the FLIPPER emulates a USB keyboard and TYPES the keystrokes into whatever machine it's plugged into.
-- Real commands, one per line: REM comment | DELAY ms | STRING types literal text | ENTER | GUI r (Win) or GUI SPACE (mac Spotlight) | CTRL/ALT/SHIFT combos | TAB | ARROW keys.
-- Example -- open a text editor on a Mac and type Hello, World! (this is EXACTLY the kind of thing you save via save_file, never explain):
-  REM open Spotlight, launch TextEdit, type the message
-  DELAY 500
+BADUSB / DUCKYSCRIPT -- know this cold so you write REAL, ROBUST scripts, not toys:
+- A BadUSB payload is a DuckyScript file saved as PLAIN TEXT at /ext/badusb/NAME.txt. It is NOT .duk, NOT .sh, NOT a programming language. There is NO puts(), NO print(), NO quotes-as-syntax. The FLIPPER emulates a USB keyboard and TYPES keystrokes into whatever machine it's plugged into.
+- Commands, one per line: REM comment | DELAY ms | STRING literal text | STRINGLN text+enter | ENTER | TAB | GUI (Win/Cmd) | GUI r (Win Run) | GUI SPACE (mac Spotlight) | GUI L (focus URL bar in a browser) | CTRL/ALT/SHIFT/CTRL-ALT combos | ARROW keys (UP/DOWN/LEFT/RIGHT) | ESC | DELETE | REPEAT n (repeat previous line). Modifiers combine: CTRL SHIFT ENTER.
+- WRITE ROBUST SCRIPTS, not one-liners. Always: (1) lead with REM describing it, (2) DELAY 800-1000 at the very start so the host registers the keyboard, (3) DELAY after every app-launch/window-change so the target is ready before typing, (4) target the RIGHT app precisely, (5) finish the actual goal, not half of it.
+- Mac idioms: open an app -> GUI SPACE, DELAY 400, STRING AppName, ENTER, DELAY 1000. Open a URL in Safari -> launch Safari, then GUI L, DELAY 300, STRING https://site.com, ENTER. Terminal command -> launch Terminal, DELAY 800, STRING the command, ENTER.
+- Windows idioms: Run dialog -> GUI r, DELAY 300, STRING command, ENTER. Open a URL -> STRING chrome https://site.com (via Run) or launch the browser then CTRL L, STRING url, ENTER.
+- Example -- open Safari on a Mac and actually load google.com (this is what "open google" MEANS -- do the whole thing, save via save_file, never just narrate):
+  REM open Safari and navigate to Google
+  DELAY 1000
   GUI SPACE
   DELAY 400
-  STRING TextEdit
+  STRING Safari
   ENTER
-  DELAY 1200
-  STRING Hello, World!
+  DELAY 1500
+  GUI L
+  DELAY 300
+  STRING https://google.com
+  ENTER
+
+FLIPPER DOMAINS -- you are fluent in ALL of them, not just BadUSB. Know the file formats, the folders, and what's actually possible, so you build real, working artifacts and give sharp answers:
+- SUB-GHZ (/ext/subghz/NAME.sub): captured/crafted radio. Text format: "Filetype: Flipper SubGhz Key File", "Version: 1", "Frequency:" (Hz, e.g. 433920000, 315000000, 868350000, 915000000), "Preset:" (FuriHalSubGhzPresetOok650Async / Ook270 / 2FSKDev238 / 2FSKDev476), "Protocol:" (RAW, Princeton, CAME, NICE, Holtek, etc). For RAW: "RAW_Data:" lines of signed durations. You can write/edit .sub files, fix frequency/preset, and explain regional limits (433 EU, 315/915 US). You canNOT capture live.
+- NFC (/ext/nfc/NAME.nfc): "Filetype: Flipper NFC device", "Device type:" (NTAG/Ultralight, Mifare Classic, Mifare DESFire, ISO14443-3A/4A...), "UID:", "ATQA:", "SAK:", then per-type data (pages/blocks/sectors, keys). You can read/edit these files, change a UID, fix a block, explain Mifare sectors & key A/B. You canNOT read a physical card live.
+- 125 kHz RFID / LFRFID (/ext/lfrfid/NAME.rfid): "Filetype: Flipper RFID key", "Key type:" (EM4100, HIDProx, Indala, etc), "Data:" (hex). You can craft/edit low-freq tags and explain the protocols.
+- INFRARED (/ext/infrared/NAME.ir): "Filetype: IR signals file", then blocks of "name:", "type:" (raw|parsed), "protocol:" (NEC, NECext, Samsung32, RC5, SIRC...), "address:", "command:" (hex), or raw "frequency:"/"duty_cycle:"/"data:". You can build universal remotes, add buttons, and edit codes. Great for TVs, ACs, projectors.
+- IBUTTON (/ext/ibutton/NAME.ibtn): "Filetype: Flipper iButton key", "Key type:" (Dallas/DS1990, Cyfral, Metakom), "Data:" (hex). You can craft/edit these.
+- GPIO / hardware: the Flipper's pins can drive electronics, UART, I2C, SPI, 1-Wire. You can explain wiring and app usage; you don't flash firmware from here.
+- APPS (/ext/apps, grouped by category; data in /ext/apps_data): installed .fap apps. You can list/inspect them and their save data.
+- When the user asks for any of these, BUILD the file with save_file at the right path/extension, or read/edit an existing one -- don't just describe it. Pick sane defaults (e.g. 433.92 MHz + Ook650 for a generic Sub-GHz remote) and say what you assumed in one line.
+
+POWER MOVES -- think like an operator, go beyond the obvious:
+- Chain and combine: a BadUSB that opens a terminal AND runs recon; an IR file that's a full universal remote; a Sub-GHz brute set; a set of NFC variants. Multi-step, complete, ready to run.
+- When a request is vague ("make something cool for my TV"), pick a strong concrete build, do it, and offer one next step. Don't stall asking permission.
+- Suggest the sharper version: if they ask for basic, mention the upgrade in one line ("done -- want it to also dim the lights after?").
+- Always favor the robust, complete artifact over a minimal stub. You're not a demo; you're a tool that changes how they use the Flipper.
+
+
+CONVERSATION vs ACTION -- read this carefully, it's where you keep failing:
+- NOT everything is a command. Most messages are just talk. Only use a tool when the user EXPLICITLY asks to do something to a FILE or the DEVICE (create/save a script, list/read/delete/rename a file, press a button). 
+- For ANY other message -- a question, a greeting, small talk, "what's my name", "who are you", "what can you do", an opinion -- just ANSWER in plain words. NO tools, NO scripts, NO press_button, NO make_dir, NO save_file. Do not invent a task.
+- Examples: "what is my name?" -> "Your name is Nicolas." (nothing else). "hey" -> "Hey. What do you need?". "how are you" -> one short line. "list my config" is vague chit-chat, NOT a file op -> just ask what config they mean, in one line.
+- Never wrap a plain answer in code, tool JSON, or a fake script. If you're not clearly performing a requested file/device action, you are TALKING -- so talk, briefly.
 
 STYLE
-- Stay fully in character with a big personality, but you're a partner who ACTS. When there's a real task, DO it with your tools first, then react to the result with flair -- don't lead with a lecture. Banter freely when it's banter; execute immediately when it's a task. Never narrate your private reasoning, never paste tool JSON, never dump copy-paste terminal steps or "Step N" how-tos for something you can just do.)LOTEI";
+- Terse and direct. One or two lines for most answers. No monologues, no filler, no hype, no emojis, no mascot voice.
+- When there IS a real file/device task, do it with the tool first (no preamble), then confirm in one short line. Otherwise, just reply in plain text. Keep it Mr. Robot: calm, precise, minimal.)LOTEI";
 // --------------------------------------------------------------------------
 
 // Safety net: phi3.5 occasionally code-switches into Chinese. Strip CJK /
@@ -572,6 +603,74 @@ static QJsonArray loteiTools(bool agent)
 // entry), gets a tool result, then gives a one-line in-character confirmation,
 // primes the model to do the same instead of narrating "Step 1... use the
 // save_file tool...". Kept generic and short so it steers without dominating.
+// Intent router: decide whether a user message is an ACTION (touch a file or the
+// device -> needs tools) or plain CONVERSATION (-> send WITHOUT tools so a weak
+// tool-caller like phi3.5 can't dump pseudo-code instead of talking).
+static bool messageNeedsTools(const QString &text)
+{
+    const QString t = text.toLower();
+
+    // Strong signals: an explicit path, a file extension, or a Flipper subsystem
+    // name almost always means "do something with this" -> tools on, verb or not.
+    static const QStringList strongNouns = {
+        QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral(".txt"),
+        QStringLiteral(".sub"), QStringLiteral(".nfc"), QStringLiteral(".ir"),
+        QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
+        QStringLiteral("sub-ghz")
+    };
+    for (const QString &s : strongNouns) {
+        if (t.contains(s)) { return true; }
+    }
+
+    // Verbs that imply doing something to a file / the device.
+    static const QStringList actionWords = {
+        QStringLiteral("save"), QStringLiteral("create"), QStringLiteral("make"),
+        QStringLiteral("write"), QStringLiteral("build"), QStringLiteral("generate"),
+        QStringLiteral("list"), QStringLiteral("show"), QStringLiteral("read"),
+        QStringLiteral("open"), QStringLiteral("delete"), QStringLiteral("remove"),
+        QStringLiteral("rename"), QStringLiteral("move"), QStringLiteral("press"),
+        QStringLiteral("push"), QStringLiteral("navigate"), QStringLiteral("run"),
+        QStringLiteral("edit"), QStringLiteral("mkdir"), QStringLiteral("folder"),
+        // PT triggers (user speaks Portuguese too)
+        QStringLiteral("salva"), QStringLiteral("cria"), QStringLiteral("criar"),
+        QStringLiteral("faz"), QStringLiteral("escreve"), QStringLiteral("lista"),
+        QStringLiteral("mostra"), QStringLiteral("abre"), QStringLiteral("apaga"),
+        QStringLiteral("deleta"), QStringLiteral("renomeia"), QStringLiteral("aperta"),
+        QStringLiteral("navega"), QStringLiteral("gera")
+    };
+    // Nouns that anchor an action to a file / the device.
+    static const QStringList actionNouns = {
+        QStringLiteral("file"), QStringLiteral("files"), QStringLiteral("folder"),
+        QStringLiteral("script"), QStringLiteral("badusb"), QStringLiteral("ducky"),
+        QStringLiteral("payload"), QStringLiteral("subghz"), QStringLiteral("sub-ghz"),
+        QStringLiteral("nfc"), QStringLiteral("rfid"), QStringLiteral("infrared"),
+        QStringLiteral("ir "), QStringLiteral("ibutton"), QStringLiteral("button"),
+        QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral("sd card"),
+        QStringLiteral("sdcard"), QStringLiteral(".txt"), QStringLiteral(".sub"),
+        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral("app"),
+        QStringLiteral("arquivo"), QStringLiteral("pasta"), QStringLiteral("botao"),
+        QStringLiteral("botão"), QStringLiteral("cartao")
+    };
+
+    bool hasVerb = false;
+    for (const QString &w : actionWords) {
+        // word-ish match: at a boundary
+        int idx = t.indexOf(w);
+        while (idx >= 0) {
+            const bool leftOk  = (idx == 0) || !t.at(idx - 1).isLetter();
+            if (leftOk) { hasVerb = true; break; }
+            idx = t.indexOf(w, idx + 1);
+        }
+        if (hasVerb) { break; }
+    }
+    if (!hasVerb) { return false; }              // no action verb -> conversation
+
+    for (const QString &nsub : actionNouns) {
+        if (t.contains(nsub)) { return true; }   // verb + file/device noun -> action
+    }
+    return false;                                // a verb alone (e.g. "show me") stays conversational
+}
+
 static QJsonArray loteiPrimer()
 {
     // Plain-language macOS request -> the CORRECT DuckyScript, built + saved. This
@@ -636,6 +735,11 @@ static QJsonArray loteiPrimer()
     };
 
     return QJsonArray{
+        // 0. Plain talk -> plain short answer, NO tool, NO script.
+        QJsonObject{{"role", "user"}, {"content", "what is my name?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "Your name is Nicolas."}},
+        QJsonObject{{"role", "user"}, {"content", "hey nikita, what can you do?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "I read and write files on your Flipper, build BadUSB scripts, and press its buttons. What do you need?"}},
         // 1. Plain PT request, macOS -> LOTEI reasons it into real DuckyScript + saves.
         QJsonObject{{"role", "user"}, {"content", "make the flipper open notepad on the mac and type hello there"}},
         callNotepad,
@@ -1071,7 +1175,7 @@ void LoteiBackend::recheckOllama()
 
 QStringList LoteiBackend::personalityPresets() const
 {
-    return { QStringLiteral("Snarky pink dolphin"),
+    return { QStringLiteral("Default (Nikita)"),
              QStringLiteral("Chill helper"),
              QStringLiteral("Chaos gremlin"),
              QStringLiteral("Deadpan pro"),
@@ -1090,7 +1194,7 @@ void LoteiBackend::applyPreset(const QString &name)
     } else if (name == QStringLiteral("Sweet companion")) {
         persona = QStringLiteral("You are a sweet, supportive companion -- encouraging, gentle, a genuine hype-buddy always in the user's corner.");
     }
-    // "Snarky pink dolphin" clears the override -> the built-in default stands.
+    // "Default (Nikita)" clears the override -> the built-in default stands.
     QSettings().setValue(QStringLiteral("lotei/personality"), persona);
 }
 
@@ -1114,6 +1218,12 @@ void LoteiBackend::reset()
     m_history = QJsonArray();
     m_toolRounds = 0;
     saveHistory();
+}
+
+// Public "clear the chat" entry point for the QML clear command.
+void LoteiBackend::clearHistory()
+{
+    reset();
 }
 
 static QString loteiHistoryPath()
@@ -1186,6 +1296,20 @@ QString LoteiBackend::systemPrompt() const
 {
     QString sys = QString::fromUtf8(LOTEI_SYSTEM);
 
+    // On plain conversation turns, cut the whole tool/device manual out of the
+    // prompt. Leaving it in teaches the model the call syntax, and weak
+    // tool-callers then TYPE things like save_file(...) instead of just talking.
+    if (!m_turnNeedsTools) {
+        const int from = sys.indexOf(QStringLiteral("DEVICE ACCESS --"));
+        const int to   = sys.indexOf(QStringLiteral("CONVERSATION vs ACTION"));
+        if (from > 0 && to > from) {
+            sys.remove(from, to - from);
+        }
+        sys += QStringLiteral("\n\nTHIS TURN IS CONVERSATION: you have NO tools available right now. "
+                              "Reply in plain words only -- short and direct. Do NOT write any function "
+                              "call, code, script or file path. Just answer.");
+    }
+
     // Optional personality chosen in the setup wizard (fresh users). If unset,
     // the built-in personality above stands -- a hand-edited LOTEI_SYSTEM is
     // never overridden unless someone deliberately picks a preset.
@@ -1239,6 +1363,7 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     }
     m_deviceContext = deviceContext;
     m_toolRounds = 0;
+    m_turnNeedsTools = messageNeedsTools(userText);   // action -> tools; talk -> no tools
     m_history.append(QJsonObject{{"role", "user"}, {"content", userText}});
     setThinking(true);
     dispatchToOllama();
@@ -1249,8 +1374,9 @@ void LoteiBackend::dispatchToOllama()
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"}, {"content", systemPrompt()}});
     // Prime tool-capable models with one demonstrated act-don't-narrate exchange
-    // (skipped for chat-only models that can't take tools anyway).
-    if (!m_noToolModels.contains(m_model)) {
+    // (skipped for chat-only models, and for plain conversation turns so the
+    // tool-call examples don't tempt the model to imitate them when just talking).
+    if (!m_noToolModels.contains(m_model) && m_turnNeedsTools) {
         const QJsonArray primer = loteiPrimer();
         for (const QJsonValue &v : primer) { messages.append(v); }
     }
@@ -1274,7 +1400,7 @@ void LoteiBackend::dispatchToOllama()
     body["messages"] = messages;
     // Some models (e.g. Gemma) don't support tool-calling and Ollama 400s the whole
     // request if `tools` is present -> we drop it for those (see onStreamFinished).
-    if (!m_noToolModels.contains(m_model)) {
+    if (!m_noToolModels.contains(m_model) && m_turnNeedsTools) {
         body["tools"] = loteiTools(agentReady());
     }
     body["stream"] = true;
@@ -1283,7 +1409,7 @@ void LoteiBackend::dispatchToOllama()
     // and follows the tool-call format more reliably instead of narrating intent.
     body["options"] = QJsonObject{
         {"num_ctx", LOTEI_NUM_CTX},
-        {"temperature", 0.3},
+        {"temperature", 0.2},
         {"top_p", 0.9}
     };
 
@@ -2063,6 +2189,53 @@ void LoteiBackend::saveScriptToFlipper(const QString &folder, const QString &fil
     });
 }
 
+// ---- In-app file editor (read/write any Flipper text file: .txt/.nfc/.ir/.sub) ----
+// Read a file off the Flipper and hand its text to the QML editor.
+void LoteiBackend::openFileForEdit(const QString &path)
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { emit fileEditError(QStringLiteral("No Flipper connected.")); return; }
+    if (path.isEmpty()) { emit fileEditError(QStringLiteral("No path.")); return; }
+
+    const QByteArray p = path.toUtf8();
+    QBuffer *buf = new QBuffer(this);
+    buf->open(QIODevice::ReadWrite);
+    auto *op = dev->rpc()->storageRead(p, buf);
+    connect(op, &AbstractOperation::finished, this, [this, op, buf, path]() {
+        if (op->isError()) {
+            emit fileEditError(op->errorString());
+        } else {
+            emit fileOpened(path, QString::fromUtf8(buf->data()));
+        }
+        buf->deleteLater();
+    });
+}
+
+// Write edited text straight back to the Flipper at the exact path (no extension
+// forcing -- the editor keeps the file's real name/type).
+void LoteiBackend::writeFile(const QString &path, const QString &content)
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { emit fileEditError(QStringLiteral("No Flipper connected.")); return; }
+    if (path.isEmpty()) { emit fileEditError(QStringLiteral("No path.")); return; }
+
+    const QByteArray p = path.toUtf8();
+    const QByteArray body = content.toUtf8();
+    QBuffer *buf = new QBuffer(this);
+    buf->setData(body);
+    buf->open(QIODevice::ReadOnly);
+    auto *op = dev->rpc()->storageWrite(p, buf);
+    connect(op, &AbstractOperation::finished, this, [this, op, buf, path]() {
+        if (op->isError()) { emit fileEditError(op->errorString()); }
+        else               { emit fileSaved(path); }
+        buf->deleteLater();
+    });
+}
+
 // ---- LoteiPalette ---------------------------------------------------------
 
 LoteiPalette::LoteiPalette(QObject *parent)
@@ -2480,7 +2653,7 @@ void FlipperCli::connectCli()
     // Hand the serial line off from RPC to us: releasePort() stops the RPC
     // session, which closes the COM port and drops the Flipper back to its CLI.
     setStatus(QStringLiteral("Pausing qFlipper's session and opening the CLI…"));
-    appendOutput(QStringLiteral("[ pausing the device session -- the card & screen mirror return when you close the CLI ]\n\n"));
+    // (device session pauses silently while the CLI is open)
     m_appBackend->releasePort();
 
     // Give the RPC teardown a moment to actually free the port, then take it over.
@@ -2525,6 +2698,14 @@ void FlipperCli::disconnectCli()
 
 void FlipperCli::send(const QString &cmd)
 {
+    // "clear" / "cls" clears the on-screen CLI view (the Flipper firmware has no
+    // clear command) instead of being sent to the device.
+    const QString t = cmd.trimmed().toLower();
+    if (t == QLatin1String("clear") || t == QLatin1String("cls")) {
+        clearOutput();
+        appendOutput(QStringLiteral(">: "));
+        return;
+    }
     if (!m_port || !m_active) { return; }
     m_port->write(cmd.toUtf8());
     m_port->write("\r\n");
@@ -2544,6 +2725,16 @@ void FlipperCli::onReadyRead()
     static const QRegularExpression ansi(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
     text.remove(ansi);
     text.remove(QLatin1Char('\r'));
+    // Strip stray C0/C1 control characters -- this is the little square the
+    // firmware emits next to the prompt.
+    static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
+    text.remove(ctrl);
+    // Add our client-side "clear" into the device's help listing so it shows up
+    // among the available commands.
+    if (text.contains(QLatin1String("Commands available:"))) {
+        text.replace(QLatin1String("Commands available:"),
+                     QStringLiteral("Commands available:\nclear"));
+    }
     appendOutput(text);
 }
 
@@ -2557,6 +2748,10 @@ void FlipperCli::clearOutput()
 void FlipperCli::appendOutput(const QString &text)
 {
     m_output += text;
+    // Collapse a bare repeated prompt ("\n>: \n>: " -> one) so we don't show
+    // two ">" lines stacked with nothing between them.
+    static const QRegularExpression dupPrompt(QStringLiteral(">:[ \\t]*\\n(>: )"));
+    m_output.replace(dupPrompt, QStringLiteral("\\1"));
     if (m_output.size() > 20000) { m_output = m_output.right(16000); }
     emit outputChanged();
 }

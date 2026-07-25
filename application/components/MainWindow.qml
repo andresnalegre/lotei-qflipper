@@ -882,79 +882,104 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     model: Firmware.sources
                     delegate: Rectangle {
+                            id: fwRow
                             width: ListView.view.width
-                            height: 54
+                            height: 56
                             radius: 8; color: "#160a1c"
                             border.width: 1; border.color: Theme.color.mediumorange2
 
-                            RowLayout {
-                                anchors.fill: parent; anchors.margins: 10; spacing: 10
+                            readonly property int padH: 12
+                            readonly property int colGap: 12
+                            readonly property int wChannel: 116
+                            readonly property int wVersion: 164
+                            readonly property int wInstall: 88
 
-                                ColumnLayout {
-                                    Layout.fillWidth: true; spacing: 2
-                                    Text { text: modelData.name; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
-                                    Text { text: modelData.blurb; color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 11 }
+                            Rectangle {
+                                id: instBtn
+                                anchors.right: parent.right
+                                anchors.rightMargin: fwRow.padH
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: fwRow.wInstall; height: 30
+                                radius: 6
+                                property bool canGo: modelData.ready && !Firmware.busy && Backend.deviceState
+                                enabled: canGo
+                                opacity: canGo ? 1.0 : 0.4
+                                color: instMouse.containsMouse && canGo ? Theme.color.mediumorange2 : "transparent"
+                                border.width: 1; border.color: Theme.color.mediumorange2
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "INSTALL"
+                                    color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                                 }
-                                Rectangle {
-                                    opacity: (modelData.channelCount || 0) > 1 ? 1 : 0
-                                    enabled: (modelData.channelCount || 0) > 1
-                                    Layout.alignment: Qt.AlignVCenter
-                                    Layout.fillWidth: false
-                                    Layout.preferredWidth: 116
-                                    Layout.minimumWidth: 116
-                                    Layout.maximumWidth: 116
-                                    implicitHeight: 24
-                                    radius: 5
-                                    color: chMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
-                                    border.width: 1; border.color: Theme.color.mediumorange2
-                                    Text {
-                                        id: chLbl
-                                        anchors.left: parent.left; anchors.leftMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 22
-                                        elide: Text.ElideRight
-                                        text: modelData.channel
-                                        color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 11
-                                    }
-                                    Text {
-                                        anchors.right: parent.right; anchors.rightMargin: 6
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "▾"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 9
-                                    }
-                                    MouseArea { id: chMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Firmware.cycleChannel(index) }
+                                MouseArea {
+                                    id: instMouse; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: instBtn.canGo ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: if (instBtn.canGo) Firmware.install(index)
+                                }
+                            }
+
+                            Text {
+                                id: verLbl
+                                anchors.right: instBtn.left
+                                anchors.rightMargin: fwRow.colGap
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: fwRow.wVersion
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                text: modelData.status === "checking" ? "checking…"
+                                    : modelData.status === "error"    ? "unavailable"
+                                    : modelData.latest
+                                color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
+                                font.family: "Share Tech Mono"; font.pixelSize: 12
+                            }
+
+                            Rectangle {
+                                id: chBox
+                                anchors.right: verLbl.left
+                                anchors.rightMargin: fwRow.colGap
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: fwRow.wChannel; height: 26
+                                radius: 5
+                                opacity: (modelData.channelCount || 0) > 1 ? 1 : 0
+                                enabled: (modelData.channelCount || 0) > 1
+                                color: chMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
+                                border.width: 1; border.color: Theme.color.mediumorange2
+                                Text {
+                                    id: chLbl
+                                    anchors.left: parent.left; anchors.leftMargin: 8
+                                    anchors.right: chArrow.left; anchors.rightMargin: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideRight
+                                    text: modelData.channel
+                                    color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 11
                                 }
                                 Text {
-                                    text: modelData.status === "checking" ? "checking…"
-                                        : modelData.status === "error"    ? "unavailable"
-                                        : modelData.latest
-                                    color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
-                                    font.family: "Share Tech Mono"; font.pixelSize: 12
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: false
-                                    Layout.preferredWidth: 130
-                                    Layout.minimumWidth: 130
-                                    Layout.maximumWidth: 130
-                                    horizontalAlignment: Text.AlignRight
-                                    Layout.alignment: Qt.AlignVCenter
+                                    id: chArrow
+                                    anchors.right: parent.right; anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "▾"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 9
                                 }
-                                Rectangle {
-                                    id: instBtn
-                                    Layout.fillWidth: false
-                                    Layout.preferredWidth: 84; Layout.preferredHeight: 30
-                                    Layout.minimumWidth: 84; Layout.maximumWidth: 84
-                                    Layout.alignment: Qt.AlignVCenter
-                                    radius: 6
-                                    property bool canGo: modelData.ready && !Firmware.busy && Backend.deviceState
-                                    enabled: canGo
-                                    opacity: canGo ? 1.0 : 0.4
-                                    color: instMouse.containsMouse && canGo ? Theme.color.mediumorange2 : "transparent"
-                                    border.width: 1; border.color: Theme.color.mediumorange2
-                                    Text { anchors.centerIn: parent; text: "INSTALL"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true }
-                                    MouseArea {
-                                        id: instMouse; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: instBtn.canGo ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: if (instBtn.canGo) Firmware.install(index)
-                                    }
+                                MouseArea { id: chMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Firmware.cycleChannel(index) }
+                            }
+
+                            Column {
+                                anchors.left: parent.left
+                                anchors.leftMargin: fwRow.padH
+                                anchors.right: chBox.left
+                                anchors.rightMargin: fwRow.colGap
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text {
+                                    width: parent.width; elide: Text.ElideRight
+                                    text: modelData.name
+                                    color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true
+                                }
+                                Text {
+                                    width: parent.width; elide: Text.ElideRight
+                                    text: modelData.blurb
+                                    color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 11
                                 }
                             }
                         }

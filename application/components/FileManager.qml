@@ -663,6 +663,7 @@ Item {
                     font.family: "Share Tech Mono"; font.pixelSize: 13; font.bold: true
                     MouseArea { id: saveMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Lotei.writeFile(editor.filePath, editArea.text) }
                 }
+                Item { width: 14 }
             }
         }
     }

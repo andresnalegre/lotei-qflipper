@@ -226,6 +226,7 @@ AbstractOverlay {
         icon.height: 32
 
         ToolTip {
+            id: installTip
             text: {
                 switch(Backend.firmwareUpdateState) {
                 case ApplicationBackend.CanRepair:
@@ -242,7 +243,18 @@ AbstractOverlay {
             }
 
             implicitWidth: 300
-            visible: parent.hovered && text.length !== 0
+            x: Math.round((parent.width - width) / 2)
+            y: parent.height + 6
+            visible: parent.hovered && text.length !== 0 && !Firmware.open && !Cli.open
+
+            contentItem: Text {
+                text: installTip.text
+                color: Theme.color.lightorange2
+                font: installTip.font
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.WordWrap
+            }
         }
     }
 

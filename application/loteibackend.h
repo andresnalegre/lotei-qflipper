@@ -141,6 +141,8 @@ private:
     void runHostTool(const QString &name, const QJsonObject &args,
                      std::function<void(const QString &)> done);
     void rememberFact(const QString &fact);   // append a durable fact to memory
+    void noteSelf(const QString &note);        // append a short self/style note
+    void loadPortableMemory();                 // pull memory/self from the Flipper SD
     int  forgetFacts(const QString &match);    // remove matching facts (or all); returns count
 
     QNetworkAccessManager m_net;
@@ -164,6 +166,8 @@ private:
     bool        m_agentEnabled = false;  // host-workspace self-edit tools opt-in
     QString     m_agentRoot;             // absolute workspace folder LOTEI may edit
     QString     m_memory;                // durable facts to remember across sessions
+    QString     m_self;                  // Nikita's own notes on style / the two of you
+    bool        m_portableLoaded = false; // loaded memory from the Flipper this session
 #ifdef HZUI_VOICE
     QTextToSpeech m_tts;   // SAPI fallback engine
 #endif

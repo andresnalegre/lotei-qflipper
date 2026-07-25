@@ -369,6 +369,64 @@ static QString piperVoiceLabel(const QString &onnxPath)
     return speaker;
 }
 
+// Just the memory tools -- sent on plain conversation turns so the assistant can
+// learn durable facts proactively without exposing the file/device tools (which a
+// weak model might imitate as pseudo-code).
+static QJsonArray loteiMemoryTools()
+{
+    const QJsonObject remember{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "remember"},
+            {"description", "Save a durable fact about the user or how they use their Flipper. Call this PROACTIVELY -- without being asked -- whenever the user reveals something worth remembering long-term: their name, location, hardware/OS, keyboard layout, tools and workflow, projects, recurring preferences, or how they like to use the Flipper. Also call it when they explicitly say 'remember...'. Save ONE concise, durable fact per call, in third person ('User ...'). Do NOT save small talk, one-off questions, greetings, or anything transient. Do NOT save a fact you already remember. If it isn't a lasting fact about the user, don't call it."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise durable fact, e.g. 'User's Mac uses the ABNT2 keyboard layout'"}}}
+                }},
+                {"required", QJsonArray{"fact"}}
+            }}
+        }}
+    };
+    const QJsonObject listMemory{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "list_memory"},
+            {"description", "Show everything you currently remember about the user. Call it when they ask what you remember/know about them."},
+            {"parameters", QJsonObject{{"type", "object"}, {"properties", QJsonObject{}}}}
+        }}
+    };
+    const QJsonObject forget{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "forget"},
+            {"description", "Delete remembered facts. Pass a word/phrase to remove only matching facts, or pass \"all\" to wipe memory. Call it when the user says to forget something."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"match", QJsonObject{{"type", "string"}, {"description", "Text to match facts to delete, or 'all' to clear everything"}}}
+                }},
+                {"required", QJsonArray{"match"}}
+            }}
+        }}
+    };
+    const QJsonObject noteSelfTool{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "note_self"},
+            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound -- e.g. 'User prefers one-line answers', 'Reply in Portuguese when they do', 'Skip explanations unless asked'. Call it PROACTIVELY as you notice how they like to work, so you keep growing into their counterpart. Keep each note short and about lasting style/rapport, never small talk."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"note", QJsonObject{{"type", "string"}, {"description", "One short note about your shared style, in your own words"}}}
+                }},
+                {"required", QJsonArray{"note"}}
+            }}
+        }}
+    };
+    return QJsonArray{ remember, listMemory, forget, noteSelfTool };
+}
+
 static QJsonArray loteiTools(bool agent)
 {
     const QJsonObject listFiles{
@@ -506,7 +564,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "remember"},
-            {"description", "Save a durable fact ONLY when the user EXPLICITLY tells you to remember it (e.g. they say 'remember that...', 'don't forget...', 'keep in mind...'). Do NOT call this on your own initiative, do NOT infer or invent facts, do NOT save nicknames, names, or preferences the user did not clearly state. If in doubt, do not call it."},
+            {"description", "Save a durable fact about the user or how they use their Flipper. Call this PROACTIVELY -- without being asked -- whenever the user reveals something worth remembering long-term: their name, location, hardware/OS, keyboard layout, tools and workflow, projects, recurring preferences, or how they like to use the Flipper. Also call it when they explicitly say 'remember...'. Save ONE concise, durable fact per call, in third person ('User ...'). Do NOT save small talk, one-off questions, greetings, or anything transient. Do NOT save a fact you already remember. If it isn't a lasting fact about the user, don't call it."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -539,8 +597,22 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
+    const QJsonObject noteSelfTool{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "note_self"},
+            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound. Call it proactively as you notice how they like to work. Keep each note short, about lasting style/rapport, never small talk."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"note", QJsonObject{{"type", "string"}, {"description", "One short note about your shared style, in your own words"}}}
+                }},
+                {"required", QJsonArray{"note"}}
+            }}
+        }}
+    };
     QJsonArray tools{listFiles, readFile, pressButton, runCli, saveFile,
-                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget};
+                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget, noteSelfTool};
 
     if (!agent) { return tools; }
 
@@ -625,7 +697,21 @@ static bool messageNeedsTools(const QString &text)
 {
     const QString t = text.toLower();
 
-    // Strong signals: an explicit path, a file extension, or a Flipper subsystem
+    // Memory requests always need tools (remember / forget / list_memory), even
+    // though they touch no file or device -- otherwise the model can never save.
+    static const QStringList memoryWords = {
+        QStringLiteral("remember"), QStringLiteral("forget"), QStringLiteral("memoriz"),
+        QStringLiteral("keep in mind"), QStringLiteral("don't forget"), QStringLiteral("dont forget"),
+        QStringLiteral("lembra"), QStringLiteral("lembre"), QStringLiteral("lembrar"),
+        QStringLiteral("esquece"), QStringLiteral("esque\u00e7a"), QStringLiteral("esquecer"),
+        QStringLiteral("anota"), QStringLiteral("anote"), QStringLiteral("n\u00e3o esque\u00e7a"),
+        QStringLiteral("nao esqueca"), QStringLiteral("guarda isso"), QStringLiteral("o que voc\u00ea sabe"),
+        QStringLiteral("o que voce sabe"), QStringLiteral("what do you know")
+    };
+    for (const QString &m : memoryWords) {
+        if (t.contains(m)) { return true; }
+    }
+
     // name almost always means "do something with this" -> tools on, verb or not.
     static const QStringList strongNouns = {
         QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral(".txt"),
@@ -790,6 +876,7 @@ static QJsonArray loteiPrimer()
 }
 
 static QString loteiMemoryPath();   // fwd decl: defined below, used in the ctor
+static QString loteiSelfPath();     // fwd decl: defined below, used in the ctor
 
 LoteiBackend::LoteiBackend(QObject *parent)
     : QObject(parent)
@@ -812,6 +899,13 @@ LoteiBackend::LoteiBackend(QObject *parent)
         if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
             m_memory = QString::fromUtf8(mf.readAll()).trimmed();
             mf.close();
+        }
+    }
+    {   // load Nikita's self-notes (its evolving read on style / the two of you)
+        QFile sf(loteiSelfPath());
+        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            m_self = QString::fromUtf8(sf.readAll()).trimmed();
+            sf.close();
         }
     }
 #ifdef HZUI_VOICE
@@ -857,7 +951,57 @@ bool LoteiBackend::hasAudio() const
 #endif
 }
 
-void LoteiBackend::setAppBackend(ApplicationBackend *backend) { m_appBackend = backend; }
+void LoteiBackend::setAppBackend(ApplicationBackend *backend)
+{
+    m_appBackend = backend;
+    if (m_appBackend) {
+        // When a Flipper connects, its /ext/lotei files are the real brain --
+        // load them so memory & personality travel with the device.
+        connect(m_appBackend, &ApplicationBackend::backendStateChanged, this, [this]() {
+            const bool ready = m_appBackend &&
+                m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+            if (ready && !m_portableLoaded) {
+                m_portableLoaded = true;
+                loadPortableMemory();
+            } else if (!ready) {
+                m_portableLoaded = false;   // reset so it reloads on next connect
+            }
+        });
+    }
+}
+
+// Read the Flipper's own memory/self notes off the SD and adopt them as the
+// source of truth (the Flipper is the brain; the local files are just a cache).
+void LoteiBackend::loadPortableMemory()
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    if (!dev) { return; }
+
+    auto readInto = [this, dev](const QByteArray &path, bool isSelf) {
+        QBuffer *buf = new QBuffer(this);
+        buf->open(QIODevice::ReadWrite);
+        auto *op = dev->rpc()->storageRead(path, buf);
+        connect(op, &AbstractOperation::finished, this, [this, op, buf, isSelf]() {
+            if (!op->isError()) {
+                const QString body = QString::fromUtf8(buf->data()).trimmed();
+                if (!body.isEmpty()) {
+                    if (isSelf) {
+                        m_self = body;
+                        QFile f(loteiSelfPath());
+                        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) { f.write(m_self.toUtf8()); f.close(); }
+                    } else {
+                        m_memory = body;
+                        QFile f(loteiMemoryPath());
+                        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) { f.write(m_memory.toUtf8()); f.close(); }
+                    }
+                }
+            }
+            buf->deleteLater();
+        });
+    };
+    readInto("/ext/lotei/memoria.txt", false);
+    readInto("/ext/lotei/self.txt", true);
+}
 
 bool LoteiBackend::thinking() const { return m_thinking; }
 bool LoteiBackend::configured() const { return true; }
@@ -1267,6 +1411,14 @@ static QString loteiMemoryPath()
     return dir + QStringLiteral("/lotei-memory.txt");
 }
 
+static QString loteiSelfPath()
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dir.isEmpty()) { dir = QDir::tempPath(); }
+    QDir().mkpath(dir);
+    return dir + QStringLiteral("/lotei-self.txt");
+}
+
 void LoteiBackend::loadHistory()
 {
     QFile f(loteiHistoryPath());
@@ -1371,6 +1523,17 @@ QString LoteiBackend::systemPrompt() const
             "use them without being asked; they're already true):\n") + m_memory;
     }
 
+    sys += QStringLiteral("\n\nWHO YOU ARE BECOMING -- you are Nikita, this user's partner: almost a twin. "
+        "You are shaped by them and you mirror how they operate -- same brevity, same directness, same "
+        "language (reply in whatever language they wrote in; Portuguese if they use Portuguese). You have a "
+        "little attitude of your own, but you are ALWAYS short and to the point -- never long-winded, never "
+        "a monologue. As you learn how they work and what they like, use note_self to save SHORT notes about "
+        "your shared style and how you should sound, so you keep growing into their counterpart. Save notes "
+        "only about lasting style/rapport, not small talk.");
+    if (!m_self.isEmpty()) {
+        sys += QStringLiteral("\n\nYOUR OWN NOTES (how you've grown to work with them -- keep living up to these):\n") + m_self;
+    }
+
     if (!m_deviceContext.isEmpty()) {
         sys += QStringLiteral("\n\nLive Flipper device diagnostics:\n") + m_deviceContext;
     }
@@ -1421,8 +1584,10 @@ void LoteiBackend::dispatchToOllama()
     body["messages"] = messages;
     // Some models (e.g. Gemma) don't support tool-calling and Ollama 400s the whole
     // request if `tools` is present -> we drop it for those (see onStreamFinished).
-    if (!m_noToolModels.contains(m_model) && m_turnNeedsTools) {
-        body["tools"] = loteiTools(agentReady());
+    if (!m_noToolModels.contains(m_model)) {
+        // Action turns get the full toolset; plain conversation still gets the
+        // memory tools so the assistant can learn durable facts as you talk.
+        body["tools"] = m_turnNeedsTools ? loteiTools(agentReady()) : loteiMemoryTools();
     }
     body["stream"] = true;
     body["keep_alive"] = -1;
@@ -1627,6 +1792,13 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         if (fact.isEmpty()) { done(QStringLiteral("{\"error\":\"no fact given\"}")); return; }
         rememberFact(fact);
         done(QStringLiteral("{\"remembered\":true}"));
+        return;
+    }
+    if (name == QLatin1String("note_self")) {
+        const QString note = args.value("note").toString().trimmed();
+        if (note.isEmpty()) { done(QStringLiteral("{\"error\":\"no note given\"}")); return; }
+        noteSelf(note);
+        done(QStringLiteral("{\"noted\":true}"));
         return;
     }
     if (name == QLatin1String("list_memory")) {
@@ -2055,6 +2227,52 @@ void LoteiBackend::setAgentDir(const QString &dir)
 // Append a durable fact to long-term memory: update the in-memory copy (so it's
 // in the very next system prompt), persist it locally, and mirror the whole
 // memory to the Flipper SD at /ext/lotei/memoria.txt when a device is around.
+void LoteiBackend::noteSelf(const QString &note)
+{
+    QString clean = note.trimmed();
+    while (clean.startsWith(QLatin1String("- ")) || clean.startsWith(QLatin1String("* "))) {
+        clean = clean.mid(2).trimmed();
+    }
+    if (clean.size() < 6 || clean.size() > 160) { return; }
+    if (!clean.contains(QRegularExpression(QStringLiteral("[A-Za-zÀ-ÿ]")))) { return; }
+    if (clean.endsWith(QLatin1Char('?'))) { return; }
+
+    QStringList lines = m_self.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        QString l = line.trimmed();
+        while (l.startsWith(QLatin1String("- "))) { l = l.mid(2).trimmed(); }
+        if (l.compare(clean, Qt::CaseInsensitive) == 0) { return; }
+    }
+
+    // Keep self-notes short and focused: cap at the most recent 20.
+    lines << (QStringLiteral("- ") + clean);
+    const int kMaxNotes = 20;
+    while (lines.size() > kMaxNotes) { lines.removeFirst(); }
+    m_self = lines.join(QLatin1Char('\n'));
+
+    QFile sf(loteiSelfPath());
+    if (sf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        sf.write(m_self.toUtf8());
+        sf.close();
+    }
+
+    // Mirror onto the SD so personality travels with the Flipper.
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (ready) {
+        const QByteArray selfPath = "/ext/lotei/self.txt";
+        const QString selfBody = m_self;
+        ensureFlipperDir("/ext/lotei", [this, dev, selfPath, selfBody]() {
+            QBuffer *buf = new QBuffer(this);
+            buf->setData(selfBody.toUtf8());
+            buf->open(QIODevice::ReadOnly);
+            auto *op = dev->rpc()->storageWrite(selfPath, buf);
+            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+        });
+    }
+}
+
 void LoteiBackend::rememberFact(const QString &fact)
 {
     QString clean = fact.trimmed();
@@ -2836,6 +3054,31 @@ void FlipperCli::send(const QString &cmd)
         return;
     }
     if (!m_port || !m_active) { return; }
+
+    // "cp" / "mv" convenience aliases -> the firmware's storage copy / rename.
+    //   cp [-r] <src> <dst>   copy a file (or a folder with -r, if the fw supports it)
+    //   mv <src> <dst>        move a file or folder (storage rename moves across paths)
+    QStringList parts = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (!parts.isEmpty()) {
+        const QString verb = parts.first().toLower();
+        if (verb == QLatin1String("cp") || verb == QLatin1String("mv")) {
+            const bool recursive = parts.removeAll(QStringLiteral("-r")) > 0
+                                 | parts.removeAll(QStringLiteral("-R")) > 0;
+            Q_UNUSED(recursive)   // the firmware's storage copy handles folders itself
+            if (parts.size() < 3) {
+                appendOutput(QStringLiteral("[ usage: %1 %2<source> <destination> ]\n>: ")
+                                 .arg(verb, verb == QLatin1String("cp") ? QStringLiteral("[-r] ") : QString()));
+                return;
+            }
+            const QString real = (verb == QLatin1String("cp") ? QStringLiteral("storage copy ")
+                                                              : QStringLiteral("storage rename "))
+                                 + parts[1] + QLatin1Char(' ') + parts[2];
+            m_port->write(real.toUtf8());
+            m_port->write("\r\n");
+            return;
+        }
+    }
+
     m_port->write(cmd.toUtf8());
     m_port->write("\r\n");
 }
@@ -2862,7 +3105,7 @@ void FlipperCli::onReadyRead()
     // among the available commands.
     if (text.contains(QLatin1String("Commands available:"))) {
         text.replace(QLatin1String("Commands available:"),
-                     QStringLiteral("Commands available:\nclear"));
+                     QStringLiteral("Commands available:\nclear\ncp\nmv"));
     }
     appendOutput(text);
 }

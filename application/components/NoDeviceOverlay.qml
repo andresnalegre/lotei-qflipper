@@ -19,8 +19,10 @@ Item {
     Image {
         id: usbPlug
 
-        x: parent.width - 216
-        y: 145
+        // to the right of the centered Flipper, at USB-port height
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: 200
+        y: 168
 
         source: "qrc:/assets/gfx/images/typec.svg"
         sourceSize: Qt.size(159, 37)
@@ -29,7 +31,7 @@ Item {
     TextLabel {
         id: connectMsg
         anchors.horizontalCenter: parent.horizontalCenter
-        y: 264
+        y: 300
 
         color: Theme.color.lightorange2
         text: qsTr("Connect your Flipper")

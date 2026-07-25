@@ -234,6 +234,18 @@ int FileManager::rowCount(const QModelIndex &parent) const
     return m_modelData.size();
 }
 
+QString FileManager::fileNameAt(int row) const
+{
+    if (row < 0 || row >= m_modelData.size()) { return QString(); }
+    return m_modelData[row].name;
+}
+
+bool FileManager::isDirectoryAt(int row) const
+{
+    if (row < 0 || row >= m_modelData.size()) { return false; }
+    return m_modelData[row].type == FileType::Directory;
+}
+
 QVariant FileManager::data(const QModelIndex &index, int role) const
 {
     const auto &item = m_modelData[index.row()];

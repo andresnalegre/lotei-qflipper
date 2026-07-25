@@ -24,6 +24,8 @@ class QAudioOutput;
 
 // LOTEI - a local-AI (Ollama) chat assistant inside qFlipper, with tool access
 // to live-query the connected Flipper Zero over qFlipper's RPC link.
+class FlipperCli;   // defined below; LoteiBackend holds a pointer for run_cli
+
 class LoteiBackend : public QObject
 {
     Q_OBJECT
@@ -46,6 +48,7 @@ public:
 
     // Gives LOTEI access to the connected device (for the inspection tools).
     void setAppBackend(ApplicationBackend *backend);
+    void setCli(FlipperCli *cli) { m_cli = cli; }   // link the CLI for run_cli
 
     bool thinking() const;
     bool configured() const;
@@ -142,6 +145,7 @@ private:
 
     QNetworkAccessManager m_net;
     ApplicationBackend *m_appBackend = nullptr;
+    FlipperCli         *m_cli = nullptr;   // for the run_cli tool (set by Application)
 
     QJsonArray m_history;        // running messages (user / assistant / tool)
     QString    m_deviceContext;  // latest diagnostics snapshot from QML
@@ -301,6 +305,13 @@ public:
     Q_INVOKABLE void interrupt();                // send Ctrl-C
     Q_INVOKABLE void clearOutput();
 
+    // Run a single CLI command in isolation (used by the assistant). Pauses RPC,
+    // opens the port, sends the command, collects output until the line goes idle,
+    // then closes and hands RPC back. Calls done(ok, output) when finished. Refuses
+    // if the interactive CLI panel is open or another one-shot is in flight.
+    void runOneShot(const QString &cmd, std::function<void(bool, QString)> done);
+    bool oneShotBusy() const { return m_runBusy; }
+
 signals:
     void openChanged();
     void activeChanged();
@@ -316,6 +327,7 @@ private:
     void appendOutput(const QString &text);
     void setActive(bool v);
     void setStatus(const QString &s);
+    void finishOneShot(bool ok, const QString &out);   // cleanup + callback
 
     ApplicationBackend *m_appBackend = nullptr;
     QSerialPort *m_port = nullptr;
@@ -323,4 +335,12 @@ private:
     QString m_status;
     bool m_open = false;
     bool m_active = false;
+
+    // One-shot (assistant) run state -- isolated from the interactive panel.
+    QSerialPort *m_runPort = nullptr;
+    QString m_runBuf;
+    bool m_runBusy = false;
+    QTimer *m_runIdle = nullptr;
+    QTimer *m_runGuard = nullptr;
+    std::function<void(bool, QString)> m_runDone;
 };

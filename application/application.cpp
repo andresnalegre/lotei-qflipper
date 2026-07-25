@@ -126,6 +126,7 @@ void Application::initConnections()
 
     m_lotei.setAppBackend(&m_backend);
     m_cli.setAppBackend(&m_backend);
+    m_lotei.setCli(&m_cli);   // give the assistant access to the Flipper CLI (run_cli)
 
 #ifdef HZUI_BLE
     // Let the BLE panel register a wireless Flipper as the app's active device.

@@ -207,7 +207,7 @@ Item {
             anchors.leftMargin: 195
             anchors.topMargin: 36
 
-            visible: Backend.portReleased || (Backend.deviceState && Backend.backendState === ApplicationBackend.Ready)
+            visible: Backend.backendState === ApplicationBackend.Ready
             color: Backend.portReleased ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: portMouse.containsMouse ? 1.0 : (Backend.portReleased ? 1.0 : 0.5)
 
@@ -232,6 +232,7 @@ Item {
             anchors.left: portToggle.right
             anchors.leftMargin: 20
 
+            visible: Backend.backendState === ApplicationBackend.Ready
             color: (Ble.sessionActive || Ble.connected) ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (bleMouse.containsMouse || Ble.sessionActive) ? 1.0 : 0.5
 
@@ -256,6 +257,7 @@ Item {
             anchors.left: bleButton.right
             anchors.leftMargin: 20
 
+            visible: Backend.backendState === ApplicationBackend.Ready
             color: Cli.active ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (cliMouse.containsMouse || Cli.active) ? 1.0 : 0.5
 
@@ -278,7 +280,7 @@ Item {
             opacity: Backend.backendState !== ApplicationBackend.ScreenStreaming &&
                      Backend.backendState !== ApplicationBackend.ErrorOccured ? 1 : 0
 
-            x: Backend.backendState === ApplicationBackend.Ready ? Math.round(mainContent.width / 2) : 216
+            x: Backend.backendState === ApplicationBackend.Ready ? Math.round(mainContent.width / 2) : Math.round((mainContent.width - width) / 2) - 100
             y: 94
 
             onScreenStreamRequested: Backend.startFullScreenStreaming()
@@ -897,7 +899,10 @@ Item {
                                     opacity: (modelData.channelCount || 0) > 1 ? 1 : 0
                                     enabled: (modelData.channelCount || 0) > 1
                                     Layout.alignment: Qt.AlignVCenter
+                                    Layout.fillWidth: false
                                     Layout.preferredWidth: 116
+                                    Layout.minimumWidth: 116
+                                    Layout.maximumWidth: 116
                                     implicitHeight: 24
                                     radius: 5
                                     color: chMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
@@ -925,13 +930,18 @@ Item {
                                     color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
                                     font.family: "Share Tech Mono"; font.pixelSize: 12
                                     elide: Text.ElideRight
-                                    Layout.preferredWidth: 160
-                                    horizontalAlignment: Text.AlignLeft
+                                    Layout.fillWidth: false
+                                    Layout.preferredWidth: 130
+                                    Layout.minimumWidth: 130
+                                    Layout.maximumWidth: 130
+                                    horizontalAlignment: Text.AlignRight
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                                 Rectangle {
                                     id: instBtn
+                                    Layout.fillWidth: false
                                     Layout.preferredWidth: 84; Layout.preferredHeight: 30
+                                    Layout.minimumWidth: 84; Layout.maximumWidth: 84
                                     Layout.alignment: Qt.AlignVCenter
                                     radius: 6
                                     property bool canGo: modelData.ready && !Firmware.busy && Backend.deviceState

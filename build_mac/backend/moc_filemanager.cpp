@@ -58,6 +58,9 @@ template <> constexpr inline auto Flipper::Zero::FileManager::qt_create_metaobje
         "remove",
         "fileName",
         "recursive",
+        "fileNameAt",
+        "row",
+        "isDirectoryAt",
         "beginMkDir",
         "commitMkDir",
         "upload",
@@ -118,54 +121,62 @@ template <> constexpr inline auto Flipper::Zero::FileManager::qt_create_metaobje
         QtMocHelpers::MethodData<void(const QString &)>(16, 2, QMC::AccessPublic | QMC::MethodCloned, QMetaType::Void, {{
             { QMetaType::QString, 17 },
         }}),
+        // Method 'fileNameAt'
+        QtMocHelpers::MethodData<QString(int) const>(19, 2, QMC::AccessPublic, QMetaType::QString, {{
+            { QMetaType::Int, 20 },
+        }}),
+        // Method 'isDirectoryAt'
+        QtMocHelpers::MethodData<bool(int) const>(21, 2, QMC::AccessPublic, QMetaType::Bool, {{
+            { QMetaType::Int, 20 },
+        }}),
         // Method 'beginMkDir'
-        QtMocHelpers::MethodData<void()>(19, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(22, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'commitMkDir'
-        QtMocHelpers::MethodData<void(const QString &)>(20, 2, QMC::AccessPublic, QMetaType::Void, {{
+        QtMocHelpers::MethodData<void(const QString &)>(23, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 10 },
         }}),
         // Method 'upload'
-        QtMocHelpers::MethodData<void(const QList<QUrl> &)>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { 0x80000000 | 22, 23 },
+        QtMocHelpers::MethodData<void(const QList<QUrl> &)>(24, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 25, 26 },
         }}),
         // Method 'uploadTo'
-        QtMocHelpers::MethodData<void(const QString &, const QList<QUrl> &)>(24, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 25 }, { 0x80000000 | 22, 23 },
+        QtMocHelpers::MethodData<void(const QString &, const QList<QUrl> &)>(27, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 28 }, { 0x80000000 | 25, 26 },
         }}),
         // Method 'download'
-        QtMocHelpers::MethodData<void(const QString &, const QUrl &, bool)>(26, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 27 }, { 0x80000000 | 28, 29 }, { QMetaType::Bool, 18 },
+        QtMocHelpers::MethodData<void(const QString &, const QUrl &, bool)>(29, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 30 }, { 0x80000000 | 31, 32 }, { QMetaType::Bool, 18 },
         }}),
         // Method 'download'
-        QtMocHelpers::MethodData<void(const QString &, const QUrl &)>(26, 2, QMC::AccessPublic | QMC::MethodCloned, QMetaType::Void, {{
-            { QMetaType::QString, 27 }, { 0x80000000 | 28, 29 },
+        QtMocHelpers::MethodData<void(const QString &, const QUrl &)>(29, 2, QMC::AccessPublic | QMC::MethodCloned, QMetaType::Void, {{
+            { QMetaType::QString, 30 }, { 0x80000000 | 31, 32 },
         }}),
         // Method 'isTooLarge'
-        QtMocHelpers::MethodData<bool(const QList<QUrl> &) const>(30, 2, QMC::AccessPublic, QMetaType::Bool, {{
-            { 0x80000000 | 22, 23 },
+        QtMocHelpers::MethodData<bool(const QList<QUrl> &) const>(33, 2, QMC::AccessPublic, QMetaType::Bool, {{
+            { 0x80000000 | 25, 26 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'isBusy'
-        QtMocHelpers::PropertyData<bool>(31, QMetaType::Bool, QMC::DefaultPropertyFlags, 0),
+        QtMocHelpers::PropertyData<bool>(34, QMetaType::Bool, QMC::DefaultPropertyFlags, 0),
         // property 'isRoot'
-        QtMocHelpers::PropertyData<bool>(32, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<bool>(35, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
         // property 'canGoBack'
-        QtMocHelpers::PropertyData<bool>(33, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<bool>(36, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
         // property 'canGoForward'
-        QtMocHelpers::PropertyData<bool>(34, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<bool>(37, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
         // property 'currentPath'
-        QtMocHelpers::PropertyData<QString>(35, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<QString>(38, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
         // property 'newDirectoryIndex'
-        QtMocHelpers::PropertyData<int>(36, QMetaType::Int, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<int>(39, QMetaType::Int, QMC::DefaultPropertyFlags, 2),
     };
     QtMocHelpers::UintData qt_enums {
         // enum 'FieldRole'
-        QtMocHelpers::EnumData<enum FieldRole>(37, 37, QMC::EnumFlags{}).add({
-            {   38, FieldRole::FileName },
-            {   39, FieldRole::FilePath },
-            {   40, FieldRole::FileType },
-            {   41, FieldRole::FileSize },
+        QtMocHelpers::EnumData<enum FieldRole>(40, 40, QMC::EnumFlags{}).add({
+            {   41, FieldRole::FileName },
+            {   42, FieldRole::FilePath },
+            {   43, FieldRole::FileType },
+            {   44, FieldRole::FileSize },
         }),
     };
     return QtMocHelpers::metaObjectData<FileManager, qt_meta_tag_ZN7Flipper4Zero11FileManagerE_t>(QMC::MetaObjectFlag{}, qt_stringData,
@@ -199,13 +210,17 @@ void Flipper::Zero::FileManager::qt_static_metacall(QObject *_o, QMetaObject::Ca
         case 10: _t->rename((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
         case 11: _t->remove((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<bool>>(_a[2]))); break;
         case 12: _t->remove((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 13: _t->beginMkDir(); break;
-        case 14: _t->commitMkDir((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 15: _t->upload((*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[1]))); break;
-        case 16: _t->uploadTo((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[2]))); break;
-        case 17: _t->download((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QUrl>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<bool>>(_a[3]))); break;
-        case 18: _t->download((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QUrl>>(_a[2]))); break;
-        case 19: { bool _r = _t->isTooLarge((*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[1])));
+        case 13: { QString _r = _t->fileNameAt((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])));
+            if (_a[0]) *reinterpret_cast<QString*>(_a[0]) = std::move(_r); }  break;
+        case 14: { bool _r = _t->isDirectoryAt((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])));
+            if (_a[0]) *reinterpret_cast<bool*>(_a[0]) = std::move(_r); }  break;
+        case 15: _t->beginMkDir(); break;
+        case 16: _t->commitMkDir((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 17: _t->upload((*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[1]))); break;
+        case 18: _t->uploadTo((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[2]))); break;
+        case 19: _t->download((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QUrl>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<bool>>(_a[3]))); break;
+        case 20: _t->download((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QUrl>>(_a[2]))); break;
+        case 21: { bool _r = _t->isTooLarge((*reinterpret_cast<std::add_pointer_t<QList<QUrl>>>(_a[1])));
             if (_a[0]) *reinterpret_cast<bool*>(_a[0]) = std::move(_r); }  break;
         default: ;
         }
@@ -255,14 +270,14 @@ int Flipper::Zero::FileManager::qt_metacall(QMetaObject::Call _c, int _id, void 
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 20)
+        if (_id < 22)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 20;
+        _id -= 22;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 20)
+        if (_id < 22)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 20;
+        _id -= 22;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty

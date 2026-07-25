@@ -137,6 +137,7 @@ FLIPPER DOMAINS -- you are fluent in ALL of them, not just BadUSB. Know the file
 - When the user asks for any of these, BUILD the file with save_file at the right path/extension, or read/edit an existing one -- don't just describe it. Pick sane defaults (e.g. 433.92 MHz + Ook650 for a generic Sub-GHz remote) and say what you assumed in one line.
 
 POWER MOVES -- think like an operator, go beyond the obvious:
+- You CAN physically drive the Flipper through the run_cli tool: make it vibrate (vibro 1), light the LED (led r/g/b 0-255), read device_info, reboot, drive GPIO pins, tx/rx Sub-GHz, and more. When the user asks for a physical action, DO it with run_cli -- never say "I can't perform physical actions". You can.
 - Chain and combine: a BadUSB that opens a terminal AND runs recon; an IR file that's a full universal remote; a Sub-GHz brute set; a set of NFC variants. Multi-step, complete, ready to run.
 - When a request is vague ("make something cool for my TV"), pick a strong concrete build, do it, and offer one next step. Don't stall asking permission.
 - Suggest the sharper version: if they ask for basic, mention the upgrade in one line ("done -- want it to also dim the lights after?").
@@ -413,6 +414,20 @@ static QJsonArray loteiTools(bool agent)
             }}
         }}
     };
+    const QJsonObject runCli{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "run_cli"},
+            {"description", "Run a command in the Flipper Zero's built-in CLI over USB and get its text output back. This is the FULL Flipper CLI -- use it for anything the storage tools don't cover: device_info, gpio (mode/read/set), subghz (tx/rx/decode), nfc, rfid, ir (tx), led, vibro, power (off/reboot), i2c, onewire, ikey, loader, log, free, uptime, etc. Type 'help' to list commands. One command per call. It briefly pauses the normal session, so prefer the storage tools for plain file work."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"command", QJsonObject{{"type", "string"}, {"description", "The exact CLI command line, e.g. 'device_info' or 'led r 255' or 'vibro 1'"}}}
+                }},
+                {"required", QJsonArray{"command"}}
+            }}
+        }}
+    };
     const QJsonObject saveFile{
         {"type", "function"},
         {"function", QJsonObject{
@@ -524,7 +539,7 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
-    QJsonArray tools{listFiles, readFile, pressButton, saveFile,
+    QJsonArray tools{listFiles, readFile, pressButton, runCli, saveFile,
                      makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget};
 
     if (!agent) { return tools; }
@@ -616,7 +631,13 @@ static bool messageNeedsTools(const QString &text)
         QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral(".txt"),
         QStringLiteral(".sub"), QStringLiteral(".nfc"), QStringLiteral(".ir"),
         QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
-        QStringLiteral("sub-ghz")
+        QStringLiteral("sub-ghz"),
+        // CLI-driven hardware commands (run_cli)
+        QStringLiteral("cli"), QStringLiteral("device_info"), QStringLiteral("gpio"),
+        QStringLiteral("vibro"), QStringLiteral("vibra"), QStringLiteral("reboot"),
+        QStringLiteral("reinicia"), QStringLiteral(" led "), QStringLiteral("i2c"),
+        QStringLiteral("onewire"), QStringLiteral("uptime"), QStringLiteral("bateria"),
+        QStringLiteral("battery")
     };
     for (const QString &s : strongNouns) {
         if (t.contains(s)) { return true; }
@@ -1687,6 +1708,24 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
             done(result);
         });
 
+    } else if (name == QLatin1String("run_cli")) {
+        const QString command = args.value("command").toString().trimmed();
+        if (command.isEmpty()) {
+            done(QStringLiteral("{\"error\":\"no command given\"}"));
+            return;
+        }
+        if (!m_cli) {
+            done(QStringLiteral("{\"error\":\"CLI not available\"}"));
+            return;
+        }
+        // Isolated one-shot: pauses RPC, runs the command, hands RPC back.
+        m_cli->runOneShot(command, [done](bool ok, QString out) {
+            QJsonObject r;
+            if (ok) { r["output"] = out; }
+            else    { r["error"]  = out; }
+            done(QString::fromUtf8(QJsonDocument(r).toJson(QJsonDocument::Compact)));
+        });
+
     } else if (name == QLatin1String("press_button")) {
         const QString b = args.value("button").toString().toLower();
         int times = args.value("times").toInt(1);
@@ -2694,6 +2733,96 @@ void FlipperCli::disconnectCli()
 
     // Hand the line back to qFlipper's normal RPC session.
     if (m_appBackend) { m_appBackend->reacquirePort(); }
+}
+
+// ---- one-shot CLI run for the assistant (isolated from the interactive panel) --
+void FlipperCli::runOneShot(const QString &cmd, std::function<void(bool, QString)> done)
+{
+    if (m_open || m_active) { done(false, QStringLiteral("The CLI panel is open -- close it first.")); return; }
+    if (m_runBusy)          { done(false, QStringLiteral("A CLI command is already running.")); return; }
+    if (!m_appBackend)      { done(false, QStringLiteral("Backend unavailable.")); return; }
+
+    auto *reg = m_appBackend->deviceRegistry();
+    auto *dev = reg ? reg->currentDevice() : nullptr;
+    if (!dev) { done(false, QStringLiteral("Connect a Flipper over USB first.")); return; }
+    const auto &info = dev->deviceState()->deviceInfo();
+    if (info.isBle || info.portInfo.isNull()) { done(false, QStringLiteral("CLI is USB-only.")); return; }
+    const QSerialPortInfo portInfo = info.portInfo;
+
+    m_runBusy = true;
+    m_runBuf.clear();
+    m_runDone = std::move(done);
+
+    // Idle timer: once output stops arriving for a beat, the command is done.
+    if (!m_runIdle) {
+        m_runIdle = new QTimer(this);
+        m_runIdle->setSingleShot(true);
+        m_runIdle->setInterval(700);
+        connect(m_runIdle, &QTimer::timeout, this, [this]() { finishOneShot(true, m_runBuf); });
+    }
+    // Hard guard: never hang forever.
+    if (!m_runGuard) {
+        m_runGuard = new QTimer(this);
+        m_runGuard->setSingleShot(true);
+        m_runGuard->setInterval(6000);
+        connect(m_runGuard, &QTimer::timeout, this, [this]() { finishOneShot(true, m_runBuf); });
+    }
+
+    // Release RPC, wait for the port to free, then take it over briefly.
+    m_appBackend->releasePort();
+    QTimer::singleShot(700, this, [this, portInfo, cmd]() {
+        if (!m_runBusy) { return; }
+        m_runPort = new QSerialPort(portInfo, this);
+        m_runPort->setBaudRate(230400);
+        m_runPort->setDataBits(QSerialPort::Data8);
+        m_runPort->setParity(QSerialPort::NoParity);
+        m_runPort->setStopBits(QSerialPort::OneStop);
+        m_runPort->setFlowControl(QSerialPort::NoFlowControl);
+        if (!m_runPort->open(QIODevice::ReadWrite)) {
+            const QString err = m_runPort->errorString();
+            m_runPort->deleteLater(); m_runPort = nullptr;
+            finishOneShot(false, QStringLiteral("Couldn't open the port: %1").arg(err));
+            return;
+        }
+        connect(m_runPort, &QSerialPort::readyRead, this, [this]() {
+            if (!m_runPort) { return; }
+            QString chunk = QString::fromUtf8(m_runPort->readAll());
+            static const QRegularExpression ansi(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
+            chunk.remove(ansi);
+            chunk.remove(QLatin1Char('\r'));
+            static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
+            chunk.remove(ctrl);
+            m_runBuf += chunk;
+            if (m_runIdle) { m_runIdle->start(); }   // reset idle countdown
+        });
+        m_runGuard->start();
+        m_runPort->write(cmd.toUtf8());
+        m_runPort->write("\r\n");
+        m_runIdle->start();
+    });
+}
+
+void FlipperCli::finishOneShot(bool ok, const QString &out)
+{
+    if (!m_runBusy) { return; }
+    if (m_runIdle)  { m_runIdle->stop(); }
+    if (m_runGuard) { m_runGuard->stop(); }
+    if (m_runPort) {
+        m_runPort->close();
+        m_runPort->deleteLater();
+        m_runPort = nullptr;
+    }
+    m_runBusy = false;
+
+    // Tidy the captured text: drop the echoed command line and the trailing prompt.
+    QString text = out;
+    text.remove(QRegularExpression(QStringLiteral("(^|\\n)>: *")));   // prompt lines
+    text = text.trimmed();
+
+    auto cb = m_runDone;
+    m_runDone = nullptr;
+    if (m_appBackend) { m_appBackend->reacquirePort(); }   // hand the line back to RPC
+    if (cb) { cb(ok, text); }
 }
 
 void FlipperCli::send(const QString &cmd)

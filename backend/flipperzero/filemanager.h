@@ -54,6 +54,8 @@ public:
 
     Q_INVOKABLE void rename(const QString &oldName, const QString &newName);
     Q_INVOKABLE void remove(const QString &fileName, bool recursive = false);
+    Q_INVOKABLE QString fileNameAt(int row) const;      // name of the item at a row
+    Q_INVOKABLE bool isDirectoryAt(int row) const;      // is that item a directory
 
     Q_INVOKABLE void beginMkDir();
     Q_INVOKABLE void commitMkDir(const QString &dirName);
@@ -122,4 +124,3 @@ private:
 
 }
 }
-

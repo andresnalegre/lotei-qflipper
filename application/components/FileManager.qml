@@ -15,6 +15,38 @@ Item {
     property MessageDialog messageDialog
     property ConfirmationDialog confirmationDialog
 
+    // ---- multi-selection model (drag-band, Cmd+click, Cmd+A) ----
+    property var selectedList: []                       // selected row indices
+    function isSelected(i) { return selectedList.indexOf(i) >= 0 }
+    function clearSel() { selectedList = [] }
+    function selectOnly(i) { selectedList = [i] }
+    function toggleSel(i) {
+        var a = selectedList.slice();
+        var p = a.indexOf(i);
+        if(p >= 0) { a.splice(p, 1); } else { a.push(i); }
+        selectedList = a;
+    }
+    function selectAll() {
+        var a = [];
+        var count = Backend.fileManager.rowCount ? Backend.fileManager.rowCount() : fileView.count;
+        for(var i = 0; i < fileView.count; ++i) { a.push(i); }
+        selectedList = a;
+    }
+    function selectRange(rect) {                          // rect in fileView content coords
+        var cols = Math.max(1, Math.floor(fileView.width / fileView.cellWidth));
+        var a = [];
+        for(var i = 0; i < fileView.count; ++i) {
+            var cx = (i % cols) * fileView.cellWidth;
+            var cy = Math.floor(i / cols) * fileView.cellHeight;
+            // intersect the cell box with the band
+            if(cx < rect.x + rect.w && cx + fileView.cellWidth > rect.x &&
+               cy < rect.y + rect.h && cy + fileView.cellHeight > rect.y) {
+                a.push(i);
+            }
+        }
+        selectedList = a;
+    }
+
     onVisibleChanged: {
         if(Backend.backendState === ApplicationBackend.Ready) {
             Backend.screenStreamer.isEnabled = !visible
@@ -159,28 +191,121 @@ Item {
 
                 boundsBehavior: Flickable.StopAtBounds
 
+                // Selection overlay: sits above the delegates, owns click/drag/dbl-click.
                 MouseArea {
-                    z: parent.z - 1
+                    id: bandArea
+                    z: 100
                     anchors.fill: parent
+                    hoverEnabled: false
+                    preventStealing: true   // keep the drag from the Flickable so band works (wheel still scrolls)
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.BackButton | Qt.ForwardButton
 
-                    onClicked: function(mouse) {
-                        fileView.currentIndex = 0;
-                        forceActiveFocus(Qt.MouseFocusReason);
+                    property real startX: 0
+                    property real startY: 0
+                    property bool banding: false
+                    property bool didBand: false
 
-                        if(mouse.button === Qt.RightButton && !Backend.fileManager.isRoot) {
-                            emptyMenu.popup();
-                        } else if (mouse.button === Qt.BackButton && Backend.fileManager.canGoBack) {
-                            Backend.fileManager.historyBack()
-                        } else if (mouse.button === Qt.ForwardButton && Backend.fileManager.canGoForward) {
-                            Backend.fileManager.historyForward()
+                    function idxAt(mx, my) {
+                        return fileView.indexAt(mx + fileView.contentX, my + fileView.contentY);
+                    }
+
+                    onPressed: function(mouse) {
+                        forceActiveFocus(Qt.MouseFocusReason);
+                        var idx = idxAt(mouse.x, mouse.y);
+
+                        if(mouse.button === Qt.RightButton) {
+                            if(idx >= 0) { mouse.accepted = false; return; }   // let the delegate open its menu
+                            return;                                            // empty right-click -> handled onClicked
+                        }
+                        if(mouse.button !== Qt.LeftButton) { return; }
+
+                        // Just record the start. A rubber-band only begins once the
+                        // mouse actually moves (below), so you can start a drag on top
+                        // of ANY item -- folders included -- not only on empty space.
+                        bandArea.startX = mouse.x; bandArea.startY = mouse.y;
+                        bandArea.didBand = false;
+                        bandArea.banding = false;
+                    }
+
+                    onPositionChanged: function(mouse) {
+                        if(!(mouse.buttons & Qt.LeftButton)) { return; }
+                        var dx = mouse.x - bandArea.startX;
+                        var dy = mouse.y - bandArea.startY;
+
+                        if(!bandArea.banding) {
+                            if(Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+                                bandArea.banding = true;
+                                bandArea.didBand = true;
+                                if(!(mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { control.clearSel(); }
+                            } else {
+                                return;   // not enough movement yet -> still a click
+                            }
+                        }
+
+                        var x = Math.min(mouse.x, bandArea.startX);
+                        var y = Math.min(mouse.y, bandArea.startY);
+                        var w = Math.abs(dx);
+                        var h = Math.abs(dy);
+                        band.x = x; band.y = y; band.width = w; band.height = h;
+                        control.selectRange({ x: x + fileView.contentX, y: y + fileView.contentY, w: w, h: h });
+                    }
+
+                    onReleased: function(mouse) { bandArea.banding = false; }
+
+                    onClicked: function(mouse) {
+                        if(mouse.button === Qt.BackButton && Backend.fileManager.canGoBack) { Backend.fileManager.historyBack(); return; }
+                        if(mouse.button === Qt.ForwardButton && Backend.fileManager.canGoForward) { Backend.fileManager.historyForward(); return; }
+
+                        var idx = idxAt(mouse.x, mouse.y);
+
+                        if(mouse.button === Qt.RightButton) {
+                            if(idx < 0 && !Backend.fileManager.isRoot) { emptyMenu.popup(); }
+                            return;
+                        }
+                        if(mouse.button !== Qt.LeftButton) { return; }
+                        if(bandArea.didBand) { return; }   // a drag just happened; keep that selection
+
+                        if(idx < 0) {
+                            control.clearSel();            // click on empty space clears selection
+                        } else if(mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
+                            control.toggleSel(idx);
+                            fileView.currentIndex = idx;
+                        } else {
+                            control.selectOnly(idx);
+                            fileView.currentIndex = idx;
                         }
                     }
+
+                    onDoubleClicked: function(mouse) {
+                        if(mouse.button !== Qt.LeftButton) { return; }
+                        var idx = idxAt(mouse.x, mouse.y);
+                        if(idx < 0) { return; }
+                        var name = Backend.fileManager.fileNameAt(idx);
+                        if(name.length === 0) { return; }
+                        if(Backend.fileManager.isDirectoryAt(idx)) {
+                            Backend.fileManager.cd(name);
+                        } else {
+                            var base = Backend.fileManager.currentPath;
+                            var full = (base.charAt(base.length - 1) === "/") ? (base + name) : (base + "/" + name);
+                            Lotei.openFileForEdit(full);
+                        }
+                    }
+                }
+
+                // rubber-band selection rectangle (viewport coords)
+                Rectangle {
+                    id: band
+                    z: 99
+                    visible: bandArea.banding && (width > 2 || height > 2)
+                    color: Color.transparent(Theme.color.lightorange2, 0.12)
+                    border.width: 1
+                    border.color: Theme.color.mediumorange2
                 }
 
                 model: Backend.fileManager
                 delegate: FileManagerDelegate {
                     confirmationDialog: control.confirmationDialog
+                    fileManager: control
                 }
             }
         }
@@ -210,6 +335,7 @@ Item {
         id: emptyMenu
 
         MenuItem { action: uploadHereAction }
+        MenuItem { action: newFileAction }
         MenuItem { action: newDirAction }
     }
 
@@ -251,6 +377,17 @@ Item {
         icon.source: "qrc:/assets/gfx/symbolic/filemgr/action-upload.svg"
 
         onTriggered: beginUpload();
+    }
+
+    Action {
+        id: newFileAction
+        text: qsTr("New File")
+        icon.source: "qrc:/assets/gfx/symbolic/filemgr/action-new.svg"
+        onTriggered: {
+            newFileField.text = "";
+            newFilePanel.visible = true;
+            newFileField.forceActiveFocus();
+        }
     }
 
     Action {
@@ -296,6 +433,20 @@ Item {
 
     Keys.onPressed: function(event) {
         switch(event.key) {
+        case Qt.Key_A:
+            if(event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
+                control.selectAll();
+                event.accepted = true;
+            } else {
+                event.accepted = false;
+            }
+            return;
+
+        case Qt.Key_Escape:
+            control.clearSel();
+            event.accepted = true;
+            return;
+
         case Qt.Key_Backspace:
             if(Backend.fileManager.canGoBack) {
                 Backend.fileManager.historyBack();
@@ -336,6 +487,93 @@ Item {
 
         default:
             event.accepted = false;
+        }
+    }
+
+    // ---- new file panel (create a file with any extension, right in the app) ----
+    Rectangle {
+        id: newFilePanel
+        visible: false
+        z: 210
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.topMargin: 52
+        anchors.leftMargin: 12
+        anchors.rightMargin: 12
+        height: 46
+        color: "#0b0410"
+        radius: 6
+        border.width: 1
+        border.color: Theme.color.mediumorange2
+
+        function createFile() {
+            var name = newFileField.text.trim();
+            if(name.length === 0) { return; }
+            var base = Backend.fileManager.currentPath;
+            var full = (base.charAt(base.length - 1) === "/") ? (base + name) : (base + "/" + name);
+            Lotei.writeFile(full, "");          // create empty file on the Flipper
+            newFilePanel.visible = false;
+            newFilePanel.pendingOpen = full;    // open it in the editor once written
+        }
+        property string pendingOpen: ""
+
+        Connections {
+            target: Lotei
+            function onFileSaved(path) {
+                if(newFilePanel.pendingOpen === path) {
+                    Backend.fileManager.refresh();   // just show the new file; don't auto-open
+                    newFilePanel.pendingOpen = "";
+                }
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 8
+
+            Text {
+                text: "New file:"
+                color: Theme.color.lightorange2
+                font.family: "Share Tech Mono"; font.pixelSize: 13
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+                color: "#000000"; radius: 4
+                border.width: 1; border.color: Theme.color.mediumorange3
+                TextInput {
+                    id: newFileField
+                    anchors.fill: parent
+                    anchors.leftMargin: 8; anchors.rightMargin: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: Theme.color.lightorange2
+                    font.family: "Share Tech Mono"; font.pixelSize: 13
+                    clip: true
+                    onAccepted: newFilePanel.createFile()
+                    Text {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        visible: newFileField.text.length === 0
+                        text: "name.txt / name.nfc / name.sub / name.ir"
+                        color: Theme.color.mediumorange1
+                        font: newFileField.font
+                    }
+                }
+            }
+            Text {
+                text: "cancel"
+                color: nfCancel.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
+                font.family: "Share Tech Mono"; font.pixelSize: 12
+                MouseArea { id: nfCancel; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: newFilePanel.visible = false }
+            }
+            Text {
+                text: "create"
+                color: nfCreate.containsMouse ? Theme.color.lightgreen : Theme.color.lightorange2
+                font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                MouseArea { id: nfCreate; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: newFilePanel.createFile() }
+            }
         }
     }
 

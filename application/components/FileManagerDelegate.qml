@@ -22,8 +22,11 @@ Item {
     readonly property bool isNewDirectory: Backend.fileManager.newDirectoryIndex === index
     readonly property bool isHovered: iconMouseArea.containsMouse || labelMouseArea.containsMouse
     readonly property bool isCurrent: GridView.isCurrentItem
+    property var fileManager                              // set by the FileManager root
+    readonly property bool multiSelected: fileManager ? fileManager.isSelected(index) : false
 
-    property color selectionColor: Color.transparent(Theme.color.darkorange1, delegate.isCurrent ? 1 : delegate.isHovered ? 0.5 : 0)
+    property color selectionColor: Color.transparent(Theme.color.darkorange1,
+        delegate.multiSelected ? 1 : delegate.isCurrent ? 1 : delegate.isHovered ? 0.5 : 0)
 
     property ConfirmationDialog confirmationDialog
 
@@ -275,9 +278,21 @@ Item {
         delegate.GridView.view.currentIndex = delegate.index
         forceActiveFocus(Qt.MouseFocusReason);
         if(mouse.button === Qt.LeftButton) {
+            // Cmd/Ctrl+click toggles this item; plain click selects only it.
+            if(delegate.fileManager) {
+                if(mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
+                    delegate.fileManager.toggleSel(delegate.index);
+                } else {
+                    delegate.fileManager.selectOnly(delegate.index);
+                }
+            }
             return;
         }
 
+        // Right-click: if this item isn't in the selection, make it the selection.
+        if(delegate.fileManager && !delegate.fileManager.isSelected(delegate.index)) {
+            delegate.fileManager.selectOnly(delegate.index);
+        }
         if(delegate.filePath === "/ext" || delegate.filePath === "/int") {
             storageMenu.popup();
         } else if(delegate.isDirectory) {
@@ -324,18 +339,36 @@ Item {
     }
 
     function beginDelete() {
+        var fm = delegate.fileManager;
+        var sel = (fm && fm.selectedList.length > 1 && fm.isSelected(delegate.index))
+                  ? fm.selectedList.slice() : [delegate.index];
+
         const doRemove = function() {
+            if(sel.length === 1 && sel[0] === delegate.index) {
                 Backend.fileManager.remove(delegate.fileName, delegate.isDirectory);
-            };
+            } else {
+                for(var i = 0; i < sel.length; ++i) {
+                    var nm = Backend.fileManager.fileNameAt(sel[i]);
+                    if(nm.length > 0) {
+                        Backend.fileManager.remove(nm, Backend.fileManager.isDirectoryAt(sel[i]));
+                    }
+                }
+                if(fm) { fm.clearSel(); }
+            }
+        };
 
-            const msgObj = {
-                title: "%1 \"%2\"?".arg(qsTr("Delete")).arg(delegate.fileName),
-                message: qsTr("This action cannot be undone."),
-                suggestedRole: ConfirmationDialog.RejectRole,
-                customText: qsTr("Delete")
-            };
+        const title = (sel.length > 1)
+            ? "%1 %2 items?".arg(qsTr("Delete")).arg(sel.length)
+            : "%1 \"%2\"?".arg(qsTr("Delete")).arg(delegate.fileName);
 
-            confirmationDialog.openWithMessage(doRemove, msgObj);
+        const msgObj = {
+            title: title,
+            message: qsTr("This action cannot be undone."),
+            suggestedRole: ConfirmationDialog.RejectRole,
+            customText: qsTr("Delete")
+        };
+
+        confirmationDialog.openWithMessage(doRemove, msgObj);
     }
     function beginDownload() {
             SystemFileDialog.accepted.connect(function() {

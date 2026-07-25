@@ -2,6 +2,8 @@ import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Window 2.15
 
+import Theme 1.0
+
 RowLayout {
     id: control
 
@@ -68,22 +70,55 @@ RowLayout {
         Layout.fillWidth: true
     }
 
-    ImageButton {
+    // Minimize ( - )
+    Rectangle {
         id: minimizeButton
+        Layout.preferredWidth: 22
+        Layout.preferredHeight: 20
+        radius: 4
+        border.width: 1
+        border.color: Theme.color.mediumorange2
+        color: minMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
 
-        iconPath: control.iconPath
-        iconName: "minimize"
-
-        onClicked: minimizeRequested()
+        Rectangle {
+            width: 11; height: 2; radius: 1
+            color: Theme.color.lightorange2
+            anchors.centerIn: parent
+        }
+        MouseArea {
+            id: minMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: minimizeRequested()
+        }
     }
 
-    ImageButton {
+    // Close ( X )
+    Rectangle {
         id: closeButton
         enabled: control.closeEnabled
+        opacity: enabled ? 1 : 0.35
+        Layout.preferredWidth: 22
+        Layout.preferredHeight: 20
+        radius: 4
+        border.width: 1
+        border.color: Theme.color.mediumorange2
+        color: closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
 
-        iconPath: control.iconPath
-        iconName: "close"
-
-        onClicked: closeRequested()
+        Text {
+            anchors.centerIn: parent
+            text: "✕"
+            color: Theme.color.lightorange2
+            font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+        }
+        MouseArea {
+            id: closeMouse
+            anchors.fill: parent
+            enabled: control.closeEnabled
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: closeRequested()
+        }
     }
 }

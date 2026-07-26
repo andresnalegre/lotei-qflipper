@@ -8,9 +8,122 @@ import QFlipper 1.0
 Rectangle {
     id: root
 
+    // ---- cross-message text selection -----------------------------------
+    // Each message is its own TextEdit, and selectByMouse only ever works
+    // inside one of them -- that is why dragging could never get past a message
+    // boundary. So the drag is driven from here instead: the anchor and the
+    // head are (message index, character offset) pairs, and applySelection()
+    // pushes the resulting range down onto whichever delegates currently exist.
+    property int selAnchorIdx: -1
+    property int selAnchorPos: 0
+    property int selHeadIdx: -1
+    property int selHeadPos: 0
+
+    function bodyAt(i) {
+        var it = listView.itemAtIndex(i);
+        return (it && it.bodyEdit) ? it.bodyEdit : null;
+    }
+    // Normalised low/high ends, so dragging upwards behaves like dragging down.
+    function selRange() {
+        var a = root.selAnchorIdx, ap = root.selAnchorPos;
+        var b = root.selHeadIdx,   bp = root.selHeadPos;
+        if (a < 0 || b < 0) { return null; }
+        if (b < a || (b === a && bp < ap)) { return { lo: b, loPos: bp, hi: a, hiPos: ap }; }
+        return { lo: a, loPos: ap, hi: b, hiPos: bp };
+    }
+    function applySelection() {
+        var r = root.selRange();
+        for (var i = 0; i < chatModel.count; i++) {
+            var e = root.bodyAt(i);
+            if (!e) { continue; }                       // scrolled out and recycled
+            if (!r || i < r.lo || i > r.hi)   { e.deselect(); }
+            else if (i === r.lo && i === r.hi) { e.select(r.loPos, r.hiPos); }
+            else if (i === r.lo)               { e.select(r.loPos, e.length); }
+            else if (i === r.hi)               { e.select(0, r.hiPos); }
+            else                               { e.selectAll(); }
+        }
+    }
+    // ListView.spacing leaves a few pixels between delegates where indexAt()
+    // reports -1. Dragging through that gap used to jump the selection to the
+    // end of the conversation, so probe outwards before giving up.
+    function msgIndexAt(cx, cy) {
+        var idx = listView.indexAt(cx, cy);
+        if (idx >= 0) { return idx; }
+        for (var d = 2; d <= 16; d += 2) {
+            idx = listView.indexAt(cx, cy - d);
+            if (idx >= 0) { return idx; }
+            idx = listView.indexAt(cx, cy + d);
+            if (idx >= 0) { return idx; }
+        }
+        // Genuinely past an end of the content.
+        if (cy < 0) { return 0; }
+        if (cy > listView.contentHeight) { return chatModel.count - 1; }
+        return -1;
+    }
+
+    // The role label highlights only when the selection actually reaches the
+    // start of that message -- a drag beginning mid-sentence should not light
+    // up the speaker's name above it.
+    function indexInSelection(i) {
+        var r = root.selRange();
+        if (r === null || i < r.lo || i > r.hi) { return false; }
+        return (i > r.lo) || (r.loPos === 0);
+    }
+    function clearSelection() {
+        root.selAnchorIdx = -1;
+        root.selHeadIdx = -1;
+        root.applySelection();
+    }
+    function selectAllMessages() {
+        if (chatModel.count === 0) { return; }
+        root.selAnchorIdx = 0;
+        root.selAnchorPos = 0;
+        root.selHeadIdx = chatModel.count - 1;
+        var last = root.bodyAt(chatModel.count - 1);
+        root.selHeadPos = last ? last.length : chatModel.get(chatModel.count - 1).text.length;
+        root.applySelection();
+    }
+    // Build the text for the clipboard. Visible delegates give the rendered
+    // text (markdown already resolved); ones that were recycled fall back to
+    // the raw message, which for a code block is arguably the more useful form.
+    function selectedText() {
+        var r = root.selRange();
+        if (!r) { return ""; }
+        var parts = [];
+        for (var i = r.lo; i <= r.hi; i++) {
+            var e = root.bodyAt(i);
+            var raw = chatModel.get(i).text;
+            var who = (chatModel.get(i).role === "lotei" ? root.aiName : "you") + ": ";
+            if (e) {
+                var a = (i === r.lo) ? r.loPos : 0;
+                var b = (i === r.hi) ? r.hiPos : e.length;
+                parts.push(who + e.getText(a, b));
+            } else {
+                parts.push(who + raw);
+            }
+        }
+        return parts.join("\n");
+    }
+    function copySelection() {
+        var t = root.selectedText();
+        if (t.length === 0) {
+            var all = [];
+            for (var i = 0; i < chatModel.count; i++) {
+                all.push((chatModel.get(i).role === "lotei" ? root.aiName : "you") + ": " + chatModel.get(i).text);
+            }
+            t = all.join("\n\n");
+        }
+        Cli.copyToClipboard(t);
+    }
+
     // ---- view state / geometry ------------------------------------------
     // "normal" = docked in the corner, "max" = big read view, "min" = collapsed
     property string viewState: "normal"
+
+    // memory.txt may have been edited in the file manager while this panel was
+    // hidden. Re-read the card's copy whenever the chat comes back into view,
+    // so the conversation starts from what the file actually says.
+    onVisibleChanged: if (visible) { Lotei.reloadMemory(); }
 
     readonly property int dockX: 24
     readonly property int dockY: 272
@@ -137,6 +250,9 @@ Rectangle {
 
     // One fixed greeting on startup; everything after that is the model talking.
     Component.onCompleted: {
+        // memory.txt on the card is the source of truth; pick it up before the
+        // first turn rather than trusting the local cache.
+        Lotei.reloadMemory();
         appendMessage("lotei", "Hey boss, how can I help you today?");
     }
 
@@ -333,25 +449,40 @@ Rectangle {
             }
 
             delegate: Column {
+                id: msgCol
                 width: ListView.view.width
                 spacing: 1
+
+                // Lets root.applySelection() reach this message's text.
+                property alias bodyEdit: bodyText
 
                 TextEdit { id: clip; visible: false }  // hidden clipboard helper
 
                 Row {
                     spacing: 8
-                    Text {
-                        text: model.role === "lotei" ? root.aiName : "you"
-                        color: model.role === "lotei" ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                        font.family: "Share Tech Mono"
-                        font.pixelSize: 11
+                    Rectangle {
+                        width: roleLabel.implicitWidth + 4
+                        height: roleLabel.implicitHeight
+                        color: root.indexInSelection(index) ? roleLabel.selectionColor : "transparent"
+                        Text {
+                            id: roleLabel
+                            x: 2
+                            readonly property color selectionColor: "#3b5bdb"
+                            text: model.role === "lotei" ? root.aiName : "you"
+                            color: model.role === "lotei" ? Theme.color.lightorange2 : Theme.color.mediumorange1
+                            font.family: "Share Tech Mono"
+                            font.pixelSize: 11
+                        }
                     }
                 }
                 TextEdit {
+                    id: bodyText
                     width: parent.width
                     text: model.text
                     readOnly: true
-                    selectByMouse: true
+                    // Off on purpose: the drag below spans messages, and the
+                    // built-in one would fight it inside this single message.
+                    selectByMouse: false
                     persistentSelection: true
                     wrapMode: TextEdit.Wrap
                     textFormat: model.role === "lotei" ? TextEdit.MarkdownText : TextEdit.PlainText
@@ -359,6 +490,48 @@ Rectangle {
                     font.family: "Share Tech Mono"
                     font.pixelSize: 13
                     onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+
+                    // Covers the message text and nothing else, so the save
+                    // panel below keeps its own mouse handling untouched.
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        cursorShape: Qt.IBeamCursor
+                        // The list is a Flickable: without this it steals the
+                        // drag halfway through and treats it as a scroll, which
+                        // is what made the selection break up mid-gesture.
+                        preventStealing: true
+
+                        onPressed: function(mouse) {
+                            root.selAnchorIdx = index;
+                            root.selAnchorPos = bodyText.positionAt(mouse.x, mouse.y);
+                            root.selHeadIdx = index;
+                            root.selHeadPos = root.selAnchorPos;
+                            root.applySelection();
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (!pressed) { return; }
+                            // Which message is under the cursor now? Map into the
+                            // list's content item so the answer stays right while
+                            // the view scrolls.
+                            var pt = mapToItem(listView.contentItem, mouse.x, mouse.y);
+                            var idx = root.msgIndexAt(pt.x, pt.y);
+                            if (idx < 0) { return; }
+                            var e = root.bodyAt(idx);
+                            if (!e) { return; }
+                            var local = mapToItem(e, mouse.x, mouse.y);
+                            root.selHeadIdx = idx;
+                            root.selHeadPos = e.positionAt(local.x, local.y);
+                            root.applySelection();
+                        }
+                        onDoubleClicked: function(mouse) {
+                            root.selAnchorIdx = index;
+                            root.selHeadIdx = index;
+                            bodyText.selectWord();
+                            root.selAnchorPos = bodyText.selectionStart;
+                            root.selHeadPos = bodyText.selectionEnd;
+                        }
+                    }
                 }
 
                 // ---- Manual save panel (model-free) --------------------------
@@ -410,7 +583,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 12
                                 Text {
-                                    text: "⧉ copiar"
+                                    text: "⧉ copy"
                                     color: copyBtn.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
                                     font.family: "Share Tech Mono"; font.pixelSize: 12
                                     MouseArea {

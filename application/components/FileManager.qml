@@ -18,7 +18,11 @@ Item {
     // ---- multi-selection model (drag-band, Cmd+click, Cmd+A) ----
     property var selectedList: []                       // selected row indices
     function isSelected(i) { return selectedList.indexOf(i) >= 0 }
-    function clearSel() { selectedList = [] }
+    // Clearing the selection has to drop the current item too. The delegate
+    // paints at full opacity for EITHER multiSelected OR isCurrent, so emptying
+    // selectedList on its own left the last-clicked file looking selected even
+    // though nothing was.
+    function clearSel() { selectedList = []; fileView.currentIndex = -1 }
     function selectOnly(i) { selectedList = [i] }
     function toggleSel(i) {
         var a = selectedList.slice();
@@ -142,7 +146,10 @@ Item {
                         }
 
                         onTextChanged: {
-                            fileView.currentIndex = 0;
+                            // A new folder starts with nothing selected. Setting
+                            // currentIndex to 0 here used to leave the first item
+                            // painted as selected before the user touched anything.
+                            control.clearSel();
                         }
 
                     }
@@ -206,7 +213,20 @@ Item {
                     property bool didBand: false
 
                     function idxAt(mx, my) {
-                        return fileView.indexAt(mx + fileView.contentX, my + fileView.contentY);
+                        var cx = mx + fileView.contentX;
+                        var cy = my + fileView.contentY;
+                        var idx = fileView.indexAt(cx, cy);
+                        if(idx < 0) { return -1; }
+                        // indexAt answers for the whole cell. Once the grid is
+                        // full there is no truly empty space left to click, so
+                        // the padding around an icon has to count as empty --
+                        // otherwise the selection can never be cleared.
+                        var item = fileView.itemAtIndex(idx);
+                        if(item && item.hitsContent) {
+                            var p = fileView.contentItem.mapToItem(item, cx, cy);
+                            if(!item.hitsContent(p.x, p.y)) { return -1; }
+                        }
+                        return idx;
                     }
 
                     onPressed: function(mouse) {
@@ -399,7 +419,11 @@ Item {
 
     Component.onCompleted: {
         Backend.fileManager.currentPathChanged.connect(function() {
-            fileView.currentIndex = 0;
+            // Covers every way of arriving somewhere: cd, back, forward, refresh
+            // and the jump to root. selectedList was never cleared on navigation
+            // either, so indices left over from the previous folder came back
+            // highlighted on rows that just happened to share the same numbers.
+            control.clearSel();
         });
     }
 

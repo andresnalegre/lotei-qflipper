@@ -104,7 +104,10 @@ private:
 
     void setModelDataRoot();
     void setModelData(const FileInfoList &newData);
-    void registerOperation(AbstractOperation *operation);
+    // label describes the action in plain words for the LOGS panel. Every
+    // device operation funnels through here, so this is the one place that can
+    // report both what was attempted and how it ended.
+    void registerOperation(AbstractOperation *operation, const QString &label = QString());
 
     const QByteArray remoteFilePath(const QString &fileName) const;
 

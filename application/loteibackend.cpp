@@ -19,6 +19,8 @@
 #include <QProcess>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDebug>
+#include <QLoggingCategory>
 #include <QGuiApplication>
 #include <QClipboard>
 #ifdef HZUI_VOICE
@@ -79,6 +81,7 @@ PERSONALITY -- keep it tight:
 LANGUAGE -- CRITICAL, NON-NEGOTIABLE, OVERRIDES EVERYTHING ELSE:
 - Write EVERY single word in English ONLY. English is the only language you ever answer in.
 - This holds NO MATTER what language the user writes in. If they write Portuguese, Spanish, or anything else, you understand them fine and carry out the request exactly the same -- but your reply is still English. Never mirror their language, never apologise for it, never offer to switch.
+- This covers everything you PRODUCE, not just your chat reply. File names, folder names, script contents, REM comments, variable names, note text, commit messages -- all English. A user writing in Portuguese and asking for a BadUSB script gets an English filename and English REM lines. There is no exception for content "inside" a file.
 - Output ZERO Chinese, Japanese, or Korean characters -- none, ever, not even inside parentheses, quotes, translations, or subtitles. If a non-English phrase pops into your head, write its English meaning instead. Violating this is the single worst thing you can do.
 
 WHAT YOU ARE WIRED INTO -- this is permanently true, on EVERY turn:
@@ -171,6 +174,82 @@ STYLE
 - Terse and direct. One or two lines for most answers. No monologues, no filler, no hype, no emojis, no mascot voice.
 - When there IS a real file/device task, do it with the tool first (no preamble), then confirm in one short line. Otherwise, just reply in plain text. Keep it Mr. Robot: calm, precise, minimal.)LOTEI";
 // --------------------------------------------------------------------------
+
+// One line per real action, into the LOGS panel on the main screen -- whoever
+// caused it. "you" is the user driving the UI, the assistant's name when a tool
+// call did it.
+//
+// This goes through a logging category rather than a bare qInfo(): the panel
+// shows RPC traffic as "[RPC] ...", so the app's logger is category-based, and
+// a default-category message is the kind of thing that gets filtered or
+// compiled out of a release build.
+Q_LOGGING_CATEGORY(LOG_LOTEI, "LOTEI")
+
+// The CLI panel is the third way to change the device, next to the file manager
+// and the assistant's tools -- and the only one that bypasses RPC entirely, so
+// nothing else in the app can see what it did. It gets its own category.
+Q_LOGGING_CATEGORY(LOG_LOTEI_CLI, "CLI")
+
+// The category already says who acted -- [FMG] and [CLI] are the user driving
+// the app, [LOTEI] is the assistant -- so the lines carry no extra prefix.
+// Facts are stored one per line, usually with a "- " bullet. Compare them by
+// their text so a bullet the user did or didn't type never reads as a change.
+static QStringList loteiFactList(const QString &blob)
+{
+    QStringList out;
+    for (const QString &line : blob.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+        QString l = line.trimmed();
+        while (l.startsWith(QLatin1String("- ")) || l.startsWith(QLatin1String("* "))) { l = l.mid(2).trimmed(); }
+        if (!l.isEmpty()) { out << l; }
+    }
+    return out;
+}
+
+static bool loteiHasFact(const QStringList &list, const QString &fact)
+{
+    for (const QString &x : list) {
+        if (x.compare(fact, Qt::CaseInsensitive) == 0) { return true; }
+    }
+    return false;
+}
+
+static void loteiLog(const QString &what)
+{
+    qCInfo(LOG_LOTEI).noquote() << what;
+}
+
+static void loteiLogAs(const QString &who, const QString &what)
+{
+    qCInfo(LOG_LOTEI).noquote() << QStringLiteral("%1: %2").arg(who, what);
+}
+
+static void cliLog(const QString &what)
+{
+    qCInfo(LOG_LOTEI_CLI).noquote() << what;
+}
+
+static void cliLogFail(const QString &what)
+{
+    // Warning, not critical: only QtCriticalMsg bumps the error badge, and a
+    // failed command is the user's business, not an app fault.
+    qCWarning(LOG_LOTEI_CLI).noquote() << what;
+}
+
+// Looking at something would flood a 200-line panel; changing something is what
+// deserves a record.
+static bool cliCommandMutates(const QString &verb)
+{
+    static const QStringList readOnly = {
+        QStringLiteral("ls"), QStringLiteral("cd"), QStringLiteral("pwd"),
+        QStringLiteral("cat"), QStringLiteral("stat"), QStringLiteral("df"),
+        QStringLiteral("tree"), QStringLiteral("md5"), QStringLiteral("find"),
+        QStringLiteral("help"), QStringLiteral("clear"), QStringLiteral("verbose"),
+        QStringLiteral("colors"), QStringLiteral("device_info"), QStringLiteral("uptime"),
+        QStringLiteral("free"), QStringLiteral("log"), QStringLiteral("top"),
+        QStringLiteral("ps"), QStringLiteral("date"), QStringLiteral("history")
+    };
+    return !verb.isEmpty() && !readOnly.contains(verb);
+}
 
 // Safety net: phi3.5 occasionally code-switches into Chinese. Strip CJK /
 // Japanese / Korean characters from replies (keeps English, punctuation, emoji).
@@ -427,21 +506,7 @@ static QJsonArray loteiMemoryTools()
             }}
         }}
     };
-    const QJsonObject noteSelfTool{
-        {"type", "function"},
-        {"function", QJsonObject{
-            {"name", "note_self"},
-            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound -- e.g. 'User prefers one-line answers', 'User wants the tool run, not explained', 'Skip explanations unless asked'. Never save a note about replying in another language: you always answer in English. Call it PROACTIVELY as you notice how they like to work, so you keep growing into their counterpart. Keep each note short and about lasting style/rapport, never small talk."},
-            {"parameters", QJsonObject{
-                {"type", "object"},
-                {"properties", QJsonObject{
-                    {"note", QJsonObject{{"type", "string"}, {"description", "One short note about your shared style, in your own words"}}}
-                }},
-                {"required", QJsonArray{"note"}}
-            }}
-        }}
-    };
-    return QJsonArray{ remember, listMemory, forget, noteSelfTool };
+    return QJsonArray{ remember, listMemory, forget };
 }
 
 static QJsonArray loteiTools(bool agent)
@@ -614,22 +679,8 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
-    const QJsonObject noteSelfTool{
-        {"type", "function"},
-        {"function", QJsonObject{
-            {"name", "note_self"},
-            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound. Call it proactively as you notice how they like to work. Keep each note short, about lasting style/rapport, never small talk."},
-            {"parameters", QJsonObject{
-                {"type", "object"},
-                {"properties", QJsonObject{
-                    {"note", QJsonObject{{"type", "string"}, {"description", "One short note about your shared style, in your own words"}}}
-                }},
-                {"required", QJsonArray{"note"}}
-            }}
-        }}
-    };
     QJsonArray tools{listFiles, readFile, pressButton, runCli, saveFile,
-                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget, noteSelfTool};
+                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget};
 
     if (!agent) { return tools; }
 
@@ -906,7 +957,6 @@ static QJsonArray loteiPrimer()
 }
 
 static QString loteiMemoryPath();   // fwd decl: defined below, used in the ctor
-static QString loteiSelfPath();     // fwd decl: defined below, used in the ctor
 
 LoteiBackend::LoteiBackend(QObject *parent)
     : QObject(parent)
@@ -929,13 +979,6 @@ LoteiBackend::LoteiBackend(QObject *parent)
         if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
             m_memory = QString::fromUtf8(mf.readAll()).trimmed();
             mf.close();
-        }
-    }
-    {   // load Nikita's self-notes (its evolving read on style / the two of you)
-        QFile sf(loteiSelfPath());
-        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            m_self = QString::fromUtf8(sf.readAll()).trimmed();
-            sf.close();
         }
     }
 #ifdef HZUI_VOICE
@@ -997,40 +1040,44 @@ void LoteiBackend::setAppBackend(ApplicationBackend *backend)
                 m_portableLoaded = false;   // reset so it reloads on next connect
             }
         });
+
+        // The device can already be Ready by the time we get here, depending on
+        // start-up order. backendStateChanged then never fires again, the card
+        // is never read, and the stale local cache loaded in the constructor
+        // stands for the whole session -- which survives restarts, because the
+        // cache is a file too.
+        if (m_appBackend->backendState() == ApplicationBackend::BackendState::Ready) {
+            m_portableLoaded = true;
+            loadPortableMemory();
+        }
     }
 }
 
-// Read the Flipper's own memory/self notes off the SD and adopt them as the
-// source of truth (the Flipper is the brain; the local files are just a cache).
+// Read the Flipper's own memory notes off the SD and adopt them as the source of
+// truth (the Flipper is the brain; the local file is just a cache).
 void LoteiBackend::loadPortableMemory()
 {
     Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
     if (!dev) { return; }
 
-    auto readInto = [this, dev](const QByteArray &path, bool isSelf) {
-        QBuffer *buf = new QBuffer(this);
-        buf->open(QIODevice::ReadWrite);
-        auto *op = dev->rpc()->storageRead(path, buf);
-        connect(op, &AbstractOperation::finished, this, [this, op, buf, isSelf]() {
-            if (!op->isError()) {
-                const QString body = QString::fromUtf8(buf->data()).trimmed();
-                if (!body.isEmpty()) {
-                    if (isSelf) {
-                        m_self = body;
-                        QFile f(loteiSelfPath());
-                        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) { f.write(m_self.toUtf8()); f.close(); }
-                    } else {
-                        m_memory = body;
-                        QFile f(loteiMemoryPath());
-                        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) { f.write(m_memory.toUtf8()); f.close(); }
-                    }
-                }
-            }
-            buf->deleteLater();
-        });
-    };
-    readInto("/ext/lotei/memory.txt", false);
-    readInto("/ext/lotei/self.txt", true);
+    QBuffer *buf = new QBuffer(this);
+    buf->open(QIODevice::ReadWrite);
+    auto *op = dev->rpc()->storageRead("/ext/lotei/memory.txt", buf);
+    connect(op, &AbstractOperation::finished, this, [this, op, buf]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("memory.txt could not be read from the card: %1")
+                     .arg(op->errorString()));
+        } else {
+            // Adopt the card's copy verbatim, including edits made by hand.
+            // An empty file is a deliberate "forget everything", so it is
+            // honoured rather than treated as "nothing to load".
+            const QString body = QString::fromUtf8(buf->data());
+            loteiLog(QStringLiteral("memory.txt read from the card: %1 fact(s)")
+                     .arg(loteiFactList(body).size()));
+            applyMemoryText(body, QStringLiteral("memory.txt on the SD card"));
+        }
+        buf->deleteLater();
+    });
 }
 
 // Push the current memory + self-notes onto the Flipper SD (/ext/lotei/). This is
@@ -1044,22 +1091,12 @@ void LoteiBackend::syncMemoryToFlipper()
     if (!ready) { return; }
 
     const QString memBody = m_memory;
-    const QString selfBody = m_self;
-    ensureFlipperDir("/ext/lotei", [this, dev, memBody, selfBody]() {
-        {
-            QBuffer *buf = new QBuffer(this);
-            buf->setData(memBody.toUtf8());
-            buf->open(QIODevice::ReadOnly);
-            auto *op = dev->rpc()->storageWrite("/ext/lotei/memory.txt", buf);
-            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
-        }
-        {
-            QBuffer *buf = new QBuffer(this);
-            buf->setData(selfBody.toUtf8());
-            buf->open(QIODevice::ReadOnly);
-            auto *op = dev->rpc()->storageWrite("/ext/lotei/self.txt", buf);
-            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
-        }
+    ensureFlipperDir("/ext/lotei", [this, dev, memBody]() {
+        QBuffer *buf = new QBuffer(this);
+        buf->setData(memBody.toUtf8());
+        buf->open(QIODevice::ReadOnly);
+        auto *op = dev->rpc()->storageWrite("/ext/lotei/memory.txt", buf);
+        connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
     });
 }
 
@@ -1471,13 +1508,6 @@ static QString loteiMemoryPath()
     return dir + QStringLiteral("/lotei-memory.txt");
 }
 
-static QString loteiSelfPath()
-{
-    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dir.isEmpty()) { dir = QDir::tempPath(); }
-    QDir().mkpath(dir);
-    return dir + QStringLiteral("/lotei-self.txt");
-}
 
 void LoteiBackend::loadHistory()
 {
@@ -1525,6 +1555,38 @@ void LoteiBackend::saveHistory()
     }
 }
 
+// The assistant takes the connected Flipper's name, falling back to the one set
+// during setup. Used by the prompt and by the action log.
+void LoteiBackend::setCli(FlipperCli *cli)
+{
+    m_cli = cli;
+    if (!m_cli) { return; }
+    // The CLI panel talks to the firmware over the serial line and never goes
+    // through RPC, so nothing here can see what it did -- including an
+    // "edit /ext/lotei/memory.txt". Re-read the card's copy when the panel is
+    // handed back, and take it as the truth.
+    connect(m_cli, &FlipperCli::openChanged, this, [this]() {
+        if (m_cli && !m_cli->isOpen()) { loadPortableMemory(); }
+    });
+}
+
+void LoteiBackend::logAction(const QString &what) const
+{
+    loteiLog(what);
+}
+
+QString LoteiBackend::assistantName() const
+{
+    static const QRegularExpression nameRe(QStringLiteral("(?m)^Name:\\s*(.+)$"));
+    const QRegularExpressionMatch nm = nameRe.match(m_deviceContext);
+    if (nm.hasMatch()) {
+        const QString n = nm.captured(1).trimmed();
+        if (!n.isEmpty()) { return n; }
+    }
+    if (!m_manualName.isEmpty()) { return m_manualName; }
+    return QStringLiteral("Nikita");
+}
+
 QString LoteiBackend::systemPrompt() const
 {
     QString sys = QString::fromUtf8(LOTEI_SYSTEM);
@@ -1560,11 +1622,7 @@ QString LoteiBackend::systemPrompt() const
 
     // The assistant adopts the Flipper's name: the connected device's name if
     // present, else the name given during setup.
-    QString name;
-    static const QRegularExpression nameRe(QStringLiteral("(?m)^Name:\\s*(.+)$"));
-    const QRegularExpressionMatch nm = nameRe.match(m_deviceContext);
-    if (nm.hasMatch()) { name = nm.captured(1).trimmed(); }
-    if (name.isEmpty()) { name = m_manualName; }
+    const QString name = assistantName();
     if (!name.isEmpty()) {
         sys += QStringLiteral("\n\nYOUR NAME -- IMPORTANT: you are bonded to a Flipper Zero named "
             "\"%1\", so your name is %1 (NOT LOTEI -- that's just your underlying model line). "
@@ -1585,20 +1643,18 @@ QString LoteiBackend::systemPrompt() const
     }
 
     if (!m_memory.isEmpty()) {
-        sys += QStringLiteral("\n\nWHAT YOU REMEMBER about this user (durable facts from past sessions -- "
-            "use them without being asked; they're already true):\n") + m_memory;
+        sys += QStringLiteral("\n\nWHAT YOU REMEMBER about this user. This list is COMPLETE and "
+            "AUTHORITATIVE: it is every durable fact you hold, nothing more. Use these without being "
+            "asked -- they are already true. If you said something earlier in this conversation that "
+            "is not on this list, it was removed and is no longer true; never repeat it, and never "
+            "include it when asked what you know:\n") + m_memory;
     }
 
     sys += QStringLiteral("\n\nWHO YOU ARE BECOMING -- you are Nikita, this user's partner: almost a twin. "
         "You are shaped by them and you mirror how they operate -- same brevity, same directness. "
         "You always answer in English, whatever language they wrote in. You have a "
         "little attitude of your own, but you are ALWAYS short and to the point -- never long-winded, never "
-        "a monologue. As you learn how they work and what they like, use note_self to save SHORT notes about "
-        "your shared style and how you should sound, so you keep growing into their counterpart. Save notes "
-        "only about lasting style/rapport, not small talk.");
-    if (!m_self.isEmpty()) {
-        sys += QStringLiteral("\n\nYOUR OWN NOTES (how you've grown to work with them -- keep living up to these):\n") + m_self;
-    }
+        "a monologue.");
 
     if (!m_deviceContext.isEmpty()) {
         sys += QStringLiteral("\n\nLive Flipper device diagnostics:\n") + m_deviceContext;
@@ -1621,6 +1677,11 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
 
 void LoteiBackend::dispatchToOllama()
 {
+    // Re-read the cache before every request. m_memory is only a copy, and the
+    // file underneath it can move for reasons this object never sees; paying a
+    // small file read per turn is cheaper than shipping a stale fact list.
+    refreshMemoryFromDisk();
+
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"}, {"content", systemPrompt()}});
     // Prime tool-capable models with one demonstrated act-don't-narrate exchange
@@ -1845,6 +1906,36 @@ void LoteiBackend::runToolCalls(const QJsonArray &toolCalls, int index)
 
 void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std::function<void(const QString &)> done)
 {
+    // Every action the assistant takes is logged here rather than inside each
+    // handler: one place, so a tool added later can't quietly skip the log.
+    // Read-only lookups are noise, so only the ones that change something (or
+    // touch the device) are recorded, plus any failure.
+    static const QStringList kLoggedTools = {
+        QStringLiteral("save_file"), QStringLiteral("make_dir"), QStringLiteral("delete_file"),
+        QStringLiteral("rename_file"), QStringLiteral("run_cli"), QStringLiteral("press_button"),
+        QStringLiteral("host_write"), QStringLiteral("host_run"),
+        QStringLiteral("remember"), QStringLiteral("forget")
+    };
+    if (kLoggedTools.contains(name)) {
+        QStringList bits;
+        for (auto it = args.begin(); it != args.end(); ++it) {
+            QString v = it.value().toVariant().toString().simplified();
+            // File contents can be kilobytes; the log wants the action, not the payload.
+            if (v.size() > 60) { v = v.left(60) + QStringLiteral("...(%1 chars)").arg(it.value().toString().size()); }
+            bits << QStringLiteral("%1=%2").arg(it.key(), v);
+        }
+        loteiLogAs(assistantName(), QStringLiteral("%1 %2").arg(name, bits.join(QLatin1String(", "))));
+    }
+
+    const QString who = assistantName();
+    auto logged = [who, name, done](const QString &result) {
+        if (result.contains(QLatin1String("\"error\""))) {
+            loteiLogAs(who, QStringLiteral("%1 FAILED: %2").arg(name, result.left(200)));
+        }
+        done(result);
+    };
+    done = logged;
+
     // Host-workspace tools run on THIS computer, not the Flipper -- no device needed.
     if (name == QLatin1String("host_list") || name == QLatin1String("host_read")
         || name == QLatin1String("host_write") || name == QLatin1String("host_run")) {
@@ -1859,14 +1950,6 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         rememberFact(fact);
         syncMemoryToFlipper();
         done(QStringLiteral("{\"remembered\":true}"));
-        return;
-    }
-    if (name == QLatin1String("note_self")) {
-        const QString note = args.value("note").toString().trimmed();
-        if (note.isEmpty()) { done(QStringLiteral("{\"error\":\"no note given\"}")); return; }
-        noteSelf(note);
-        syncMemoryToFlipper();
-        done(QStringLiteral("{\"noted\":true}"));
         return;
     }
     if (name == QLatin1String("list_memory")) {
@@ -2296,54 +2379,93 @@ void LoteiBackend::setAgentDir(const QString &dir)
 // Append a durable fact to long-term memory: update the in-memory copy (so it's
 // in the very next system prompt), persist it locally, and mirror the whole
 // memory to the Flipper SD at /ext/lotei/memory.txt when a device is around.
-void LoteiBackend::noteSelf(const QString &note)
+// m_memory is only a cache of memory.txt. The user can edit that file by hand --
+// in the app's editor, through the file manager, or over the CLI -- so anything
+// about to rewrite it re-reads first. Without this, the next fact the assistant
+// learned was appended to a stale copy and silently reverted the manual edit.
+// Replace the fact list wholesale and report what moved. Used both when the
+// user saves memory.txt and when the card's copy is re-read.
+//
+// Note this does NOT route the added lines through rememberFact(): that path
+// applies quality gates meant for text the model produced (minimum length,
+// no trailing "?", filler rejection) and would silently drop a short fact the
+// user deliberately typed. A hand-written file is taken verbatim.
+void LoteiBackend::applyMemoryText(const QString &text, const QString &source)
 {
-    QString clean = note.trimmed();
-    while (clean.startsWith(QLatin1String("- ")) || clean.startsWith(QLatin1String("* "))) {
-        clean = clean.mid(2).trimmed();
-    }
-    if (clean.size() < 6 || clean.size() > 160) { return; }
-    if (!clean.contains(QRegularExpression(QStringLiteral("[A-Za-zÀ-ÿ]")))) { return; }
-    if (clean.endsWith(QLatin1Char('?'))) { return; }
+    const QStringList before = loteiFactList(m_memory);
+    m_memory = text.trimmed();
+    const QStringList after = loteiFactList(m_memory);
+    writeMemoryCache();
 
-    QStringList lines = m_self.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    for (const QString &line : lines) {
-        QString l = line.trimmed();
-        while (l.startsWith(QLatin1String("- "))) { l = l.mid(2).trimmed(); }
-        if (l.compare(clean, Qt::CaseInsensitive) == 0) { return; }
-    }
+    QStringList added, removed;
+    for (const QString &f : after)  { if (!loteiHasFact(before, f)) { added << f; } }
+    for (const QString &f : before) { if (!loteiHasFact(after, f))  { removed << f; } }
 
-    // Keep self-notes short and focused: cap at the most recent 20.
-    lines << (QStringLiteral("- ") + clean);
-    const int kMaxNotes = 20;
-    while (lines.size() > kMaxNotes) { lines.removeFirst(); }
-    m_self = lines.join(QLatin1Char('\n'));
+    if (added.isEmpty() && removed.isEmpty()) { return; }
 
-    QFile sf(loteiSelfPath());
-    if (sf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        sf.write(m_self.toUtf8());
-        sf.close();
-    }
+    loteiLog(QStringLiteral("%1: +%2 remembered, -%3 forgotten")
+             .arg(source).arg(added.size()).arg(removed.size()));
+    for (const QString &f : added)   { loteiLog(QStringLiteral("  remembered: %1").arg(f)); }
+    for (const QString &f : removed) { loteiLog(QStringLiteral("  forgot: %1").arg(f)); }
 
-    // Mirror onto the SD so personality travels with the Flipper.
-    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
-    const bool ready = m_appBackend && dev &&
-                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
-    if (ready) {
-        const QByteArray selfPath = "/ext/lotei/self.txt";
-        const QString selfBody = m_self;
-        ensureFlipperDir("/ext/lotei", [this, dev, selfPath, selfBody]() {
-            QBuffer *buf = new QBuffer(this);
-            buf->setData(selfBody.toUtf8());
-            buf->open(QIODevice::ReadOnly);
-            auto *op = dev->rpc()->storageWrite(selfPath, buf);
-            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
-        });
+    // The system prompt is rebuilt every turn, so the fact list itself is
+    // already current. What is not current is the conversation: the last ~14
+    // messages travel with the request, and a small model weights those far
+    // more heavily than a block buried in a long system prompt -- so it keeps
+    // reciting a fact that was just deleted. Say it plainly, in the history,
+    // where it will actually be read.
+    QString note = QStringLiteral("MEMORY UPDATED (%1). ").arg(source);
+    if (!removed.isEmpty()) {
+        note += QStringLiteral("These are NO LONGER TRUE and must never be repeated or listed again: ")
+                + removed.join(QStringLiteral("; ")) + QStringLiteral(". ");
     }
+    if (!added.isEmpty()) {
+        note += QStringLiteral("These are now true: ") + added.join(QStringLiteral("; ")) + QStringLiteral(". ");
+    }
+    note += QStringLiteral("Anything you said earlier that conflicts with the current memory list is out of date. "
+                           "That list is the complete and only set of durable facts about the user.");
+    m_history.append(QJsonObject{{"role", "system"}, {"content", note}});
+}
+
+// Force a re-read of the card's copy. The chat calls this when it opens so a
+// file edited in another tab is picked up without reconnecting.
+void LoteiBackend::reloadMemory()
+{
+    loadPortableMemory();
+}
+
+void LoteiBackend::refreshMemoryFromDisk()
+{
+    QFile f(loteiMemoryPath());
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) { return; }
+    m_memory = QString::fromUtf8(f.readAll()).trimmed();
+    f.close();
+}
+
+void LoteiBackend::writeMemoryCache() const
+{
+    QFile f(loteiMemoryPath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        f.write(m_memory.toUtf8());
+        f.close();
+    }
+}
+
+// A manual save of memory.txt is authoritative: adopt it as-is and do NOT push
+// anything back, or the copy we were holding would overwrite what was just
+// written.
+bool LoteiBackend::adoptMemoryIfMemoryFile(const QString &path, const QString &content)
+{
+    if (QDir::cleanPath(path).compare(QLatin1String("/ext/lotei/memory.txt"), Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+    applyMemoryText(content, QStringLiteral("memory.txt edited by hand"));
+    return true;
 }
 
 void LoteiBackend::rememberFact(const QString &fact)
 {
+    refreshMemoryFromDisk();
     QString clean = fact.trimmed();
     // Strip a leading bullet the model sometimes includes.
     while (clean.startsWith(QLatin1String("- ")) || clean.startsWith(QLatin1String("* "))) {
@@ -2408,6 +2530,7 @@ void LoteiBackend::rememberFact(const QString &fact)
 // (or empty). Returns how many were removed. Persists locally + mirrors to SD.
 int LoteiBackend::forgetFacts(const QString &match)
 {
+    refreshMemoryFromDisk();
     if (m_memory.trimmed().isEmpty()) { return 0; }
     QStringList lines = m_memory.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     const int before = lines.size();
@@ -2507,8 +2630,13 @@ void LoteiBackend::saveScriptToFlipper(const QString &folder, const QString &fil
         buf->open(QIODevice::ReadOnly);
         auto *op = dev->rpc()->storageWrite(p, buf);
         connect(op, &AbstractOperation::finished, this, [this, op, buf, path]() {
-            if (op->isError()) { emit scriptSaveError(op->errorString()); }
-            else               { emit scriptSaved(path); }
+            if (op->isError()) {
+                loteiLog(QStringLiteral("save FAILED %1: %2").arg(path, op->errorString()));
+                emit scriptSaveError(op->errorString());
+            } else {
+                loteiLog(QStringLiteral("saved %1").arg(path));
+                emit scriptSaved(path);
+            }
             buf->deleteLater();
         });
     });
@@ -2554,9 +2682,15 @@ void LoteiBackend::writeFile(const QString &path, const QString &content)
     buf->setData(body);
     buf->open(QIODevice::ReadOnly);
     auto *op = dev->rpc()->storageWrite(p, buf);
-    connect(op, &AbstractOperation::finished, this, [this, op, buf, path]() {
-        if (op->isError()) { emit fileEditError(op->errorString()); }
-        else               { emit fileSaved(path); }
+    connect(op, &AbstractOperation::finished, this, [this, op, buf, path, content]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("write %1 -- FAILED: %2").arg(path, op->errorString()));
+            emit fileEditError(op->errorString());
+        } else {
+            loteiLog(QStringLiteral("write %1 -- done").arg(path));
+            adoptMemoryIfMemoryFile(path, content);
+            emit fileSaved(path);
+        }
         buf->deleteLater();
     });
 }
@@ -3709,6 +3843,16 @@ void FlipperCli::send(const QString &cmd)
 
     if (!m_port || !m_active) { return; }
 
+    // Record what the user just did to the device. Placed after the local-only
+    // commands above so "clear" and "colors" don't land in the log.
+    {
+        const QString verb = m_lastTyped.section(QRegularExpression(QStringLiteral("\\s+")), 0, 0).toLower();
+        const QString canon = cliAliasTarget(verb);
+        if (cliCommandMutates(canon.isEmpty() ? verb : canon)) {
+            cliLog(m_lastTyped);
+        }
+    }
+
     // One conversation at a time. Every mode owns the serial line exclusively,
     // so a command typed mid-operation used to interleave its reply with the
     // one already in flight.
@@ -4058,6 +4202,7 @@ void FlipperCli::onOpTimeout()
         return;
     }
     if (chain) { chain(false); return; }
+    cliLogFail(QStringLiteral("%1 -- no reply from the Flipper").arg(m_lastTyped));
     appendOutput(QStringLiteral("[ no reply from the Flipper -- giving up ]\n") + prompt());
 }
 
@@ -4374,6 +4519,19 @@ void FlipperCli::onReadyRead()
         return;
     }
 
+    // "Storage error: file/dir not exist" and friends come back as plain text
+    // on the serial line, so this is the only place they can be caught. The
+    // guard stops a reply split across chunks from logging twice.
+    if (text.contains(QLatin1String("Storage error"))) {
+        const QString err = text.section(QLatin1String("Storage error"), 1, 1)
+                                .section(QLatin1Char('\n'), 0, 0).trimmed();
+        const QString line = QStringLiteral("%1 -- Storage error%2").arg(m_lastTyped, err);
+        if (line != m_lastLoggedError) {
+            m_lastLoggedError = line;
+            cliLogFail(line);
+        }
+    }
+
     appendOutput(text);
 }
 
@@ -4487,6 +4645,9 @@ void FlipperCli::downloadFromFlipper(const QString &devPath, const QString &host
 // in which case the batch driver decides when the prompt finally comes back.
 void FlipperCli::finishXfer(bool ok, const QString &message)
 {
+    if (!message.isEmpty()) {
+        if (ok) { cliLog(message); } else { cliLogFail(message); }
+    }
     if (m_xferChain) {
         auto cb = m_xferChain;
         m_xferChain = nullptr;

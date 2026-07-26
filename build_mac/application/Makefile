@@ -2174,6 +2174,8 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QProcess \
 		/opt/homebrew/lib/QtCore.framework/Headers/QFileInfo \
 		/opt/homebrew/lib/QtCore.framework/Headers/QCoreApplication \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDebug \
+		/opt/homebrew/lib/QtCore.framework/Headers/QLoggingCategory \
 		/opt/homebrew/lib/QtGui.framework/Headers/QGuiApplication \
 		/opt/homebrew/lib/QtGui.framework/Headers/QClipboard \
 		/opt/homebrew/lib/QtSerialPort.framework/Headers/QSerialPort \

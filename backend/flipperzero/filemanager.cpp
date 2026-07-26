@@ -120,7 +120,8 @@ void FileManager::rename(const QString &oldName, const QString &newName)
         return;
     }
 
-    registerOperation(m_device->rpc()->storageRename(remoteFilePath(oldName), remoteFilePath(newName)));
+    registerOperation(m_device->rpc()->storageRename(remoteFilePath(oldName), remoteFilePath(newName)),
+                      QStringLiteral("rename %1 -> %2").arg(QString::fromLocal8Bit(remoteFilePath(oldName)), newName));
 }
 
 void FileManager::remove(const QString &fileName, bool recursive)
@@ -129,7 +130,9 @@ void FileManager::remove(const QString &fileName, bool recursive)
         return;
     }
 
-    registerOperation(m_device->rpc()->storageRemove(remoteFilePath(fileName), recursive));
+    registerOperation(m_device->rpc()->storageRemove(remoteFilePath(fileName), recursive),
+                      QStringLiteral("delete %1%2").arg(QString::fromLocal8Bit(remoteFilePath(fileName)),
+                                                        recursive ? QStringLiteral(" (recursive)") : QString()));
 }
 
 void FileManager::beginMkDir()
@@ -153,7 +156,8 @@ void FileManager::commitMkDir(const QString &dirName)
     }
 
     setNewDirectoryIndex(NEW_DIRECTORY_INDEX_INVALID);
-    registerOperation(m_device->rpc()->storageMkdir(remoteFilePath(dirName)));
+    registerOperation(m_device->rpc()->storageMkdir(remoteFilePath(dirName)),
+                      QStringLiteral("create folder %1").arg(QString::fromLocal8Bit(remoteFilePath(dirName))));
 }
 
 void FileManager::upload(const QList<QUrl> &urlList)
@@ -162,7 +166,8 @@ void FileManager::upload(const QList<QUrl> &urlList)
         return;
     }
 
-    registerOperation(m_device->utility()->uploadFiles(urlList, currentPath().toLocal8Bit()));
+    registerOperation(m_device->utility()->uploadFiles(urlList, currentPath().toLocal8Bit()),
+                      QStringLiteral("upload %1 item(s) to %2").arg(urlList.size()).arg(currentPath()));
 }
 
 void FileManager::uploadTo(const QString &remoteDirName, const QList<QUrl> &urlList)
@@ -372,7 +377,8 @@ void FileManager::downloadFile(const QByteArray &remoteFileName, const QString &
     auto *operation = m_device->rpc()->storageRead(remoteFilePath(remoteFileName), file);
 
     connect(operation, &AbstractOperation::finished, file, &QObject::deleteLater);
-    registerOperation(operation);
+    registerOperation(operation, QStringLiteral("download %1 -> %2")
+                      .arg(QString::fromLocal8Bit(remoteFilePath(remoteFileName)), localFileName));
 }
 
 void FileManager::downloadDirectory(const QByteArray &remoteDirName, const QString &localDirName)
@@ -381,7 +387,9 @@ void FileManager::downloadDirectory(const QByteArray &remoteDirName, const QStri
         return;
     }
 
-    registerOperation(m_device->utility()->downloadDirectory(localDirName, remoteFilePath(remoteDirName)));
+    registerOperation(m_device->utility()->downloadDirectory(localDirName, remoteFilePath(remoteDirName)),
+                      QStringLiteral("download folder %1 -> %2")
+                      .arg(QString::fromLocal8Bit(remoteFilePath(remoteDirName)), localDirName));
 }
 
 void FileManager::setModelDataRoot()
@@ -432,8 +440,12 @@ void FileManager::setModelData(const FileInfoList &newData)
     endResetModel();
 }
 
-void FileManager::registerOperation(AbstractOperation *operation)
+void FileManager::registerOperation(AbstractOperation *operation, const QString &label)
 {
+    if(!label.isEmpty()) {
+        qCInfo(LOG_FILEMGR).noquote() << label;
+    }
+
     setBusy(true);
     m_device->deviceState()->setProgress(-1.0);
 
@@ -443,10 +455,20 @@ void FileManager::registerOperation(AbstractOperation *operation)
 
     connect(operation, &AbstractOperation::finished, this, [=]() {
         if(operation->isError()) {
+            // Warning rather than critical: the existing error path already
+            // surfaces this to the user, and only QtCriticalMsg bumps the
+            // error badge on the LOGS button.
+            if(!label.isEmpty()) {
+                qCWarning(LOG_FILEMGR).noquote()
+                    << QStringLiteral("%1 -- FAILED: %2").arg(label, operation->errorString());
+            }
             setError(BackendError::OperationError, operation->errorString());
             emit errorOccured();
 
         } else {
+            if(!label.isEmpty()) {
+                qCInfo(LOG_FILEMGR).noquote() << QStringLiteral("%1 -- done").arg(label);
+            }
             listCurrentPath();
         }
 

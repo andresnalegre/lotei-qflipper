@@ -21,6 +21,18 @@ Item {
     readonly property bool isDirectory: !fileType
     readonly property bool isNewDirectory: Backend.fileManager.newDirectoryIndex === index
     readonly property bool isHovered: iconMouseArea.containsMouse || labelMouseArea.containsMouse
+
+    // True when a point (in this delegate's coordinates) actually lands on the
+    // icon or the label. The cell is 120x86 but the visual item only occupies
+    // the middle of it, so GridView.indexAt() answers "yes" for a click in the
+    // padding -- which is why clicking the gap between icons selected one
+    // instead of clearing the selection.
+    function hitsContent(px, py) {
+        var p = delegate.mapToItem(iconMouseArea, px, py);
+        if(p.x >= 0 && p.y >= 0 && p.x < iconMouseArea.width && p.y < iconMouseArea.height) { return true; }
+        p = delegate.mapToItem(labelMouseArea, px, py);
+        return (p.x >= 0 && p.y >= 0 && p.x < labelMouseArea.width && p.y < labelMouseArea.height);
+    }
     readonly property bool isCurrent: GridView.isCurrentItem
     property var fileManager                              // set by the FileManager root
     readonly property bool multiSelected: fileManager ? fileManager.isSelected(index) : false

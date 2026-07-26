@@ -49,7 +49,7 @@ public:
 
     // Gives LOTEI access to the connected device (for the inspection tools).
     void setAppBackend(ApplicationBackend *backend);
-    void setCli(FlipperCli *cli) { m_cli = cli; }   // link the CLI for run_cli
+    void setCli(FlipperCli *cli);   // link the CLI for run_cli
 
     bool thinking() const;
     bool configured() const;
@@ -115,7 +115,19 @@ signals:
 
 private:
     void setThinking(bool value);
+    // Lets the QML side record the user's own file-manager actions in the same
+    // stream the assistant's tool calls go to, so LOGS shows both.
+    Q_INVOKABLE void logAction(const QString &what) const;
+
+    // memory.txt can be edited by hand; these keep the in-memory copy honest.
+    Q_INVOKABLE void reloadMemory();   // re-read memory.txt from the card
+    void applyMemoryText(const QString &text, const QString &source);
+    void refreshMemoryFromDisk();
+    void writeMemoryCache() const;
+    bool adoptMemoryIfMemoryFile(const QString &path, const QString &content);
+
     QString systemPrompt() const;
+    QString assistantName() const;   // device name -> who the log credits
     void applyProsody(const QString &text);   // nudge SAPI pitch/rate to match mood (fallback)
     void speak(const QString &text);          // route to Piper if present, else SAPI
     void speakWithPiper(const QString &spoken, const QString &moodText);
@@ -142,7 +154,6 @@ private:
     void runHostTool(const QString &name, const QJsonObject &args,
                      std::function<void(const QString &)> done);
     void rememberFact(const QString &fact);   // append a durable fact to memory
-    void noteSelf(const QString &note);        // append a short self/style note
     void loadPortableMemory();                 // pull memory/self from the Flipper SD
     Q_INVOKABLE void syncMemoryToFlipper();    // back up memory + self to the SD
     int  forgetFacts(const QString &match);    // remove matching facts (or all); returns count
@@ -168,7 +179,6 @@ private:
     bool        m_agentEnabled = false;  // host-workspace self-edit tools opt-in
     QString     m_agentRoot;             // absolute workspace folder LOTEI may edit
     QString     m_memory;                // durable facts to remember across sessions
-    QString     m_self;                  // Nikita's own notes on style / the two of you
     bool        m_portableLoaded = false; // loaded memory from the Flipper this session
 #ifdef HZUI_VOICE
     QTextToSpeech m_tts;   // SAPI fallback engine
@@ -454,6 +464,9 @@ private:
     // What the user actually typed this turn. The verbose log skips it: the
     // panel already printed it, and the firmware echoes it back too.
     QString m_lastTyped;
+
+    // Stops a firmware error split across serial chunks from logging twice.
+    QString m_lastLoggedError;
 
     // Coalesces outputChanged so streaming commands can't relayout per chunk.
     QTimer *m_outputTick = nullptr;

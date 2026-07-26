@@ -523,7 +523,12 @@ Item {
             radius: 10
             border.width: 2
             border.color: Theme.color.mediumorange2
-            MouseArea { anchors.fill: parent }   // swallow clicks so they don't close
+            MouseArea {   // swallow clicks so they don't close
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onWheel: function(wheel) { wheel.accepted = true }
+            }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -639,7 +644,12 @@ Item {
             anchors.centerIn: parent
             width: 580; height: 490
             color: "#0b0410"; radius: 12; border.width: 2; border.color: Theme.color.mediumorange2
-            MouseArea { anchors.fill: parent }
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onWheel: function(wheel) { wheel.accepted = true }
+            }
 
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 20; spacing: 12
@@ -743,7 +753,12 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: "#0b0410"; radius: 8; border.width: 2; border.color: Theme.color.mediumorange2
-            MouseArea { anchors.fill: parent }
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onWheel: function(wheel) { wheel.accepted = true }
+            }
 
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 18; spacing: 10
@@ -769,52 +784,404 @@ Item {
                 }
 
                 Rectangle {
+                    id: cliTerm
                     Layout.fillWidth: true; Layout.fillHeight: true
                     color: "#160a1c"; radius: 6; border.width: 1; border.color: Theme.color.mediumorange1
+
+                    // Typed line lives here until Enter; the device echoes it back
+                    // afterwards, so it's cleared the moment it's sent.
+                    property string inputLine: ""
+                    property int inputPos: 0        // caret offset inside inputLine
+                    property int completeAt: -1     // caret offset Tab was pressed at
+                    property var history: []
+                    property int histIdx: 0
+
+                    // ls --color, in effect. The buffer stays plain text all the
+                    // way through the backend -- the colouring is decided here,
+                    // per line, so it follows the theme palette instead of
+                    // baking hex codes into C++.
+                    function cssColor(c) {
+                        var s = c.toString();
+                        return (s.length === 9) ? ("#" + s.slice(3)) : s;   // drop #aarrggbb alpha
+                    }
+                    function esc(s) {
+                        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                                .replace(/>/g, "&gt;").replace(/ /g, "&nbsp;");
+                    }
+                    // Every substitution above is one character for one
+                    // character, so document positions still line up with the
+                    // plain text -- that is what keeps the caret in place.
+                    function span(c, t) {
+                        return '<span style="color:' + cliTerm.cssColor(c) + '">' + t + '</span>';
+                    }
+                    function buildHtml(txt) {
+                        var pt = Cli.promptText;
+                        var lines = txt.split("\n");
+                        var out = [];
+                        for (var i = 0; i < lines.length; i++) {
+                            var l = lines[i];
+                            if (l.length === 0) { out.push(""); continue; }
+                            if (pt.length > 0 && l.indexOf(pt) === 0) {
+                                out.push(cliTerm.span(Theme.color.lightgreen, cliTerm.esc(pt))
+                                       + cliTerm.span(Theme.color.lightorange2, cliTerm.esc(l.slice(pt.length))));
+                                continue;
+                            }
+                            // Everything below has to survive the firmware's
+                            // ASCII banner, which is full of leading spaces and
+                            // stray slashes. So the tests are deliberately
+                            // narrow: the log is matched on the marker the
+                            // backend writes, status lines on "[ ", and a folder
+                            // has to be a plain name with exactly one slash, at
+                            // the end, and none of the punctuation that only
+                            // ever shows up in line art.
+                            var c;
+                            if (/^ +\u00b7 /.test(l)) {
+                                c = Theme.color.mediumorange4;          // verbose log
+                            } else if (/^\[ /.test(l)) {
+                                c = /error|mismatch|no such|can't|couldn't|failed/i.test(l)
+                                    ? Theme.color.lightred1 : Theme.color.mediumorange3;
+                            } else if (/^[^\/]+\/$/.test(l) && !/[\\|'"`,:;=<>~^*?]/.test(l)) {
+                                c = Theme.color.lightgreen;             // folders
+                            } else {
+                                c = Theme.color.lightorange2;
+                            }
+                            out.push(cliTerm.span(c, cliTerm.esc(l)));
+                        }
+                        return out.join("<br>");
+                    }
+                    property string html: Cli.colored
+                                        ? cliTerm.buildHtml(Cli.output + cliTerm.inputLine)
+                                        : ""
+
+                    // The caret is drawn as a block over the text (see cliCaret
+                    // below), never inserted into it -- pushing a glyph in
+                    // shifted everything to its right by one cell.
+                    function setLine(s, pos) {
+                        cliTerm.inputLine = s;
+                        cliTerm.inputPos = Math.max(0, Math.min(pos, s.length));
+                    }
+                    function insertAtCursor(t) {
+                        var p = cliTerm.inputPos;
+                        cliTerm.setLine(cliTerm.inputLine.slice(0, p) + t + cliTerm.inputLine.slice(p),
+                                        p + t.length);
+                    }
+                    function wordLeft(p) {
+                        var s = cliTerm.inputLine;
+                        while (p > 0 && s.charAt(p - 1) === " ") { p--; }
+                        while (p > 0 && s.charAt(p - 1) !== " ") { p--; }
+                        return p;
+                    }
+                    function wordRight(p) {
+                        var s = cliTerm.inputLine;
+                        while (p < s.length && s.charAt(p) === " ") { p++; }
+                        while (p < s.length && s.charAt(p) !== " ") { p++; }
+                        return p;
+                    }
+                    function runLine() {
+                        var line = cliTerm.inputLine;
+                        cliTerm.setLine("", 0);
+                        cliTerm.completeAt = -1;
+                        if (line.length > 0) { cliTerm.history.push(line); }
+                        cliTerm.histIdx = cliTerm.history.length;
+                        cliTerm.setFollow(true);
+                        Cli.send(line);
+                    }
+                    // Paste: complete lines run as commands and the tail stays on
+                    // the input line, the way a terminal treats a pasted block.
+                    function pasteText(raw) {
+                        if (!raw || raw.length === 0) { return; }
+                        var lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+                                       .replace(/\t/g, " ").split("\n");
+                        for (var i = 0; i < lines.length - 1; i++) {
+                            cliTerm.insertAtCursor(lines[i]);
+                            cliTerm.runLine();
+                        }
+                        cliTerm.insertAtCursor(lines[lines.length - 1]);
+                        cliTerm.setFollow(true);
+                    }
+
+                    // Follow the tail only while the view is already parked at the
+                    // bottom. The instant the user scrolls up or selects something,
+                    // the view freezes -- otherwise a chatty command like `top`
+                    // drags the scroll back down and wipes the selection every time
+                    // it prints.
+                    property bool follow: true
+                    property string frozen: ""
+
+                    function atBottom() {
+                        return cliFlick.contentHeight <= cliFlick.height
+                            || cliFlick.contentY >= cliFlick.contentHeight - cliFlick.height - 6;
+                    }
+                    // Guarded so Flickable's movement signals can't mistake our own
+                    // scroll for the user grabbing the view.
+                    property bool autoScrolling: false
+                    function toBottom() {
+                        cliTerm.autoScrolling = true;
+                        cliFlick.contentY = Math.max(0, cliFlick.contentHeight - cliFlick.height);
+                        cliTerm.autoScrolling = false;
+                    }
+                    function setFollow(v) {
+                        if (v === cliTerm.follow) { return; }
+                        if (!v) { cliTerm.frozen = cliText.text; }
+                        cliTerm.follow = v;
+                        if (v) { cliText.deselect(); Qt.callLater(cliTerm.toBottom); }
+                    }
+
                     Flickable {
                         id: cliFlick
                         anchors.fill: parent; anchors.margins: 8; clip: true
                         contentHeight: cliText.height; contentWidth: width
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        onMovementEnded: if (!cliTerm.autoScrolling) { cliTerm.setFollow(cliTerm.atBottom()); }
+
                         TextEdit {
                             id: cliText
                             width: cliFlick.width
-                            text: Cli.output
+                            // Steady block caret, no blink: the text used to change
+                            // twice a second, which re-wrapped the last line and made
+                            // the view hop once it was parked at the bottom.
+                            textFormat: Cli.colored ? TextEdit.RichText : TextEdit.PlainText
+                            text: cliTerm.follow
+                                  ? (Cli.colored ? cliTerm.html : (Cli.output + cliTerm.inputLine))
+                                  : cliTerm.frozen
                             readOnly: true
+                            activeFocusOnPress: false
                             selectByMouse: true
                             persistentSelection: true
                             color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12
                             wrapMode: TextEdit.WrapAnywhere
-                            onTextChanged: cliFlick.contentY = Math.max(0, cliText.height - cliFlick.height)
-                        }
-                    }
-                }
 
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
-                    Rectangle {
-                        Layout.fillWidth: true; Layout.preferredHeight: 34; radius: 6
-                        color: "#160a1c"; border.width: 1; border.color: Theme.color.mediumorange2
-                        TextInput {
-                            id: cliInput
-                            anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
-                            verticalAlignment: TextInput.AlignVCenter
-                            clip: true; enabled: Cli.active
-                            color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 13
-                            onAccepted: { if (text.length > 0) { Cli.send(text); text = ""; } }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: cliInput.text.length === 0
-                                text: Cli.active ? "type a command + Enter (try 'help')…" : "connect a Flipper over USB"
-                                color: Theme.color.mediumorange1; font.family: "Share Tech Mono"; font.pixelSize: 13
+                            // Height, not text: if the height didn't change there's
+                            // nothing new to scroll to, and re-running toBottom on
+                            // every caret blink is what produced the jitter.
+                            onHeightChanged: if (cliTerm.follow) { cliTerm.toBottom(); }
+                            // Selecting anything detaches, so the next chunk of
+                            // output can't tear the selection apart.
+                            onSelectedTextChanged: if (selectedText.length > 0) { cliTerm.setFollow(false); }
+
+                            FontMetrics { id: cliMetrics; font: cliText.font }
+
+                            // Block caret, drawn on top of the character it sits
+                            // on rather than inserted into the line. Inserting a
+                            // glyph pushed everything to its right one cell over,
+                            // which is the gap that appeared when arrowing back
+                            // into a command to edit it.
+                            Rectangle {
+                                id: cliCaret
+                                visible: Cli.active && cliTerm.follow
+                                color: Theme.color.lightorange2
+                                opacity: 0.55
+                                width: cliMetrics.advanceWidth("M")
+                                x: caretRect.x
+                                y: caretRect.y
+                                height: caretRect.height
+
+                                // Reading text and inputPos here is what keeps
+                                // this re-evaluating as the line changes.
+                                readonly property rect caretRect: {
+                                    cliText.text;
+                                    cliText.width;
+                                    var n = cliTerm.inputLine.length;
+                                    var p = Math.max(0, Math.min(cliTerm.inputPos, n));
+                                    return cliText.positionToRectangle(Cli.output.length + p);
+                                }
                             }
                         }
                     }
-                    Rectangle {
-                        Layout.preferredWidth: 64; Layout.preferredHeight: 34; radius: 6
-                        border.width: 1; border.color: Theme.color.mediumorange2
-                        color: sendCliMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
-                        Text { anchors.centerIn: parent; text: "SEND"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true }
-                        MouseArea { id: sendCliMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (cliInput.text.length > 0) { Cli.send(cliInput.text); cliInput.text = ""; } } }
+
+                    // Wheel is handled here so scrolling up detaches immediately,
+                    // without waiting for a flick to settle.
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.NoButton
+                        onWheel: function(wheel) {
+                            var maxY = Math.max(0, cliFlick.contentHeight - cliFlick.height);
+                            cliFlick.contentY = Math.max(0, Math.min(maxY, cliFlick.contentY - wheel.angleDelta.y));
+                            // Scrolling down back to the tail re-attaches; scrolling
+                            // up detaches. Never flip on a downward nudge that lands
+                            // a pixel short of the bottom.
+                            if (wheel.angleDelta.y > 0) { cliTerm.setFollow(false); }
+                            else if (cliTerm.atBottom()) { cliTerm.setFollow(true); }
+                            wheel.accepted = true;
+                        }
+                    }
+
+                    // Keyboard goes straight to the terminal -- no input box, no
+                    // send button. Lines are still assembled client-side so the
+                    // shortcuts (cd, cp, ls…) keep working.
+                    Item {
+                        id: cliKeys
+                        anchors.fill: parent
+                        focus: true
+
+                        Keys.onPressed: function(event) {
+                            if (!Cli.active) { return; }
+                            var k = event.key;
+                            var m = event.modifiers;
+                            // On macOS Qt reports Cmd as ControlModifier and the real
+                            // Ctrl as MetaModifier, so copy and interrupt land on the
+                            // keys a Mac user expects. Elsewhere: Ctrl+Shift+C copies,
+                            // Ctrl+C interrupts -- terminal semantics either way.
+                            var mac = (Qt.platform.os === "osx" || Qt.platform.os === "macos");
+                            var copyKey = mac ? (m & Qt.ControlModifier)
+                                              : ((m & Qt.ControlModifier) && (m & Qt.ShiftModifier));
+                            var ctrlKey = mac ? (m & Qt.MetaModifier)
+                                              : ((m & Qt.ControlModifier) && !(m & Qt.ShiftModifier));
+
+                            // Interrupt first, always. It must never be swallowed by
+                            // a leftover selection -- that's what left `top` running
+                            // with no way out.
+                            if ((k === Qt.Key_C && ctrlKey) || k === Qt.Key_Escape) {
+                                cliTerm.setLine("", 0);
+                                cliTerm.completeAt = -1;
+                                cliTerm.setFollow(true);
+                                Cli.interrupt();
+                                event.accepted = true;
+                                return;
+                            }
+                            if (k === Qt.Key_C && copyKey) {
+                                cliText.copy();
+                                event.accepted = true;
+                                return;
+                            }
+                            if (k === Qt.Key_A && copyKey) {
+                                cliText.selectAll();
+                                event.accepted = true;
+                                return;
+                            }
+                            // Paste. Cmd+V on macOS, Ctrl+V or Ctrl+Shift+V elsewhere.
+                            if (k === Qt.Key_V && (copyKey || ctrlKey)) {
+                                cliTerm.pasteText(Cli.clipboardText());
+                                event.accepted = true;
+                                return;
+                            }
+                            // Tab completes the word under the caret: command
+                            // names for the first one, real directory contents
+                            // for the rest.
+                            if (k === Qt.Key_Tab || k === Qt.Key_Backtab) {
+                                cliTerm.completeAt = cliTerm.inputPos;
+                                cliTerm.setFollow(true);
+                                Cli.complete(cliTerm.inputLine.slice(0, cliTerm.inputPos));
+                                event.accepted = true;
+                                return;
+                            }
+                            // End now belongs to the caret; Ctrl-G still parks
+                            // the view back at the tail.
+                            if (k === Qt.Key_G && ctrlKey) {
+                                cliTerm.setFollow(true);
+                                event.accepted = true;
+                                return;
+                            }
+                            if (k === Qt.Key_PageUp || k === Qt.Key_PageDown) {
+                                var step = cliFlick.height * 0.9;
+                                var maxY = Math.max(0, cliFlick.contentHeight - cliFlick.height);
+                                cliFlick.contentY = Math.max(0, Math.min(maxY,
+                                    cliFlick.contentY + (k === Qt.Key_PageUp ? -step : step)));
+                                cliTerm.setFollow(cliTerm.atBottom());
+                                event.accepted = true;
+                                return;
+                            }
+
+                            // Word / line jumps: Option+arrow and Cmd+arrow on
+                            // macOS, Ctrl+arrow and Home/End everywhere else.
+                            var wordMod = mac ? (m & Qt.AltModifier)
+                                              : ((m & Qt.AltModifier) || (m & Qt.ControlModifier));
+                            var lineMod = mac ? (m & Qt.ControlModifier) : 0;
+                            var p = cliTerm.inputPos;
+                            var s = cliTerm.inputLine;
+
+                            if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+                                cliTerm.runLine();
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Left) {
+                                cliTerm.inputPos = lineMod ? 0
+                                                 : (wordMod ? cliTerm.wordLeft(p) : Math.max(0, p - 1));
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Right) {
+                                cliTerm.inputPos = lineMod ? s.length
+                                                 : (wordMod ? cliTerm.wordRight(p) : Math.min(s.length, p + 1));
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Home || (k === Qt.Key_A && ctrlKey)) {
+                                cliTerm.inputPos = 0;
+                                event.accepted = true;
+                            } else if (k === Qt.Key_End || (k === Qt.Key_E && ctrlKey)) {
+                                cliTerm.inputPos = s.length;
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Backspace) {
+                                if (wordMod) {
+                                    var w = cliTerm.wordLeft(p);
+                                    cliTerm.setLine(s.slice(0, w) + s.slice(p), w);
+                                } else if (p > 0) {
+                                    cliTerm.setLine(s.slice(0, p - 1) + s.slice(p), p - 1);
+                                }
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Delete) {
+                                if (p < s.length) { cliTerm.setLine(s.slice(0, p) + s.slice(p + 1), p); }
+                                event.accepted = true;
+                            } else if (k === Qt.Key_U && ctrlKey) {
+                                cliTerm.setLine(s.slice(p), 0);
+                                event.accepted = true;
+                            } else if (k === Qt.Key_K && ctrlKey) {
+                                cliTerm.setLine(s.slice(0, p), p);
+                                event.accepted = true;
+                            } else if (k === Qt.Key_W && ctrlKey) {
+                                var wl = cliTerm.wordLeft(p);
+                                cliTerm.setLine(s.slice(0, wl) + s.slice(p), wl);
+                                event.accepted = true;
+                            } else if (k === Qt.Key_L && ctrlKey) {
+                                cliTerm.setLine("", 0);
+                                cliTerm.setFollow(true);
+                                Cli.send("clear");
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Up) {
+                                if (cliTerm.histIdx > 0) {
+                                    cliTerm.histIdx--;
+                                    var hu = cliTerm.history[cliTerm.histIdx];
+                                    cliTerm.setLine(hu, hu.length);
+                                }
+                                event.accepted = true;
+                            } else if (k === Qt.Key_Down) {
+                                if (cliTerm.histIdx < cliTerm.history.length - 1) {
+                                    cliTerm.histIdx++;
+                                    var hd = cliTerm.history[cliTerm.histIdx];
+                                    cliTerm.setLine(hd, hd.length);
+                                } else {
+                                    cliTerm.histIdx = cliTerm.history.length;
+                                    cliTerm.setLine("", 0);
+                                }
+                                event.accepted = true;
+                            } else if (event.text.length > 0 && event.text.charCodeAt(0) >= 32
+                                       && !ctrlKey && !copyKey) {
+                                cliTerm.insertAtCursor(event.text);
+                                cliTerm.setFollow(true);
+                                event.accepted = true;
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton
+                            cursorShape: Qt.IBeamCursor
+                            onPressed: function(mouse) { cliKeys.forceActiveFocus(); mouse.accepted = false; }
+                        }
+                    }
+
+                    Connections {
+                        target: Cli
+                        function onOpenChanged() {
+                            if (Cli.open) { cliTerm.setLine("", 0); cliTerm.setFollow(true); cliKeys.forceActiveFocus(); }
+                        }
+                        function onActiveChanged() { if (Cli.active) { cliKeys.forceActiveFocus(); } }
+                        // Tab came back: the reply replaces everything left of
+                        // where the caret was when it was pressed.
+                        function onCompletion(line) {
+                            if (cliTerm.completeAt < 0) { return; }
+                            var tail = cliTerm.inputLine.slice(cliTerm.completeAt);
+                            cliTerm.completeAt = -1;
+                            cliTerm.setLine(line + tail, line.length);
+                            cliTerm.setFollow(true);
+                        }
                     }
                 }
             }
@@ -852,7 +1219,12 @@ Item {
             anchors.fill: parent
             color: "#0b0410"; radius: 8
             border.width: 2; border.color: Theme.color.mediumorange2
-            MouseArea { anchors.fill: parent }   // swallow clicks behind the panel
+            MouseArea {   // swallow clicks behind the panel
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onWheel: function(wheel) { wheel.accepted = true }
+            }
 
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 22; spacing: 12
@@ -1022,7 +1394,12 @@ Item {
         property int step: 0
 
         Rectangle { anchors.fill: parent; color: "#000000"; opacity: 0.72 }
-        MouseArea { anchors.fill: parent }   // block anything behind
+        MouseArea {   // block anything behind
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            onWheel: function(wheel) { wheel.accepted = true }
+        }
 
         Rectangle {
             anchors.centerIn: parent

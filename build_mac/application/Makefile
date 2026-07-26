@@ -1976,6 +1976,7 @@ moc_loteibackend.cpp: ../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
 		/opt/homebrew/lib/QtCore.framework/Headers/QString \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVariant \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
@@ -2151,6 +2152,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
 		/opt/homebrew/lib/QtCore.framework/Headers/QString \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVariant \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
@@ -2165,18 +2167,21 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QRegularExpression \
 		/opt/homebrew/lib/QtCore.framework/Headers/QFile \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDir \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDirIterator \
+		/opt/homebrew/lib/QtCore.framework/Headers/QCryptographicHash \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStandardPaths \
 		/opt/homebrew/lib/QtCore.framework/Headers/QSettings \
 		/opt/homebrew/lib/QtCore.framework/Headers/QProcess \
 		/opt/homebrew/lib/QtCore.framework/Headers/QFileInfo \
 		/opt/homebrew/lib/QtCore.framework/Headers/QCoreApplication \
+		/opt/homebrew/lib/QtGui.framework/Headers/QGuiApplication \
+		/opt/homebrew/lib/QtGui.framework/Headers/QClipboard \
 		/opt/homebrew/lib/QtSerialPort.framework/Headers/QSerialPort \
 		../../backend/applicationbackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QAbstractListModel \
 		../../backend/backenderror.h \
 		../../backend/flipperupdates.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVector \
-		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonValue \
 		../../backend/deviceregistry.h \
 		../../dfu/usbdeviceinfo.h \

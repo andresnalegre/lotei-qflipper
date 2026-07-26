@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QByteArray>
 #include <QColor>
 #include <QVariant>
 #include <QJsonArray>
@@ -143,6 +144,7 @@ private:
     void rememberFact(const QString &fact);   // append a durable fact to memory
     void noteSelf(const QString &note);        // append a short self/style note
     void loadPortableMemory();                 // pull memory/self from the Flipper SD
+    Q_INVOKABLE void syncMemoryToFlipper();    // back up memory + self to the SD
     int  forgetFacts(const QString &match);    // remove matching facts (or all); returns count
 
     QNetworkAccessManager m_net;
@@ -293,6 +295,9 @@ class FlipperCli : public QObject
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)   // serial link live
     Q_PROPERTY(QString output READ output NOTIFY outputChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool verbose READ verbose WRITE setVerbose NOTIFY verboseChanged)
+    Q_PROPERTY(bool colored READ colored WRITE setColored NOTIFY coloredChanged)
+    Q_PROPERTY(QString promptText READ promptText NOTIFY promptChanged)
 
 public:
     explicit FlipperCli(QObject *parent = nullptr);
@@ -304,10 +309,23 @@ public:
     bool active() const { return m_active; }
     QString output() const { return m_output; }
     QString status() const { return m_status; }
+    bool verbose() const { return m_verbose; }
+    void setVerbose(bool value);
+    bool colored() const { return m_colored; }
+    void setColored(bool value);
+    // The panel colours its own output, so it needs to know which prefix is the
+    // prompt rather than guessing at it.
+    QString promptText() const { return prompt(); }
 
     Q_INVOKABLE void send(const QString &cmd);   // write a command + CR
     Q_INVOKABLE void interrupt();                // send Ctrl-C
     Q_INVOKABLE void clearOutput();
+
+    // Tab completion. The panel hands over the text to the left of the caret;
+    // the reply on completion() is what that text becomes.
+    Q_INVOKABLE void complete(const QString &line);
+    Q_INVOKABLE QString clipboardText() const;                  // Cmd/Ctrl+V
+    Q_INVOKABLE void copyToClipboard(const QString &text) const;
 
     // Run a single CLI command in isolation (used by the assistant). Pauses RPC,
     // opens the port, sends the command, collects output until the line goes idle,
@@ -321,6 +339,14 @@ signals:
     void activeChanged();
     void outputChanged();
     void statusChanged();
+    void verboseChanged();
+    void coloredChanged();
+    void promptChanged();
+    // Tab completion result: the replacement for the text left of the caret.
+    void completion(const QString &line);
+    // "edit <path>" fetched the file -- whatever panel does host-side text
+    // editing can hook this to pop it open instead of just printing it.
+    void editRequested(const QString &path, const QString &content);
 
 private slots:
     void onReadyRead();
@@ -333,12 +359,122 @@ private:
     void setStatus(const QString &s);
     void finishOneShot(bool ok, const QString &out);   // cleanup + callback
 
+    // Verbose log. Every byte of command this panel puts on the wire, and every
+    // reply it swallows internally, is echoed into the terminal so a multi-step
+    // op (cp -r, rm -r, find, a transfer) shows its whole trail rather than just
+    // the summary line at the end.
+    // logIt is false for the one command that is just the user's own line
+    // translated (ls -> storage list): the panel already showed what they
+    // typed, so repeating the wire form is noise. Everything the CLI runs on
+    // its own behalf still goes in the log.
+    void writeLine(const QString &cmd, bool logIt = true);
+
+    // One conversation at a time. Every mode below owns the serial line
+    // exclusively, so this is the single predicate that decides whether a new
+    // one may start -- the checks used to be spelled out per call site, which
+    // is how "cd" in flight and a raw command could eat each other's replies.
+    bool busy() const;
+
+    // No-reply watchdog for the interactive path. Every step that waits on the
+    // device arms it; every completion disarms it; incoming bytes restart it,
+    // so a slow transfer survives but true silence does not. Without this, a
+    // reply that never lands leaves the panel dead with no prompt and no error.
+    void armGuard();
+    void disarmGuard();
+    void onOpTimeout();
+    void resetTransientState();   // shared by Ctrl-C, timeout and disconnect
+    void trace(const QString &what);         // one wire command
+    void traceReply(const QString &raw);     // what came back from it
+
+    // Tab completion: shared tail for both the command-name and the path case.
+    void applyCompletion(const QString &head, const QString &token,
+                         const QStringList &hits, const QList<bool> &isDir,
+                         const QString &original);
+
+    // The firmware streams multi-line replies across several serial chunks, so
+    // help listings and directory listings are held back and laid out in one
+    // pass once the prompt returns.
+    void flushCapture();
+
+    // Host <-> Flipper file copy, driven over the plain CLI (RPC is paused while
+    // the panel owns the port). Every transfer is verified with "storage md5"
+    // against a local QCryptographicHash before it's called done.
+    void uploadToFlipper(const QString &hostPath, const QString &devPath);
+    void downloadFromFlipper(const QString &devPath, const QString &hostPath);
+    void finishXfer(bool ok, const QString &message);   // print (or chain to a batch)
+
+    // Generic raw command on the interactive port: write it, buffer the reply
+    // until the prompt returns, hand the raw text to the continuation. This is
+    // what "storage tree" / "storage list" / "storage md5" / "storage mkdir"
+    // run through outside of a file transfer.
+    void sendRaw(const QString &cmd, std::function<void(const QString &)> onDone);
+
+    // Recursive / batch ops built on top of the above: cp -r (both directions),
+    // rm -r, wildcard cp/rm, and find -- all driven off "storage tree" or
+    // "storage list", walking the result with the single-file primitives above.
+    void ensureDeviceDir(const QString &path, std::function<void()> done);         // mkdir -p
+    void startCopyUpTree(const QString &hostRoot, const QString &devRoot);         // cp -r host -> device
+    void startCopyDownTree(const QString &devRoot, const QString &hostRoot);       // cp -r device -> host
+    void removeTreeCore(const QString &path, std::function<void(bool)> done);      // no printing; used by both below
+    void startRemoveTree(const QString &path);                                     // rm -r, single target
+    void runRemoveQueue(const QStringList &targets);                              // rm of a wildcard match set
+    void expandDeviceGlob(const QString &pattern, std::function<void(const QStringList &)> done);
+    void runCopyQueue(const QStringList &devMatches, const QString &dst, bool dstHost); // cp of a wildcard match set
+    void startFind(const QString &root, const QString &pattern);                   // find
+    void startEdit(const QString &path);                                           // edit
+
     ApplicationBackend *m_appBackend = nullptr;
     QSerialPort *m_port = nullptr;
     QString m_output;
     QString m_status;
     bool m_open = false;
     bool m_active = false;
+    bool m_verbose = true;   // log everything by default
+    bool m_colored = true;   // ls --color style output
+    bool m_quiet = false;    // suppresses the log for Tab's own lookup
+
+    // Shell state: "cd" keeps a current folder that relative paths resolve against.
+    QString prompt() const;                      // "Name@qflipper ~/nfc % "
+    QString m_devName;                           // the Flipper's own name
+    QString m_cwd = QStringLiteral("/ext");
+    QString m_cdPrev = QStringLiteral("/ext");   // for "cd -"
+    QString m_cdPending;                         // folder awaiting confirmation
+    QByteArray m_cdRaw;
+
+    // Buffered reply reformatting (help listing / directory listing).
+    enum class Capture { None, Help, Listing };
+    Capture m_capture = Capture::None;
+    QString m_captureBuf;
+    QTimer *m_captureFlush = nullptr;
+
+    // Echo of a translated command still to be swallowed ("storage list /ext"
+    // when the user typed "ls").
+    QString m_echoPending;
+
+    // What the user actually typed this turn. The verbose log skips it: the
+    // panel already printed it, and the firmware echoes it back too.
+    QString m_lastTyped;
+
+    // Coalesces outputChanged so streaming commands can't relayout per chunk.
+    QTimer *m_outputTick = nullptr;
+
+    // Fires when the device has said nothing for long enough that whatever we
+    // were waiting on is never coming.
+    QTimer *m_opGuard = nullptr;
+
+    // File transfer state. "Raw" is the generic one-shot-command state used by
+    // sendRaw() (md5 checks, tree/list scans, mkdir, remove) -- anything that
+    // isn't a payload transfer but still needs the reply buffered to the prompt.
+    enum class Xfer { None, UploadReady, Download, Raw };
+    Xfer m_xfer = Xfer::None;
+    QByteArray m_xferPayload;
+    QByteArray m_xferRaw;
+    QString m_xferLabel;
+    QString m_xferHostDst;
+    QString m_xferDevPath;               // remote path of the in-flight transfer (for md5 verify)
+    qint64 m_xferSize = -1;
+    std::function<void(const QString &)> m_rawCb;   // continuation for sendRaw()
+    std::function<void(bool)> m_xferChain;          // set by a batch op: called instead of prompting
 
     // One-shot (assistant) run state -- isolated from the interactive panel.
     QSerialPort *m_runPort = nullptr;

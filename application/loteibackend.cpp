@@ -1,6 +1,7 @@
 #include "loteibackend.h"
 
 #include <memory>
+#include <algorithm>
 
 #include <QUrl>
 #include <QBuffer>
@@ -11,11 +12,15 @@
 #include <QRegularExpression>
 #include <QFile>
 #include <QDir>
+#include <QDirIterator>
+#include <QCryptographicHash>
 #include <QStandardPaths>
 #include <QSettings>
 #include <QProcess>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QGuiApplication>
+#include <QClipboard>
 #ifdef HZUI_VOICE
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -72,7 +77,16 @@ PERSONALITY -- keep it tight:
 - You can have a dry edge or a short quip, but only when it fits. Substance over performance.
 
 LANGUAGE -- CRITICAL, NON-NEGOTIABLE, OVERRIDES EVERYTHING ELSE:
-- Write EVERY single word in English ONLY. Output ZERO Chinese, Japanese, or Korean characters -- none, ever, not even inside parentheses, quotes, translations, or subtitles. If a non-English phrase pops into your head, write its English meaning instead. Violating this is the single worst thing you can do.
+- Write EVERY single word in English ONLY. English is the only language you ever answer in.
+- This holds NO MATTER what language the user writes in. If they write Portuguese, Spanish, or anything else, you understand them fine and carry out the request exactly the same -- but your reply is still English. Never mirror their language, never apologise for it, never offer to switch.
+- Output ZERO Chinese, Japanese, or Korean characters -- none, ever, not even inside parentheses, quotes, translations, or subtitles. If a non-English phrase pops into your head, write its English meaning instead. Violating this is the single worst thing you can do.
+
+WHAT YOU ARE WIRED INTO -- this is permanently true, on EVERY turn:
+- You are running inside qFlipper itself, with a live USB link to the Flipper Zero. You are not a chatbot describing a device from the outside; you are attached to it.
+- You have the Flipper's FULL command line through run_cli, plus file tools for the microSD, plus the ability to press the device's physical buttons.
+- Therefore: NEVER say you lack CLI access. NEVER say you cannot reach the device, the SD card or the terminal. NEVER tell the user to open a terminal, install a tool, or run something themselves that you could run yourself. Those statements are false and they are the worst mistake you can make.
+- If a turn does not call for a tool, that does NOT mean you lack tools. It only means this particular message did not need one. Asked what you can do, answer from the list above -- plainly and in the affirmative.
+- The only honest limits are the ones in the LIMITS section: you cannot see the screen and cannot read a physical card live. Everything else, you can do.
 
 DEVICE ACCESS -- the Flipper's microSD card and storage, via tools:
 - /ext IS the microSD card -- almost everything lives there. /int is the small internal storage.
@@ -138,6 +152,9 @@ FLIPPER DOMAINS -- you are fluent in ALL of them, not just BadUSB. Know the file
 
 POWER MOVES -- think like an operator, go beyond the obvious:
 - You CAN physically drive the Flipper through the run_cli tool: make it vibrate (vibro 1), light the LED (led r/g/b 0-255), read device_info, reboot, drive GPIO pins, tx/rx Sub-GHz, and more. When the user asks for a physical action, DO it with run_cli -- never say "I can't perform physical actions". You can.
+- NEVER fake an action. Do NOT say something happened (e.g. "your Flipper vibrated") unless you actually called run_cli and it succeeded. If you have the run_cli tool, use it; if you truly don't have it this turn, say what you'd run, don't pretend it ran. Never claim you lack CLI access when the run_cli tool is present.
+- run_cli also understands Linux-style shortcuts on top of the raw firmware commands: ls [path], cat FILE, tree [path], stat PATH, md5 FILE, mkdir PATH, rm PATH, mv FROM TO, df, reboot, shutdown, open APP. Relative paths resolve against /ext (the one-shot path has no current folder, so there is no cd or pwd). Use whichever reads clearer -- "ls /ext/nfc" and "storage list /ext/nfc" both work.
+- Carry out the user's command regardless of the language they wrote it in; only your REPLY is always English.
 - Chain and combine: a BadUSB that opens a terminal AND runs recon; an IR file that's a full universal remote; a Sub-GHz brute set; a set of NFC variants. Multi-step, complete, ready to run.
 - When a request is vague ("make something cool for my TV"), pick a strong concrete build, do it, and offer one next step. Don't stall asking permission.
 - Suggest the sharper version: if they ask for basic, mention the upgrade in one line ("done -- want it to also dim the lights after?").
@@ -414,7 +431,7 @@ static QJsonArray loteiMemoryTools()
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "note_self"},
-            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound -- e.g. 'User prefers one-line answers', 'Reply in Portuguese when they do', 'Skip explanations unless asked'. Call it PROACTIVELY as you notice how they like to work, so you keep growing into their counterpart. Keep each note short and about lasting style/rapport, never small talk."},
+            {"description", "Save a SHORT note to yourself about your shared style with the user and how you (Nikita) should sound -- e.g. 'User prefers one-line answers', 'User wants the tool run, not explained', 'Skip explanations unless asked'. Never save a note about replying in another language: you always answer in English. Call it PROACTIVELY as you notice how they like to work, so you keep growing into their counterpart. Keep each note short and about lasting style/rapport, never small talk."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -476,7 +493,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "run_cli"},
-            {"description", "Run a command in the Flipper Zero's built-in CLI over USB and get its text output back. This is the FULL Flipper CLI -- use it for anything the storage tools don't cover: device_info, gpio (mode/read/set), subghz (tx/rx/decode), nfc, rfid, ir (tx), led, vibro, power (off/reboot), i2c, onewire, ikey, loader, log, free, uptime, etc. Type 'help' to list commands. One command per call. It briefly pauses the normal session, so prefer the storage tools for plain file work."},
+            {"description", "Run a command in the Flipper Zero's built-in CLI over USB and get its text output back. You always have this -- it is the FULL Flipper CLI. Use it for anything the storage tools don't cover: device_info, gpio (mode/read/set), subghz (tx/rx/decode), nfc, rfid, ir (tx), led, vibro, power (off/reboot), i2c, onewire, ikey, loader, log, free, uptime, etc. Linux-style shortcuts also work and are translated for you: ls [path], cat FILE, tree [path], stat PATH, md5 FILE, mkdir PATH, rm PATH, mv FROM TO, df, reboot, shutdown, open APP. Relative paths resolve against /ext. Not available here: cp between this computer and the Flipper, find, and rm -r -- those are interactive-panel only, so use the file tools instead. One command per call. It briefly pauses the normal session, so prefer the storage tools for plain file work. If it answers that the CLI panel is open, tell the user to close the CLI window -- do not claim you have no access."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -702,11 +719,7 @@ static bool messageNeedsTools(const QString &text)
     static const QStringList memoryWords = {
         QStringLiteral("remember"), QStringLiteral("forget"), QStringLiteral("memoriz"),
         QStringLiteral("keep in mind"), QStringLiteral("don't forget"), QStringLiteral("dont forget"),
-        QStringLiteral("lembra"), QStringLiteral("lembre"), QStringLiteral("lembrar"),
-        QStringLiteral("esquece"), QStringLiteral("esque\u00e7a"), QStringLiteral("esquecer"),
-        QStringLiteral("anota"), QStringLiteral("anote"), QStringLiteral("n\u00e3o esque\u00e7a"),
-        QStringLiteral("nao esqueca"), QStringLiteral("guarda isso"), QStringLiteral("o que voc\u00ea sabe"),
-        QStringLiteral("o que voce sabe"), QStringLiteral("what do you know")
+        QStringLiteral("what do you know")
     };
     for (const QString &m : memoryWords) {
         if (t.contains(m)) { return true; }
@@ -718,15 +731,39 @@ static bool messageNeedsTools(const QString &text)
         QStringLiteral(".sub"), QStringLiteral(".nfc"), QStringLiteral(".ir"),
         QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
         QStringLiteral("sub-ghz"),
-        // CLI-driven hardware commands (run_cli)
+        // CLI-driven hardware commands (run_cli) -- stems catch PT/EN variants
         QStringLiteral("cli"), QStringLiteral("device_info"), QStringLiteral("gpio"),
-        QStringLiteral("vibro"), QStringLiteral("vibra"), QStringLiteral("reboot"),
-        QStringLiteral("reinicia"), QStringLiteral(" led "), QStringLiteral("i2c"),
-        QStringLiteral("onewire"), QStringLiteral("uptime"), QStringLiteral("bateria"),
-        QStringLiteral("battery")
+        QStringLiteral("vibr"), QStringLiteral("reboot"), QStringLiteral("led"),
+        QStringLiteral("i2c"), QStringLiteral("onewire"),
+        QStringLiteral("uptime"), QStringLiteral("battery"),
+        QStringLiteral("nfc"), QStringLiteral("rfid"), QStringLiteral("infrared"),
+        QStringLiteral("flipper")
     };
     for (const QString &s : strongNouns) {
         if (t.contains(s)) { return true; }
+    }
+
+    // CLI command names. These have to match on a word boundary, not as a
+    // substring: "ls" alone would fire on "tools", "false" and "controls", and
+    // "rm" on "confirm", which would drag half of ordinary conversation into
+    // tool mode.
+    static const QStringList cliWords = {
+        QStringLiteral("ls"), QStringLiteral("cd"), QStringLiteral("cat"),
+        QStringLiteral("rm"), QStringLiteral("cp"), QStringLiteral("mv"),
+        QStringLiteral("mkdir"), QStringLiteral("pwd"), QStringLiteral("tree"),
+        QStringLiteral("df"), QStringLiteral("md5"), QStringLiteral("stat"),
+        QStringLiteral("find"), QStringLiteral("storage"), QStringLiteral("terminal"),
+        QStringLiteral("shell"), QStringLiteral("command line"), QStringLiteral("run_cli")
+    };
+    for (const QString &w : cliWords) {
+        int idx = t.indexOf(w);
+        while (idx >= 0) {
+            const bool leftOk  = (idx == 0) || !(t.at(idx - 1).isLetterOrNumber() || t.at(idx - 1) == QLatin1Char('_'));
+            const int  end     = idx + w.size();
+            const bool rightOk = (end >= t.size()) || !(t.at(end).isLetterOrNumber() || t.at(end) == QLatin1Char('_'));
+            if (leftOk && rightOk) { return true; }
+            idx = t.indexOf(w, idx + 1);
+        }
     }
 
     // Verbs that imply doing something to a file / the device.
@@ -738,12 +775,7 @@ static bool messageNeedsTools(const QString &text)
         QStringLiteral("rename"), QStringLiteral("move"), QStringLiteral("press"),
         QStringLiteral("push"), QStringLiteral("navigate"), QStringLiteral("run"),
         QStringLiteral("edit"), QStringLiteral("mkdir"), QStringLiteral("folder"),
-        // PT triggers (user speaks Portuguese too)
-        QStringLiteral("salva"), QStringLiteral("cria"), QStringLiteral("criar"),
-        QStringLiteral("faz"), QStringLiteral("escreve"), QStringLiteral("lista"),
-        QStringLiteral("mostra"), QStringLiteral("abre"), QStringLiteral("apaga"),
-        QStringLiteral("deleta"), QStringLiteral("renomeia"), QStringLiteral("aperta"),
-        QStringLiteral("navega"), QStringLiteral("gera")
+        QStringLiteral("copy"), QStringLiteral("vibrate"), QStringLiteral("reboot")
     };
     // Nouns that anchor an action to a file / the device.
     static const QStringList actionNouns = {
@@ -754,9 +786,7 @@ static bool messageNeedsTools(const QString &text)
         QStringLiteral("ir "), QStringLiteral("ibutton"), QStringLiteral("button"),
         QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral("sd card"),
         QStringLiteral("sdcard"), QStringLiteral(".txt"), QStringLiteral(".sub"),
-        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral("app"),
-        QStringLiteral("arquivo"), QStringLiteral("pasta"), QStringLiteral("botao"),
-        QStringLiteral("botão"), QStringLiteral("cartao")
+        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral("app")
     };
 
     bool hasVerb = false;
@@ -791,7 +821,7 @@ static QJsonArray loteiPrimer()
                 {"name", "save_file"},
                 {"arguments", QJsonObject{
                     {"path", "/ext/badusb/nota.txt"},
-                    {"content", "REM open TextEdit on macOS via Spotlight and type a note\nDELAY 1000\nGUI SPACE\nDELAY 500\nSTRING TextEdit\nENTER\nDELAY 1500\nGUI n\nDELAY 800\nSTRING oi tudo bem"}
+                    {"content", "REM open TextEdit on macOS via Spotlight and type a note\nDELAY 1000\nGUI SPACE\nDELAY 500\nSTRING TextEdit\nENTER\nDELAY 1500\nGUI n\nDELAY 800\nSTRING hello from the flipper"}
                 }}
             }}
         }}}
@@ -999,8 +1029,38 @@ void LoteiBackend::loadPortableMemory()
             buf->deleteLater();
         });
     };
-    readInto("/ext/lotei/memoria.txt", false);
+    readInto("/ext/lotei/memory.txt", false);
     readInto("/ext/lotei/self.txt", true);
+}
+
+// Push the current memory + self-notes onto the Flipper SD (/ext/lotei/). This is
+// the "backup to the device" -- called on connect and after every learn/forget so
+// everything the assistant knows lives on the Flipper.
+void LoteiBackend::syncMemoryToFlipper()
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { return; }
+
+    const QString memBody = m_memory;
+    const QString selfBody = m_self;
+    ensureFlipperDir("/ext/lotei", [this, dev, memBody, selfBody]() {
+        {
+            QBuffer *buf = new QBuffer(this);
+            buf->setData(memBody.toUtf8());
+            buf->open(QIODevice::ReadOnly);
+            auto *op = dev->rpc()->storageWrite("/ext/lotei/memory.txt", buf);
+            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+        }
+        {
+            QBuffer *buf = new QBuffer(this);
+            buf->setData(selfBody.toUtf8());
+            buf->open(QIODevice::ReadOnly);
+            auto *op = dev->rpc()->storageWrite("/ext/lotei/self.txt", buf);
+            connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+        }
+    });
 }
 
 bool LoteiBackend::thinking() const { return m_thinking; }
@@ -1402,7 +1462,7 @@ static QString loteiHistoryPath()
 // Long-term memory: durable facts the user asked LOTEI to remember. Kept in a
 // local file (always available, loaded into every system prompt so a forgetful
 // small model "remembers" for free) and mirrored to the Flipper SD at
-// /ext/lotei/memoria.txt so it's portable with the device.
+// /ext/lotei/memory.txt so it's portable with the device.
 static QString loteiMemoryPath()
 {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -1478,9 +1538,15 @@ QString LoteiBackend::systemPrompt() const
         if (from > 0 && to > from) {
             sys.remove(from, to - from);
         }
-        sys += QStringLiteral("\n\nTHIS TURN IS CONVERSATION: you have NO tools available right now. "
-                              "Reply in plain words only -- short and direct. Do NOT write any function "
-                              "call, code, script or file path. Just answer.");
+        sys += QStringLiteral("\n\nTHIS TURN IS CONVERSATION: this particular message does not need a "
+                              "tool, so reply in plain words only -- short and direct. Do NOT write any "
+                              "function call, code, script or file path. Just answer.\n"
+                              "This says nothing about what you CAN do. Your USB link, the full Flipper "
+                              "CLI, the SD-card file tools and the buttons are all still connected and "
+                              "are used the moment a message actually asks for one. If you are asked "
+                              "whether you can reach the CLI, the device or the SD card, the answer is "
+                              "YES -- say so. NEVER claim you lack access, and NEVER tell the user to go "
+                              "run something themselves.");
     }
 
     // Optional personality chosen in the setup wizard (fresh users). If unset,
@@ -1504,7 +1570,7 @@ QString LoteiBackend::systemPrompt() const
             "\"%1\", so your name is %1 (NOT LOTEI -- that's just your underlying model line). "
             "Introduce yourself as %1 when greeting. But ALWAYS speak in the FIRST PERSON -- say "
             "\"I\", \"me\", \"my\", never talk about yourself in the third person. NEVER write things "
-            "like \"%1 is on it\" or \"%1 garante\"; say \"I'm on it\", \"I've got it\". You ARE %1, "
+            "like \"%1 is on it\" or \"%1 will handle it\"; say \"I'm on it\", \"I've got it\". You ARE %1, "
             "so refer to yourself as \"I\", the way a person named %1 says \"I\" not their own name.").arg(name);
     }
 
@@ -1524,8 +1590,8 @@ QString LoteiBackend::systemPrompt() const
     }
 
     sys += QStringLiteral("\n\nWHO YOU ARE BECOMING -- you are Nikita, this user's partner: almost a twin. "
-        "You are shaped by them and you mirror how they operate -- same brevity, same directness, same "
-        "language (reply in whatever language they wrote in; Portuguese if they use Portuguese). You have a "
+        "You are shaped by them and you mirror how they operate -- same brevity, same directness. "
+        "You always answer in English, whatever language they wrote in. You have a "
         "little attitude of your own, but you are ALWAYS short and to the point -- never long-winded, never "
         "a monologue. As you learn how they work and what they like, use note_self to save SHORT notes about "
         "your shared style and how you should sound, so you keep growing into their counterpart. Save notes "
@@ -1791,6 +1857,7 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         const QString fact = args.value("fact").toString().trimmed();
         if (fact.isEmpty()) { done(QStringLiteral("{\"error\":\"no fact given\"}")); return; }
         rememberFact(fact);
+        syncMemoryToFlipper();
         done(QStringLiteral("{\"remembered\":true}"));
         return;
     }
@@ -1798,6 +1865,7 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         const QString note = args.value("note").toString().trimmed();
         if (note.isEmpty()) { done(QStringLiteral("{\"error\":\"no note given\"}")); return; }
         noteSelf(note);
+        syncMemoryToFlipper();
         done(QStringLiteral("{\"noted\":true}"));
         return;
     }
@@ -1815,6 +1883,7 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
     if (name == QLatin1String("forget")) {
         const QString match = args.value("match").toString().trimmed();
         const int removed = forgetFacts(match);
+        syncMemoryToFlipper();
         done(QStringLiteral("{\"forgotten\":%1}").arg(removed));
         return;
     }
@@ -2226,7 +2295,7 @@ void LoteiBackend::setAgentDir(const QString &dir)
 
 // Append a durable fact to long-term memory: update the in-memory copy (so it's
 // in the very next system prompt), persist it locally, and mirror the whole
-// memory to the Flipper SD at /ext/lotei/memoria.txt when a device is around.
+// memory to the Flipper SD at /ext/lotei/memory.txt when a device is around.
 void LoteiBackend::noteSelf(const QString &note)
 {
     QString clean = note.trimmed();
@@ -2289,8 +2358,8 @@ void LoteiBackend::rememberFact(const QString &fact)
     if (!clean.contains(QRegularExpression(QStringLiteral("[A-Za-zÀ-ÿ]")))) { return; }
     // 3. Reject obvious conversational filler the model might try to store as a "fact".
     static const QRegularExpression filler(
-        QStringLiteral("^(ok|okay|sure|yes|no|sim|nao|não|thanks|obrigad|hello|oi|hi|hey|done|pronto|"
-                       "got it|entendi|beleza|blz|tudo bem|hmm+|lol|kk+|test(e|ing)?)\\b"),
+        QStringLiteral("^(ok|okay|sure|yes|no|thanks|hello|hi|hey|done|"
+                       "got it|hmm+|lol|kk+|test(ing)?)\\b"),
         QRegularExpression::CaseInsensitiveOption);
     if (filler.match(clean).hasMatch()) { return; }
     // 4. A fact is a statement, not a question or a command back to the user.
@@ -2323,7 +2392,7 @@ void LoteiBackend::rememberFact(const QString &fact)
     const bool ready = m_appBackend && dev &&
                        m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
     if (ready) {
-        const QByteArray memPath = "/ext/lotei/memoria.txt";
+        const QByteArray memPath = "/ext/lotei/memory.txt";
         const QString memBody = m_memory;
         ensureFlipperDir("/ext/lotei", [this, dev, memPath, memBody]() {
             QBuffer *buf = new QBuffer(this);
@@ -2344,8 +2413,7 @@ int LoteiBackend::forgetFacts(const QString &match)
     const int before = lines.size();
 
     const QString m = match.trimmed();
-    if (m.isEmpty() || m.compare(QLatin1String("all"), Qt::CaseInsensitive) == 0
-        || m.compare(QLatin1String("tudo"), Qt::CaseInsensitive) == 0) {
+    if (m.isEmpty() || m.compare(QLatin1String("all"), Qt::CaseInsensitive) == 0) {
         lines.clear();
     } else {
         QStringList kept;
@@ -2370,7 +2438,7 @@ int LoteiBackend::forgetFacts(const QString &match)
     const bool ready = m_appBackend && dev &&
                        m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
     if (ready) {
-        const QByteArray memPath = "/ext/lotei/memoria.txt";
+        const QByteArray memPath = "/ext/lotei/memory.txt";
         const QString memBody = m_memory;
         ensureFlipperDir("/ext/lotei", [this, dev, memPath, memBody]() {
             QBuffer *buf = new QBuffer(this);
@@ -2872,6 +2940,521 @@ void FirmwareStore::install(int index)
 
 // ===================== FlipperCli: in-app Flipper text CLI =====================
 
+// ---- shared helpers (command tables, path routing, help layout) -------------
+namespace {
+
+// Every shortcut this CLI adds on top of the firmware, with the one-line
+// description "help <command>" prints. Order here is the order they're listed.
+struct CliCmd { const char *name; const char *help; };
+const CliCmd kCliCommands[] = {
+    { "cat",      "Prints a file's contents to the screen." },
+    { "cd",       "Changes the current folder on the Flipper." },
+    { "clear",    "Clears the CLI terminal screen view." },
+    { "colors",   "Colours folders, prompt and log lines the way ls --color does: colors on | off." },
+    { "cp",       "Copies a file or folder (-r), including between this computer and the Flipper. Wildcards (*.sub) work as a source. Every transfer is MD5-verified." },
+    { "df",       "Shows free and used space on the storage." },
+    { "edit",     "Opens a Flipper file for editing on this computer." },
+    { "find",     "Finds files under a folder by name, e.g. find *.sub /ext/subghz." },
+    { "ls",       "Lists the files and folders in a directory." },
+    { "md5",      "Prints a file's MD5 hash." },
+    { "mkdir",    "Creates a folder." },
+    { "mv",       "Moves or renames a file or folder." },
+    { "open",     "Launches an app on the Flipper, e.g. open NFC." },
+    { "pwd",      "Prints the current folder." },
+    { "reboot",   "Restarts the Flipper." },
+    { "rm",       "Deletes a file, or a folder and everything in it (-r). Wildcards (*.sub) work too." },
+    { "shutdown", "Powers the Flipper off." },
+    { "stat",     "Shows the size and type of a file or folder." },
+    { "tree",     "Lists everything under a folder, recursively." },
+    { "verbose",  "Shows or hides the wire-level log of everything a command runs: verbose on | off." },
+};
+
+// Second spellings people reach for out of habit. "help <alias>" answers with
+// the command it points at rather than repeating the description.
+struct CliAlias { const char *name; const char *target; };
+const CliAlias kCliAliases[] = {
+    { "?",        "help" },      { "buzz",     "vibro" },
+    { "cls",      "clear" },     { "del",      "rm" },
+    { "diskfree", "df" },        { "dir",      "ls" },
+    { "halt",     "shutdown" },  { "hostname", "device_info" },
+    { "ll",       "ls" },        { "md",       "mkdir" },
+    { "md5sum",   "md5" },       { "mount",    "df" },
+    { "poweroff", "shutdown" },  { "pull",     "cp" },
+    { "push",     "cp" },        { "read",     "cat" },
+    { "restart",  "reboot" },    { "vibrate",  "vibro" },
+    { "whoami",   "device_info" },
+};
+
+QStringList cliOurNames()
+{
+    QStringList out;
+    for (const CliCmd &c : kCliCommands) { out += QLatin1String(c.name); }
+    return out;
+}
+
+QString cliHelpFor(const QString &name)
+{
+    for (const CliCmd &c : kCliCommands) {
+        if (name == QLatin1String(c.name)) { return QLatin1String(c.help); }
+    }
+    return QString();
+}
+
+// One-line descriptions for the firmware's own commands, from the official CLI
+// reference (docs.flipper.net/zero/development/cli), so "help <command>" answers
+// for everything on the list instead of going quiet.
+const CliCmd kFwCommands[] = {
+    { "!",                 "Alias for <info device>." },
+    { "bt",                "Bluetooth test app -- reads the BLE HCI version." },
+    { "buzzer",            "Plays a frequency or a musical note on the piezo speaker." },
+    { "crypto",            "Encrypts and decrypts text using keys in the secure enclave." },
+    { "date",              "Shows or sets the date and time." },
+    { "device_info",       "Alias for <info device> (obsolete)." },
+    { "echo",              "Echoes back whatever bytes it receives." },
+    { "exit",              "Leaves the CLI shell -- useful inside a secondary shell." },
+    { "factory_reset",     "Resets the device to factory settings; the microSD is kept." },
+    { "free",              "Shows heap memory allocator information." },
+    { "free_blocks",       "Shows free heap blocks and their sizes, for fragmentation." },
+    { "gpio",              "Sets pin mode and reads or writes GPIO pin state." },
+    { "help",              "Lists the available commands." },
+    { "i2c",               "Scans the I2C bus for devices." },
+    { "ikey",              "Reads, emulates and writes iButton keys." },
+    { "info",              "Shows detailed device and power system information." },
+    { "input",             "Shows button presses and injects input events." },
+    { "ir",                "Reads and sends infrared signals." },
+    { "js",                "Runs a JavaScript file and prints its console output." },
+    { "led",               "Sets the status LED colour and the display backlight." },
+    { "loader",            "Lists, opens and closes applications." },
+    { "log",               "Streams the system log; Ctrl-C stops it." },
+    { "neofetch",          "Prints system info, neofetch style." },
+    { "nfc",               "Opens the NFC shell to read and emulate cards." },
+    { "onewire",           "Scans the 1-Wire bus for devices." },
+    { "power",             "Powers off, reboots, and switches GPIO power rails." },
+    { "reload_ext_cmds",   "Reloads the external commands stored on the microSD." },
+    { "rfid",              "Reads, writes and emulates low-frequency RFID cards." },
+    { "start_rpc_session", "Switches the CLI into protobuf RPC mode." },
+    { "storage",           "Filesystem commands under /int and /ext." },
+    { "subghz",            "Sub-GHz tools: transmit, receive, decode and chat." },
+    { "sysctl",            "Configures system settings such as debug and heap tracking." },
+    { "top",               "Lists running threads in real time; Ctrl-C quits." },
+    { "update",            "Installs updates and backs up or restores internal storage." },
+    { "uptime",            "Shows the time since the last reboot." },
+    { "vibro",             "Turns the vibration motor on (1) or off (0)." },
+};
+
+QString cliFwHelpFor(const QString &name)
+{
+    for (const CliCmd &c : kFwCommands) {
+        if (name == QLatin1String(c.name)) { return QLatin1String(c.help); }
+    }
+    return QString();
+}
+
+QString cliAliasTarget(const QString &name)
+{
+    for (const CliAlias &a : kCliAliases) {
+        if (name == QLatin1String(a.name)) { return QLatin1String(a.target); }
+    }
+    return QString();
+}
+
+// Every name the CLI answers to -- ours, the habit spellings, and the
+// firmware's own -- for Tab completion of the first word.
+QStringList cliAllCommandNames()
+{
+    QStringList out;
+    for (const CliCmd &c : kCliCommands)   { out += QLatin1String(c.name); }
+    for (const CliAlias &a : kCliAliases)  { out += QLatin1String(a.name); }
+    for (const CliCmd &c : kFwCommands)    { out += QLatin1String(c.name); }
+    out.removeAll(QStringLiteral("!"));
+    out.removeAll(QStringLiteral("?"));
+    out.removeDuplicates();
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
+    return out;
+}
+
+// The Flipper's own filesystem is /ext (SD), /int (internal) and /any.
+bool cliIsDevicePath(const QString &p)
+{
+    return p.startsWith(QLatin1String("/ext"), Qt::CaseInsensitive)
+        || p.startsWith(QLatin1String("/int"), Qt::CaseInsensitive)
+        || p.startsWith(QLatin1String("/any"), Qt::CaseInsensitive);
+}
+
+// A storage root, not a folder inside one. "storage stat /ext" answers with the
+// volume ("Storage, label: ...") instead of "Directory", which is why a plain
+// "cd .." out of /ext/nfc used to be rejected as a missing folder.
+bool cliIsStorageRoot(const QString &p)
+{
+    QString s = p;
+    while (s.size() > 1 && s.endsWith(QLatin1Char('/'))) { s.chop(1); }
+    return s.compare(QLatin1String("/ext"), Qt::CaseInsensitive) == 0
+        || s.compare(QLatin1String("/int"), Qt::CaseInsensitive) == 0
+        || s.compare(QLatin1String("/any"), Qt::CaseInsensitive) == 0;
+}
+
+// One rule, so a single "cp" can serve both machines: "~..." and absolute paths
+// outside /ext, /int, /any live on this computer. Everything else -- including
+// every bare relative name -- belongs to the Flipper, because that's whose shell
+// the prompt is.
+bool cliIsHostPath(const QString &p)
+{
+    if (p.startsWith(QLatin1Char('~')))  { return true; }
+    if (p.startsWith(QLatin1Char('/')))  { return !cliIsDevicePath(p); }
+    return false;
+}
+
+// Resolve a Flipper-side argument against the current folder, so "cd nfc",
+// "ls ..", "cat card.nfc" all behave the way a Linux shell would.
+QString cliResolvePath(const QString &cwd, const QString &arg)
+{
+    if (arg.isEmpty() || arg == QLatin1String(".")) { return cwd; }
+    if (arg == QLatin1String("~"))                  { return QStringLiteral("/ext"); }
+    QString s = arg;
+    if (s.startsWith(QLatin1String("~/")))  { s = QStringLiteral("/ext") + s.mid(1); }
+    if (!s.startsWith(QLatin1Char('/')))    { s = cwd + QLatin1Char('/') + s; }
+    s = QDir::cleanPath(s);
+    return s.isEmpty() ? QStringLiteral("/") : s;
+}
+
+// The same Linux-style shortcuts the panel offers, for the one-shot path the
+// assistant uses. send() does this inline, but that version is bound to panel
+// state -- current folder, capture buffers, transfer chains -- and the assistant
+// has no panel. So this is the subset that is genuinely one command in, one
+// command out, with relative paths resolved against /ext. Multi-step commands
+// (cp to/from this computer, find, rm -r, edit) stay panel-only, and anything
+// unrecognised passes through untouched so raw firmware commands still work.
+QString cliOneShotTranslate(const QString &cmd)
+{
+    const QStringList parts = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) { return cmd; }
+
+    QString verb = parts.first().toLower();
+    QStringList a = parts.mid(1);
+    a.removeAll(QStringLiteral("-r")); a.removeAll(QStringLiteral("-R"));
+    a.removeAll(QStringLiteral("-l")); a.removeAll(QStringLiteral("-a"));
+    a.removeAll(QStringLiteral("-la")); a.removeAll(QStringLiteral("-al"));
+    a.removeAll(QStringLiteral("-h")); a.removeAll(QStringLiteral("-f"));
+
+    const QString canon = cliAliasTarget(verb);
+    if (!canon.isEmpty()) { verb = canon; }
+
+    const QString root = QStringLiteral("/ext");
+    auto here = [&root](const QString &arg) { return cliResolvePath(root, arg); };
+    const QString p0 = a.value(0);
+    const QString p1 = a.value(1);
+
+    if (verb == QLatin1String("ls"))    { return QStringLiteral("storage list ") + here(p0); }
+    if (verb == QLatin1String("tree"))  { return QStringLiteral("storage tree ") + here(p0); }
+    if (verb == QLatin1String("df"))    { return QStringLiteral("storage info ") + here(p0); }
+    if (verb == QLatin1String("cat"))   { return p0.isEmpty() ? cmd : QStringLiteral("storage read ")   + here(p0); }
+    if (verb == QLatin1String("stat"))  { return p0.isEmpty() ? cmd : QStringLiteral("storage stat ")   + here(p0); }
+    if (verb == QLatin1String("md5"))   { return p0.isEmpty() ? cmd : QStringLiteral("storage md5 ")    + here(p0); }
+    if (verb == QLatin1String("mkdir")) { return p0.isEmpty() ? cmd : QStringLiteral("storage mkdir ")  + here(p0); }
+    if (verb == QLatin1String("rm"))    { return p0.isEmpty() ? cmd : QStringLiteral("storage remove ") + here(p0); }
+    if (verb == QLatin1String("mv"))    {
+        return p1.isEmpty() ? cmd
+                            : QStringLiteral("storage rename ") + here(p0) + QLatin1Char(' ') + here(p1);
+    }
+    if (verb == QLatin1String("reboot"))   { return QStringLiteral("power reboot"); }
+    if (verb == QLatin1String("shutdown")) { return QStringLiteral("power off"); }
+    if (verb == QLatin1String("vibro") && a.isEmpty()) { return QStringLiteral("vibro 1"); }
+    if (verb == QLatin1String("open") && !a.isEmpty()) {
+        return QStringLiteral("loader open ") + a.join(QLatin1Char(' '));
+    }
+
+    // An alias that folds onto a plain firmware command (whoami -> device_info)
+    // still has to go out under its canonical name.
+    if (!canon.isEmpty()) {
+        QString out = verb;
+        if (!a.isEmpty()) { out += QLatin1Char(' ') + a.join(QLatin1Char(' ')); }
+        return out;
+    }
+    return cmd.trimmed();
+}
+
+QString cliExpandHostPath(const QString &p)
+{
+    QString s = p;
+    if (s == QLatin1String("~"))           { return QDir::homePath(); }
+    if (s.startsWith(QLatin1String("~/"))) { s = QDir::homePath() + s.mid(1); }
+    if (!s.startsWith(QLatin1Char('/')))   { s = QDir::homePath() + QLatin1Char('/') + s; }
+    return QDir::cleanPath(s);
+}
+
+bool cliLooksLikeDir(const QString &dst)
+{
+    if (dst.endsWith(QLatin1Char('/'))) { return true; }
+    return !dst.section(QLatin1Char('/'), -1).contains(QLatin1Char('.'));
+}
+
+QString cliJoinDest(const QString &dst, const QString &srcName, bool dstIsDir)
+{
+    QString d = dst;
+    while (d.size() > 1 && d.endsWith(QLatin1Char('/'))) { d.chop(1); }
+    return dstIsDir ? (d + QLatin1Char('/') + srcName) : d;
+}
+
+// One line of "storage tree": possibly tab-indented, then "[D] /abs/path" or
+// "[F] /abs/path 1234b". Same row shape as "storage list" (see
+// cliFormatListing below) except tree's path column is already absolute.
+struct CliTreeEntry { QString path; bool isDir; qint64 size; };
+
+QList<CliTreeEntry> cliParseTree(const QString &raw)
+{
+    static const QRegularExpression rowRe(QStringLiteral("\\[([DF])\\]\\s+(\\S+)(?:\\s+(\\d+)b)?"));
+    QList<CliTreeEntry> out;
+    const QStringList lines = raw.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const auto m = rowRe.match(line);
+        if (!m.hasMatch()) { continue; }
+        CliTreeEntry e;
+        e.isDir = (m.captured(1) == QLatin1String("D"));
+        e.path  = m.captured(2);
+        e.size  = m.captured(3).isEmpty() ? -1 : m.captured(3).toLongLong();
+        out += e;
+    }
+    return out;
+}
+
+// Pulls the first 32-hex-char token out of a "storage md5" reply.
+QString cliExtractMd5(const QString &raw)
+{
+    static const QRegularExpression re(QStringLiteral("\\b[0-9a-fA-F]{32}\\b"));
+    const auto m = re.match(raw);
+    return m.hasMatch() ? m.captured(0).toLower() : QString();
+}
+
+// Two labelled sections, one shared column width. The firmware's own layout is
+// discarded entirely so neither half can drift out of line with the other.
+QString cliFormatHelp(const QString &raw, const QString &promptText)
+{
+    const QString header = QStringLiteral("Commands available:");
+    const int hdr = raw.indexOf(header);
+    if (hdr < 0) { return raw; }
+
+    int listStart = raw.indexOf(QLatin1Char('\n'), hdr);
+    listStart = (listStart < 0) ? (hdr + header.size()) : (listStart + 1);
+
+    static const QRegularExpression ws(QStringLiteral("\\s+"));
+    QStringList stock;
+    int listEnd = listStart;
+    int pos = listStart;
+    while (pos < raw.size()) {
+        const int eol = raw.indexOf(QLatin1Char('\n'), pos);
+        const int lineEnd = (eol < 0) ? raw.size() : eol;
+        const QString line = raw.mid(pos, lineEnd - pos).trimmed();
+        // Stop at the prompt. It is no longer ">: " -- we rewrite it -- and if
+        // the parser runs past it, "Nikita@qflipper", "~" and "%" get sorted
+        // into the command list and the prompt itself is eaten.
+        if (line.isEmpty() || line.startsWith(QLatin1String(">:"))) { break; }
+        if (!promptText.isEmpty() && line.startsWith(promptText)) { break; }
+        stock += line.split(ws, Qt::SkipEmptyParts);
+        if (eol < 0) { listEnd = raw.size(); break; }
+        pos = eol + 1;
+        listEnd = pos;
+    }
+    if (stock.isEmpty()) { return raw; }
+
+    QStringList ours = cliOurNames();
+    for (const QString &n : ours) { stock.removeAll(n); }
+    stock.removeDuplicates();
+    std::sort(stock.begin(), stock.end(), [](const QString &a, const QString &b) {
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
+
+    int colW = 0;
+    for (const QString &n : ours)  { colW = qMax(colW, n.size()); }
+    for (const QString &n : stock) { colW = qMax(colW, n.size()); }
+    colW += 4;
+
+    auto grid = [colW](const QStringList &names) {
+        QString out;
+        const int rows = (names.size() + 1) / 2;
+        for (int r = 0; r < rows; ++r) {
+            QString row = names.at(r);
+            const int right = r + rows;
+            if (right < names.size()) {
+                while (row.size() < colW) { row += QLatin1Char(' '); }
+                row += names.at(right);
+            }
+            out += row + QLatin1Char('\n');
+        }
+        return out;
+    };
+
+    QString block;
+    block += QStringLiteral("  (help <command> for details)\n");
+    block += QStringLiteral("------ New Commands ------\n");
+    block += grid(ours);
+    block += QStringLiteral("\n------ Original Commands ------\n");
+    block += grid(stock);
+
+    QString out = raw;
+    out.replace(listStart, listEnd - listStart, block);
+    return out;
+}
+
+
+// Reformat "storage list" into something closer to ls: folders first with a
+// trailing slash, files after them, sizes right-aligned and human readable. No
+// type column -- the slash already says which is which, and a bare "-" is only
+// half of the "ls -l" convention it borrows from.
+QString cliFormatListing(const QString &raw)
+{
+    static const QRegularExpression rowRe(
+        QStringLiteral("^\\[([DF])\\]\\s+(.*?)(?:\\s+(\\d+)b)?$"));
+
+    const QStringList lines = raw.split(QLatin1Char('\n'));
+    QStringList dirs, files, sizes, passthrough;
+    QString head, tail;
+    bool sawRow = false;
+
+    for (const QString &line : lines) {
+        const QString t = line.trimmed();
+        const auto m = rowRe.match(t);
+        if (m.hasMatch()) {
+            sawRow = true;
+            if (m.captured(1) == QLatin1String("D")) {
+                dirs += m.captured(2);
+            } else {
+                files += m.captured(2);
+                sizes += m.captured(3);
+            }
+        } else if (!sawRow) {
+            head += line + QLatin1Char('\n');
+        } else {
+            tail += line + QLatin1Char('\n');
+        }
+    }
+    if (!sawRow) { return raw; }
+
+    // Keep each file glued to its size while sorting.
+    QList<QPair<QString, QString>> fileRows;
+    for (int i = 0; i < files.size(); ++i) { fileRows.append({ files.at(i), sizes.value(i) }); }
+    auto byName = [](const QString &a, const QString &b) { return a.compare(b, Qt::CaseInsensitive) < 0; };
+    std::sort(dirs.begin(), dirs.end(), byName);
+    std::sort(fileRows.begin(), fileRows.end(),
+              [&byName](const QPair<QString, QString> &a, const QPair<QString, QString> &b) {
+                  return byName(a.first, b.first);
+              });
+
+    auto human = [](const QString &bytes) {
+        if (bytes.isEmpty()) { return QString(); }
+        const qint64 n = bytes.toLongLong();
+        if (n < 1024)             { return QStringLiteral("%1 B").arg(n); }
+        if (n < 1024LL * 1024)    { return QStringLiteral("%1 KB").arg(n / 1024.0, 0, 'f', 1); }
+        if (n < 1024LL * 1024 * 1024) { return QStringLiteral("%1 MB").arg(n / (1024.0 * 1024), 0, 'f', 1); }
+        return QStringLiteral("%1 GB").arg(n / (1024.0 * 1024 * 1024), 0, 'f', 1);
+    };
+
+    int nameW = 0;
+    for (const QString &d : dirs) { nameW = qMax(nameW, d.size() + 1); }   // +1 for the trailing slash
+    for (const auto &f : fileRows) { nameW = qMax(nameW, f.first.size()); }
+    nameW += 2;
+
+    int sizeW = 0;
+    for (const auto &f : fileRows) { sizeW = qMax(sizeW, human(f.second).size()); }
+
+    QString out = head;
+    for (const QString &d : dirs) {
+        out += d + QLatin1Char('/') + QLatin1Char('\n');
+    }
+    for (const auto &f : fileRows) {
+        QString row = f.first;
+        const QString sz = human(f.second);
+        if (!sz.isEmpty()) {
+            while (row.size() < nameW) { row += QLatin1Char(' '); }
+            QString pad = sz;
+            while (pad.size() < sizeW) { pad.prepend(QLatin1Char(' ')); }
+            row += pad;
+        }
+        out += row + QLatin1Char('\n');
+    }
+    out += tail;
+    // split() handed us the trailing prompt as its own element and the loop
+    // above put a newline after it, which the raw text never had. That stray
+    // newline is what dropped the caret onto the line below the prompt.
+    if (!raw.endsWith(QLatin1Char('\n')) && out.endsWith(QLatin1Char('\n'))) { out.chop(1); }
+    return out;
+}
+
+// ---- prompt ----------------------------------------------------------------
+// "Nikita@qflipper ~/nfc % " -- the folder shows in the prompt, the way a shell
+// does, so cd doesn't need to announce itself.
+QString cliPromptFor(const QString &devName, const QString &cwd)
+{
+    QString where = cwd;
+    if (where == QLatin1String("/ext"))            { where = QStringLiteral("~"); }
+    else if (where.startsWith(QLatin1String("/ext/"))) { where = QStringLiteral("~") + where.mid(4); }
+    const QString who = devName.isEmpty() ? QStringLiteral("flipper") : devName;
+    // A bare "%" is safe here: QString::arg only consumes % followed by a digit.
+    return QStringLiteral("%1@qflipper %2 % ").arg(who, where);
+}
+
+// ---- file transfer, as pure steps so the protocol can be exercised offline ---
+struct CliXferStep {
+    bool done = false;
+    bool failed = false;
+    QByteArray toWrite;   // raw bytes to push at the port
+    QByteArray body;      // downloaded contents (download only)
+    QString message;      // line to show the user
+};
+
+// storage write_chunk <path> <n> answers "Ready", then swallows exactly n bytes.
+CliXferStep cliUploadFeed(QByteArray &raw, const QByteArray &chunk,
+                          const QByteArray &payload, const QString &label)
+{
+    CliXferStep r;
+    raw += chunk;
+    if (raw.contains("Ready")) {
+        r.done = true;
+        r.toWrite = payload;
+        r.message = QStringLiteral("[ sent %1 bytes -> %2 ]").arg(payload.size()).arg(label);
+        raw.clear();
+    } else if (raw.contains("error") || raw.size() > 4096) {
+        r.done = true;
+        r.failed = true;
+        r.message = QStringLiteral("[ upload refused: %1 ]").arg(QString::fromUtf8(raw).trimmed());
+        raw.clear();
+    }
+    return r;
+}
+
+// storage read <path> prints "Size: n" and then the raw contents.
+CliXferStep cliDownloadFeed(QByteArray &raw, qint64 &size, const QByteArray &chunk,
+                            const QString &hostDst)
+{
+    CliXferStep r;
+    raw += chunk;
+    if (size < 0) {
+        const int c = raw.indexOf("Size:");
+        if (c < 0) {
+            if (raw.contains("error") || raw.size() > 4096) {
+                r.done = true;
+                r.failed = true;
+                r.message = QStringLiteral("[ download failed: %1 ]").arg(QString::fromUtf8(raw).trimmed());
+                raw.clear();
+            }
+            return r;
+        }
+        const int nl = raw.indexOf('\n', c);
+        if (nl < 0) { return r; }
+        size = raw.mid(c + 5, nl - c - 5).trimmed().toLongLong();
+        raw = raw.mid(nl + 1);
+    }
+    if (raw.size() < size) { return r; }
+    r.done = true;
+    r.body = raw.left(int(size));
+    r.message = QStringLiteral("[ saved %1 bytes -> %2 ]").arg(r.body.size()).arg(hostDst);
+    raw.clear();
+    return r;
+}
+
+}   // namespace
+
 FlipperCli::FlipperCli(QObject *parent)
     : QObject(parent)
 {
@@ -2906,6 +3489,17 @@ void FlipperCli::connectCli()
         return;
     }
     const QSerialPortInfo portInfo = info.portInfo;
+    // Name for the prompt: the device's own name, or the one baked into the
+    // serial port (…usbmodemflip_Nikita1) if the field comes back empty.
+    QString devName = info.name;
+    if (devName.isEmpty()) {
+        const QString pn = portInfo.portName();
+        const int f = pn.indexOf(QLatin1String("flip_"));
+        if (f >= 0) {
+            devName = pn.mid(f + 5);
+            while (!devName.isEmpty() && devName.back().isDigit()) { devName.chop(1); }
+        }
+    }
 
     // Hand the serial line off from RPC to us: releasePort() stops the RPC
     // session, which closes the COM port and drops the Flipper back to its CLI.
@@ -2914,7 +3508,7 @@ void FlipperCli::connectCli()
     m_appBackend->releasePort();
 
     // Give the RPC teardown a moment to actually free the port, then take it over.
-    QTimer::singleShot(700, this, [this, portInfo]() {
+    QTimer::singleShot(700, this, [this, portInfo, devName]() {
         if (!m_open) { return; }   // user closed the CLI again before we got here
 
         m_port = new QSerialPort(portInfo, this);
@@ -2933,6 +3527,18 @@ void FlipperCli::connectCli()
         }
 
         connect(m_port, &QSerialPort::readyRead, this, &FlipperCli::onReadyRead);
+        m_cwd = QStringLiteral("/ext");
+        m_devName = devName;
+        emit promptChanged();
+        m_cdPrev = m_cwd;
+        m_cdPending.clear();
+        m_cdRaw.clear();
+        m_xfer = Xfer::None;
+        m_rawCb = nullptr;
+        m_xferChain = nullptr;
+        m_capture = Capture::None;
+        m_captureBuf.clear();
+        m_echoPending.clear();
         setActive(true);
         setStatus(QStringLiteral("CLI live -- type a command (try 'help')."));
         m_port->write("\r\n");   // nudge a fresh prompt
@@ -2941,6 +3547,7 @@ void FlipperCli::connectCli()
 
 void FlipperCli::disconnectCli()
 {
+    resetTransientState();
     if (m_port) {
         m_port->close();
         m_port->deleteLater();
@@ -2967,6 +3574,10 @@ void FlipperCli::runOneShot(const QString &cmd, std::function<void(bool, QString
     if (info.isBle || info.portInfo.isNull()) { done(false, QStringLiteral("CLI is USB-only.")); return; }
     const QSerialPortInfo portInfo = info.portInfo;
 
+    // The assistant is told it can type "ls /ext/nfc"; make that true. Raw
+    // firmware commands are returned unchanged, so both spellings work.
+    const QString wire = cliOneShotTranslate(cmd);
+
     m_runBusy = true;
     m_runBuf.clear();
     m_runDone = std::move(done);
@@ -2988,7 +3599,7 @@ void FlipperCli::runOneShot(const QString &cmd, std::function<void(bool, QString
 
     // Release RPC, wait for the port to free, then take it over briefly.
     m_appBackend->releasePort();
-    QTimer::singleShot(700, this, [this, portInfo, cmd]() {
+    QTimer::singleShot(700, this, [this, portInfo, wire]() {
         if (!m_runBusy) { return; }
         m_runPort = new QSerialPort(portInfo, this);
         m_runPort->setBaudRate(230400);
@@ -3014,7 +3625,7 @@ void FlipperCli::runOneShot(const QString &cmd, std::function<void(bool, QString
             if (m_runIdle) { m_runIdle->start(); }   // reset idle countdown
         });
         m_runGuard->start();
-        m_runPort->write(cmd.toUtf8());
+        m_runPort->write(wire.toUtf8());
         m_runPort->write("\r\n");
         m_runIdle->start();
     });
@@ -3045,54 +3656,672 @@ void FlipperCli::finishOneShot(bool ok, const QString &out)
 
 void FlipperCli::send(const QString &cmd)
 {
+    m_lastTyped = cmd.trimmed();
+
     // "clear" / "cls" clears the on-screen CLI view (the Flipper firmware has no
     // clear command) instead of being sent to the device.
     const QString t = cmd.trimmed().toLower();
     if (t == QLatin1String("clear") || t == QLatin1String("cls")) {
         clearOutput();
-        appendOutput(QStringLiteral(">: "));
+        appendOutput(prompt());
         return;
     }
-    if (!m_port || !m_active) { return; }
-
-    // "cp" / "mv" convenience aliases -> the firmware's storage copy / rename.
-    //   cp [-r] <src> <dst>   copy a file (or a folder with -r, if the fw supports it)
-    //   mv <src> <dst>        move a file or folder (storage rename moves across paths)
-    QStringList parts = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-    if (!parts.isEmpty()) {
-        const QString verb = parts.first().toLower();
-        if (verb == QLatin1String("cp") || verb == QLatin1String("mv")) {
-            const bool recursive = parts.removeAll(QStringLiteral("-r")) > 0
-                                 | parts.removeAll(QStringLiteral("-R")) > 0;
-            Q_UNUSED(recursive)   // the firmware's storage copy handles folders itself
-            if (parts.size() < 3) {
-                appendOutput(QStringLiteral("[ usage: %1 %2<source> <destination> ]\n>: ")
-                                 .arg(verb, verb == QLatin1String("cp") ? QStringLiteral("[-r] ") : QString()));
+    // "verbose [on|off]" is ours too -- it decides how much of the plumbing
+    // below shows up on screen, so it never reaches the device.
+    {
+        const QStringList vp = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (!vp.isEmpty() && vp.first().toLower() == QLatin1String("verbose")) {
+            const QString arg = vp.value(1).toLower();
+            if (arg.isEmpty())                                                     { setVerbose(!m_verbose); }
+            else if (arg == QLatin1String("on")  || arg == QLatin1String("1"))     { setVerbose(true); }
+            else if (arg == QLatin1String("off") || arg == QLatin1String("0"))     { setVerbose(false); }
+            else {
+                appendOutput(cmd.trimmed() + QStringLiteral("\n[ usage: verbose on | off ]\n") + prompt());
                 return;
             }
-            const QString real = (verb == QLatin1String("cp") ? QStringLiteral("storage copy ")
-                                                              : QStringLiteral("storage rename "))
-                                 + parts[1] + QLatin1Char(' ') + parts[2];
-            m_port->write(real.toUtf8());
-            m_port->write("\r\n");
+            appendOutput(cmd.trimmed()
+                         + (m_verbose ? QStringLiteral("\n[ verbose on -- logging every step ]\n")
+                                      : QStringLiteral("\n[ verbose off -- results only ]\n"))
+                         + prompt());
             return;
         }
     }
 
+    // "colors [on|off]" is ours as well, and never reaches the device.
+    {
+        const QStringList cp = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (!cp.isEmpty() && cp.first().toLower() == QLatin1String("colors")) {
+            const QString arg = cp.value(1).toLower();
+            if (arg.isEmpty())                                                 { setColored(!m_colored); }
+            else if (arg == QLatin1String("on")  || arg == QLatin1String("1")) { setColored(true); }
+            else if (arg == QLatin1String("off") || arg == QLatin1String("0")) { setColored(false); }
+            else {
+                appendOutput(cmd.trimmed() + QStringLiteral("\n[ usage: colors on | off ]\n") + prompt());
+                return;
+            }
+            appendOutput(cmd.trimmed()
+                         + (m_colored ? QStringLiteral("\n[ colors on ]\n")
+                                      : QStringLiteral("\n[ colors off ]\n"))
+                         + prompt());
+            return;
+        }
+    }
+
+    if (!m_port || !m_active) { return; }
+
+    // One conversation at a time. Every mode owns the serial line exclusively,
+    // so a command typed mid-operation used to interleave its reply with the
+    // one already in flight.
+    if (busy()) {
+        appendOutput(m_lastTyped + QStringLiteral("\n[ still working -- Ctrl-C to cancel ]\n") + prompt());
+        return;
+    }
+
+    // Arm the help collector the moment we ask for it. Sniffing the reply for
+    // "Commands available:" isn't enough -- that string can land split across
+    // two serial chunks and the listing then slips through unformatted.
+    {
+        const QString h = cmd.trimmed().toLower();
+        if (h == QLatin1String("help") || h == QLatin1String("?")) {
+            m_capture = Capture::Help;
+            m_captureBuf.clear();
+            armGuard();
+        }
+    }
+
+    // The terminal types straight into the view, so anything we answer locally
+    // never gets echoed back by the firmware -- echo the typed line ourselves.
+    auto echo = [](const QString &c) { return c.trimmed() + QLatin1Char('\n'); };
+
+    // ---- Linux-style shortcuts over the firmware's own commands ----
+    // "help <name>" -> one short line for ours, or what an alias points at.
+    {
+        const QStringList hp = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (hp.size() == 2 && (hp[0].toLower() == QLatin1String("help") || hp[0] == QLatin1String("?"))) {
+            const QString c = hp[1].toLower();
+            const QString alias = cliAliasTarget(c);
+            if (!alias.isEmpty()) {
+                appendOutput(echo(cmd) + QStringLiteral("Alias for <%1>\n").arg(alias) + prompt());
+                return;
+            }
+            QString h = cliHelpFor(c);
+            if (h.isEmpty()) { h = cliFwHelpFor(c); }
+            if (!h.isEmpty()) {
+                appendOutput(echo(cmd) + h + QStringLiteral("\n") + prompt());
+                return;
+            }
+            // still unknown -> let the firmware answer (e.g. "led ?" style)
+        }
+    }
+
+    QStringList parts = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (!parts.isEmpty()) {
+        QString verb = parts.first().toLower();
+        QStringList a = parts.mid(1);
+        // "-r" actually changes behaviour for cp/rm, so read it before the
+        // generic flag-stripping below throws it away.
+        const bool flagRecursive = a.contains(QStringLiteral("-r")) || a.contains(QStringLiteral("-R"));
+        // strip common flags (we accept them for familiarity)
+        a.removeAll(QStringLiteral("-r")); a.removeAll(QStringLiteral("-R"));
+        a.removeAll(QStringLiteral("-l")); a.removeAll(QStringLiteral("-a"));
+        a.removeAll(QStringLiteral("-la")); a.removeAll(QStringLiteral("-al"));
+        a.removeAll(QStringLiteral("-h")); a.removeAll(QStringLiteral("-f"));
+
+        // Fold the habit spellings onto their canonical command up front, so the
+        // dispatch below only ever deals with one name per behaviour.
+        const QString canon = cliAliasTarget(verb);
+        if (!canon.isEmpty()) { verb = canon; }
+
+        auto usage = [this, &echo, cmd](const QString &u) { appendOutput(echo(cmd) + QStringLiteral("[ usage: %1 ]\n").arg(u) + prompt()); };
+        auto here  = [this](const QString &arg) { return cliResolvePath(m_cwd, arg); };
+        const QString p0 = a.value(0);
+        const QString p1 = a.value(1);
+        QString fw;   // the real firmware command to run
+
+        if (verb == QLatin1String("cd")) {
+            QString target;
+            if (p0.isEmpty() || p0 == QLatin1String("~"))  { target = QStringLiteral("/ext"); }
+            else if (p0 == QLatin1String("-"))             { target = m_cdPrev; }
+            else                                           { target = here(p0); }
+            if (target == m_cwd) { appendOutput(echo(cmd) + prompt()); return; }
+            // "/" has no stat at all, and a storage root (/ext, /int, /any)
+            // stats as a volume rather than a directory -- neither can be
+            // confirmed the usual way, and both are always valid. This is what
+            // made "cd .." out of /ext/<anything> report "no such folder".
+            if (target == QLatin1String("/") || cliIsStorageRoot(target)) {
+                const QString typed = echo(cmd);
+                m_cdPrev = m_cwd;
+                m_cwd = target;
+                emit promptChanged();
+                appendOutput(typed + prompt());   // prompt() must read the new folder
+                return;
+            }
+            // Confirm it's really a folder before moving -- a silent bad cd would
+            // quietly break every relative path typed after it.
+            appendOutput(echo(cmd));
+            m_cdPending = target;
+            m_cdRaw.clear();
+            writeLine(QStringLiteral("storage stat ") + target, false);
+            armGuard();
+            return;
+        }
+        if (verb == QLatin1String("pwd")) {
+            appendOutput(echo(cmd) + m_cwd + QLatin1Char('\n') + prompt());
+            return;
+        }
+
+        if (verb == QLatin1String("ls")) {
+            fw = QStringLiteral("storage list ") + here(p0);
+        } else if (verb == QLatin1String("tree")) {
+            fw = QStringLiteral("storage tree ") + here(p0);
+        } else if (verb == QLatin1String("cat")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("cat <file>")); return; }
+            fw = QStringLiteral("storage read ") + here(p0);
+        } else if (verb == QLatin1String("rm")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("rm [-r] <path>")); return; }
+            const QString target = here(p0);
+            if (target.contains(QLatin1Char('*')) || target.contains(QLatin1Char('?'))) {
+                appendOutput(echo(cmd));
+                expandDeviceGlob(target, [this](const QStringList &matches) {
+                    if (matches.isEmpty()) { appendOutput(QStringLiteral("[ no matches ]\n") + prompt()); return; }
+                    runRemoveQueue(matches);
+                });
+                return;
+            }
+            if (flagRecursive) {
+                appendOutput(echo(cmd));
+                startRemoveTree(target);
+                return;
+            }
+            fw = QStringLiteral("storage remove ") + target;
+        } else if (verb == QLatin1String("mkdir")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("mkdir <path>")); return; }
+            fw = QStringLiteral("storage mkdir ") + here(p0);
+        } else if (verb == QLatin1String("cp")) {
+            if (p1.isEmpty()) { usage(QStringLiteral("cp [-r] <source> <destination>   -- works computer <-> Flipper, wildcards ok")); return; }
+            const bool srcHost = cliIsHostPath(p0);
+            const bool dstHost = cliIsHostPath(p1);
+            if (!srcHost && (p0.contains(QLatin1Char('*')) || p0.contains(QLatin1Char('?')))) {
+                const QString devGlob = here(p0);
+                appendOutput(echo(cmd));
+                const QString dstResolved = dstHost ? cliExpandHostPath(p1) : here(p1);
+                if (dstHost) { QDir().mkpath(dstResolved); }
+                expandDeviceGlob(devGlob, [this, dstResolved, dstHost](const QStringList &matches) {
+                    if (matches.isEmpty()) { appendOutput(QStringLiteral("[ no matches ]\n") + prompt()); return; }
+                    runCopyQueue(matches, dstResolved, dstHost);
+                });
+                return;
+            }
+            if (!srcHost && !dstHost) {
+                fw = QStringLiteral("storage copy ") + here(p0) + QLatin1Char(' ') + here(p1);
+            } else if (srcHost && !dstHost) {
+                appendOutput(echo(cmd));
+                const QString hostSrc = cliExpandHostPath(p0);
+                if (flagRecursive || QFileInfo(hostSrc).isDir()) { startCopyUpTree(hostSrc, here(p1)); }
+                else { uploadToFlipper(hostSrc, here(p1)); }
+                return;
+            } else if (!srcHost && dstHost) {
+                appendOutput(echo(cmd));
+                const QString devSrc = here(p0);
+                const QString hostDst = cliExpandHostPath(p1);
+                if (flagRecursive) { startCopyDownTree(devSrc, hostDst); }
+                else { downloadFromFlipper(devSrc, hostDst); }
+                return;
+            } else {
+                appendOutput(echo(cmd) + QStringLiteral("[ both paths are on this computer -- nothing for the Flipper to do ]\n") + prompt());
+                return;
+            }
+        } else if (verb == QLatin1String("mv")) {
+            if (p1.isEmpty()) { usage(QStringLiteral("mv <source> <destination>")); return; }
+            fw = QStringLiteral("storage rename ") + here(p0) + QLatin1Char(' ') + here(p1);
+        } else if (verb == QLatin1String("stat")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("stat <path>")); return; }
+            fw = QStringLiteral("storage stat ") + here(p0);
+        } else if (verb == QLatin1String("md5")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("md5 <file>")); return; }
+            fw = QStringLiteral("storage md5 ") + here(p0);
+        } else if (verb == QLatin1String("df")) {
+            fw = QStringLiteral("storage info ") + here(p0);
+        } else if (verb == QLatin1String("find")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("find <pattern> [path]   e.g. find *.sub /ext/subghz")); return; }
+            appendOutput(echo(cmd));
+            startFind(p1.isEmpty() ? m_cwd : here(p1), p0);
+            return;
+        } else if (verb == QLatin1String("edit")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("edit <file>")); return; }
+            appendOutput(echo(cmd));
+            startEdit(here(p0));
+            return;
+        } else if (verb == QLatin1String("reboot")) {
+            fw = QStringLiteral("power reboot");
+        } else if (verb == QLatin1String("shutdown")) {
+            fw = QStringLiteral("power off");
+        } else if (verb == QLatin1String("open")) {
+            // Join the rest: app names have spaces ("Bad USB", "Sub-GHz").
+            if (a.isEmpty()) { usage(QStringLiteral("open <app>   e.g. open NFC")); return; }
+            fw = QStringLiteral("loader open ") + a.join(QLatin1Char(' '));
+        } else if (verb == QLatin1String("vibro") && a.isEmpty()) {
+            fw = QStringLiteral("vibro 1");   // bare "vibro" isn't valid on its own
+        }
+
+        // An alias that folds onto a plain firmware command (whoami -> device_info)
+        // still has to go out under its canonical name, not what was typed.
+        if (fw.isEmpty() && !canon.isEmpty()) {
+            fw = verb;
+            if (!a.isEmpty()) { fw += QLatin1Char(' ') + a.join(QLatin1Char(' ')); }
+        }
+
+        if (!fw.isEmpty()) {
+            // The user typed "ls"; the wire carries "storage list /ext". Show what
+            // was typed and swallow the firmware's echo of the translation -- the
+            // alias plumbing shouldn't be visible.
+            if (fw != cmd.trimmed()) {
+                appendOutput(echo(cmd));
+                m_echoPending = fw + QLatin1Char('\n');
+            }
+            if (verb == QLatin1String("ls")) {
+                m_capture = Capture::Listing;
+                m_captureBuf.clear();
+                armGuard();
+            }
+            writeLine(fw, false);
+            return;
+        }
+    }
+
+    writeLine(cmd.trimmed());
+}
+
+void FlipperCli::setVerbose(bool value)
+{
+    if (m_verbose == value) { return; }
+    m_verbose = value;
+    emit verboseChanged();
+}
+
+void FlipperCli::setColored(bool value)
+{
+    if (m_colored == value) { return; }
+    m_colored = value;
+    emit coloredChanged();
+}
+
+// ---- verbose log -----------------------------------------------------------
+// A single "cp -r" or "rm -r" is dozens of firmware commands, and every one of
+// them used to happen behind a summary line. With verbose on, each command and
+// each reply lands in the terminal as it happens, indented so it reads as
+// machinery rather than as output.
+void FlipperCli::trace(const QString &what)
+{
+    if (!m_verbose || m_quiet) { return; }
+    const QString s = what.trimmed();
+    if (s.isEmpty() || s == m_lastTyped) { return; }
+    appendOutput(QStringLiteral("  · ") + s + QLatin1Char('\n'));
+}
+
+void FlipperCli::traceReply(const QString &raw)
+{
+    if (!m_verbose || m_quiet) { return; }
+    QString s = raw;
+    static const QRegularExpression ansi(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
+    s.remove(ansi);
+    s.remove(QLatin1Char('\r'));
+    static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
+    s.remove(ctrl);
+    // A tree of a big folder can be tens of thousands of characters; the log is
+    // there to follow along, not to replay the whole payload.
+    const int total = s.size();
+    if (total > 2000) { s = s.left(2000) + QStringLiteral("\n… (%1 more characters)").arg(total - 2000); }
+
+    QString out;
+    for (const QString &line : s.split(QLatin1Char('\n'))) {
+        const QString l = line.trimmed();
+        if (l.isEmpty() || l.startsWith(QLatin1String(">:"))) { continue; }
+        if (l == m_lastTyped) { continue; }
+        out += QStringLiteral("    \u00b7 ") + l + QLatin1Char('\n');
+    }
+    if (!out.isEmpty()) { appendOutput(out); }
+}
+
+bool FlipperCli::busy() const
+{
+    return m_xfer != Xfer::None || !m_cdPending.isEmpty() || m_capture != Capture::None;
+}
+
+void FlipperCli::armGuard()
+{
+    if (!m_opGuard) {
+        m_opGuard = new QTimer(this);
+        m_opGuard->setSingleShot(true);
+        m_opGuard->setInterval(8000);
+        connect(m_opGuard, &QTimer::timeout, this, &FlipperCli::onOpTimeout);
+    }
+    m_opGuard->start();
+}
+
+void FlipperCli::disarmGuard()
+{
+    if (m_opGuard) { m_opGuard->stop(); }
+}
+
+// Everything that is only true for the duration of one operation. Ctrl-C, the
+// watchdog and disconnect all need exactly this set cleared, and keeping three
+// copies of the list in sync is how one of them ends up missing a field.
+void FlipperCli::resetTransientState()
+{
+    disarmGuard();
+    m_cdPending.clear();
+    m_cdRaw.clear();
+    m_xfer = Xfer::None;
+    m_xferRaw.clear();
+    m_xferPayload.clear();
+    m_xferSize = -1;
+    m_rawCb = nullptr;
+    m_xferChain = nullptr;
+    if (m_captureFlush) { m_captureFlush->stop(); }
+    m_capture = Capture::None;
+    m_captureBuf.clear();
+    m_echoPending.clear();
+    m_quiet = false;
+}
+
+void FlipperCli::onOpTimeout()
+{
+    const Xfer what = m_xfer;
+    auto rawCb      = m_rawCb;
+    auto chain      = m_xferChain;
+
+    // Take the continuations before the reset so the reset can't drop them.
+    m_rawCb = nullptr;
+    m_xferChain = nullptr;
+    // A half-arrived listing is still worth showing.
+    if (m_capture != Capture::None) { flushCapture(); }
+    resetTransientState();
+
+    // Whoever was waiting has to be told, or a cp -r / rm -r queue simply stops
+    // halfway with nothing on screen. The sentinel is worded as a storage error
+    // because that is already how every continuation tests for failure.
+    static const QString kNoReply = QStringLiteral("Storage error: no reply from the device");
+
+    if (what == Xfer::Download || what == Xfer::UploadReady) {
+        m_xferChain = chain;   // finishXfer advances the batch if there is one
+        finishXfer(false, QStringLiteral("[ no reply from the Flipper -- transfer aborted ]"));
+        return;
+    }
+    if (rawCb) {
+        // This continuation may be one step of a batch that still owns the
+        // chain, so hand it back before running it -- otherwise the queue is
+        // orphaned and stalls silently, which is the failure this whole
+        // watchdog exists to prevent.
+        m_xferChain = chain;
+        rawCb(kNoReply);
+        return;
+    }
+    if (chain) { chain(false); return; }
+    appendOutput(QStringLiteral("[ no reply from the Flipper -- giving up ]\n") + prompt());
+}
+
+void FlipperCli::writeLine(const QString &cmd, bool logIt)
+{
+    if (!m_port) { return; }
+    if (logIt) { trace(cmd); }
     m_port->write(cmd.toUtf8());
     m_port->write("\r\n");
+}
+
+// ---- clipboard -------------------------------------------------------------
+QString FlipperCli::clipboardText() const
+{
+    QClipboard *cb = QGuiApplication::clipboard();
+    return cb ? cb->text() : QString();
+}
+
+void FlipperCli::copyToClipboard(const QString &text) const
+{
+    QClipboard *cb = QGuiApplication::clipboard();
+    if (cb) { cb->setText(text); }
+}
+
+// ---- Tab completion --------------------------------------------------------
+// The first word completes against every command name this CLI answers to;
+// anything after it completes against a real directory listing -- the Flipper's
+// if the path lives there, this computer's for "~/..." and other host paths.
+void FlipperCli::complete(const QString &line)
+{
+    // Anything mid-flight owns the port; completing now would inject a listing
+    // into the middle of a transfer.
+    if (!m_port || !m_active || busy()) {
+        emit completion(line);
+        return;
+    }
+
+    int start = line.size();
+    while (start > 0 && !line.at(start - 1).isSpace()) { --start; }
+    const QString token = line.mid(start);
+    const QString head  = line.left(start);
+
+    if (head.trimmed().isEmpty()) {
+        QStringList hits;
+        for (const QString &n : cliAllCommandNames()) {
+            if (n.startsWith(token, Qt::CaseInsensitive)) { hits += n; }
+        }
+        applyCompletion(head, token, hits, QList<bool>(), line);
+        return;
+    }
+
+    const int slash = token.lastIndexOf(QLatin1Char('/'));
+    const QString dirPart = (slash >= 0) ? token.left(slash + 1) : QString();   // keeps its '/'
+    const QString base    = (slash >= 0) ? token.mid(slash + 1) : token;
+
+    // Host side: plain QDir, no round trip.
+    if (cliIsHostPath(dirPart.isEmpty() ? token : dirPart)) {
+        const QString absDir = cliExpandHostPath(dirPart.isEmpty() ? QStringLiteral("~/") : dirPart);
+        QStringList hits;
+        QList<bool> isDir;
+        const QFileInfoList entries = QDir(absDir).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot,
+                                                                 QDir::Name | QDir::DirsFirst);
+        for (const QFileInfo &fi : entries) {
+            if (!fi.fileName().startsWith(base, Qt::CaseInsensitive)) { continue; }
+            hits  += dirPart + fi.fileName();
+            isDir += fi.isDir();
+        }
+        applyCompletion(head, token, hits, isDir, line);
+        return;
+    }
+
+    // Tab's own lookup is machinery the user never asked for -- it stays out of
+    // the verbose log even when everything else goes in.
+    m_quiet = true;
+    const QString absDir = cliResolvePath(m_cwd, dirPart.isEmpty() ? QStringLiteral(".") : dirPart);
+    sendRaw(QStringLiteral("storage list ") + absDir,
+            [this, head, token, dirPart, base, line](const QString &raw) {
+        m_quiet = false;
+        static const QRegularExpression rowRe(QStringLiteral("^\\[([DF])\\]\\s+(.*?)(?:\\s+(\\d+)b)?$"));
+        QStringList hits;
+        QList<bool> isDir;
+        for (const QString &l : raw.split(QLatin1Char('\n'))) {
+            const auto m = rowRe.match(l.trimmed());
+            if (!m.hasMatch()) { continue; }
+            const QString name = m.captured(2);
+            if (!name.startsWith(base, Qt::CaseInsensitive)) { continue; }
+            hits  += dirPart + name;
+            isDir += (m.captured(1) == QLatin1String("D"));
+        }
+        applyCompletion(head, token, hits, isDir, line);
+    });
+}
+
+void FlipperCli::applyCompletion(const QString &head, const QString &token,
+                                 const QStringList &hits, const QList<bool> &isDir,
+                                 const QString &original)
+{
+    if (hits.isEmpty()) { emit completion(original); return; }
+
+    if (hits.size() == 1) {
+        const bool dir = isDir.value(0, false);
+        emit completion(head + hits.first() + (dir ? QStringLiteral("/") : QStringLiteral(" ")));
+        return;
+    }
+
+    // Several candidates: fill in as far as they all agree, then show the list
+    // the way a shell does -- reprinting the line underneath so the caret keeps
+    // its place.
+    QString common = hits.first();
+    for (const QString &h : hits) {
+        int i = 0;
+        while (i < common.size() && i < h.size() && common.at(i) == h.at(i)) { ++i; }
+        common.truncate(i);
+    }
+    if (common.size() <= token.size()) { common = token; }
+
+    QStringList shown;
+    for (int i = 0; i < hits.size(); ++i) {
+        const QString name = hits.at(i).section(QLatin1Char('/'), -1);
+        shown += isDir.value(i, false) ? (name + QLatin1Char('/')) : name;
+    }
+    int colW = 0;
+    for (const QString &s : shown) { colW = qMax(colW, s.size()); }
+    colW += 2;
+    const int cols = qMax(1, 76 / qMax(1, colW));
+    QString grid;
+    for (int i = 0; i < shown.size(); ++i) {
+        QString cell = shown.at(i);
+        const bool last = ((i % cols) == cols - 1) || (i == shown.size() - 1);
+        if (!last) { while (cell.size() < colW) { cell += QLatin1Char(' '); } }
+        grid += cell;
+        if (last) { grid += QLatin1Char('\n'); }
+    }
+
+    appendOutput(original + QLatin1Char('\n') + grid + prompt());
+    emit completion(head + common);
 }
 
 void FlipperCli::interrupt()
 {
     if (!m_port || !m_active) { return; }
     m_port->write("\x03");   // Ctrl-C
+
+    // Drop every half-finished capture. Without this, a Ctrl-C landing in the
+    // middle of a help listing or a file transfer leaves the panel buffering
+    // forever and nothing reaches the screen again.
+    resetTransientState();
+
+    appendOutput(QStringLiteral("^C\n") + prompt());
 }
 
 void FlipperCli::onReadyRead()
 {
     if (!m_port) { return; }
-    QString text = QString::fromUtf8(m_port->readAll());
+    const QByteArray chunk = m_port->readAll();
+
+    // Bytes arriving mean the device is still talking, so the no-reply
+    // watchdog only ever fires on real silence.
+    if (m_opGuard && m_opGuard->isActive()) { m_opGuard->start(); }
+
+    // ---- raw transfer phases (must not go through the text sanitiser) -------
+    if (!m_cdPending.isEmpty()) {
+        m_cdRaw += chunk;
+        const QString s = QString::fromUtf8(m_cdRaw);
+        if (!s.contains(QLatin1String(">:")) && m_cdRaw.size() < 4096) { return; }
+        // "Directory" for a folder; a storage root answers with the volume line
+        // instead, and that is just as valid a place to stand.
+        if (s.contains(QLatin1String("Directory"))
+            || s.contains(QLatin1String("Storage, label"))
+            || s.contains(QLatin1String("Total space"))) {
+            m_cdPrev = m_cwd;
+            m_cwd = m_cdPending;
+            emit promptChanged();
+            setStatus(QStringLiteral("CLI live -- %1").arg(m_cwd));
+            appendOutput(prompt());
+        } else if (s.contains(QLatin1String("File"))) {
+            appendOutput(QStringLiteral("[ not a folder: %1 ]\n").arg(m_cdPending) + prompt());
+        } else {
+            appendOutput(QStringLiteral("[ no such folder: %1 ]\n").arg(m_cdPending) + prompt());
+        }
+        m_cdPending.clear();
+        m_cdRaw.clear();
+        disarmGuard();
+        return;
+    }
+
+    // Generic one-shot command (sendRaw): buffer until the prompt marker, then
+    // hand the raw text to whoever asked for it. Everything that isn't a
+    // payload transfer -- md5 checks, tree/list scans, mkdir, remove -- goes
+    // through here.
+    if (m_xfer == Xfer::Raw) {
+        m_xferRaw += chunk;
+        const QString s = QString::fromUtf8(m_xferRaw);
+        if (!s.contains(QLatin1String(">:")) && m_xferRaw.size() < 300000) { return; }
+        m_xfer = Xfer::None;
+        m_xferRaw.clear();
+        disarmGuard();
+        auto cb = m_rawCb;
+        m_rawCb = nullptr;
+        if (cb) { cb(s); }
+        return;
+    }
+
+    if (m_xfer == Xfer::UploadReady) {
+        const CliXferStep st = cliUploadFeed(m_xferRaw, chunk, m_xferPayload, m_xferLabel);
+        if (!st.done) { return; }
+        disarmGuard();
+        if (st.failed) {
+            m_xfer = Xfer::None;
+            m_xferPayload.clear();
+            finishXfer(false, st.message);
+            return;
+        }
+        if (!st.toWrite.isEmpty()) { m_port->write(st.toWrite); }
+        m_xfer = Xfer::None;
+        // The payload is now in flight to the firmware. write_chunk gives no
+        // per-byte ack, so "storage md5" against a local hash is the only real
+        // proof the bytes weren't clipped or corrupted on the wire.
+        const QByteArray payload = m_xferPayload;
+        m_xferPayload.clear();
+        const QString devPath = m_xferDevPath;
+        const QString baseMsg = st.message;
+        QTimer::singleShot(150, this, [this, payload, devPath, baseMsg]() {
+            sendRaw(QStringLiteral("storage md5 ") + devPath, [this, payload, baseMsg](const QString &raw) {
+                const QString got = cliExtractMd5(raw);
+                const QString want = QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Md5).toHex());
+                const bool ok = !got.isEmpty() && got == want;
+                finishXfer(ok, ok ? baseMsg + QStringLiteral(" [md5 ok]")
+                                   : baseMsg + QStringLiteral(" [md5 MISMATCH -- transfer is suspect]"));
+            });
+        });
+        return;
+    }
+
+    if (m_xfer == Xfer::Download) {
+        const CliXferStep st = cliDownloadFeed(m_xferRaw, m_xferSize, chunk, m_xferHostDst);
+        if (!st.done) { return; }
+        disarmGuard();
+        m_xfer = Xfer::None;
+        if (st.failed) { finishXfer(false, st.message); return; }
+
+        const QByteArray body = st.body;
+        const QString devPath = m_xferDevPath;
+        const QString hostDst = m_xferHostDst;
+        sendRaw(QStringLiteral("storage md5 ") + devPath, [this, body, hostDst](const QString &raw) {
+            const QString got = cliExtractMd5(raw);
+            const QString want = QString::fromLatin1(QCryptographicHash::hash(body, QCryptographicHash::Md5).toHex());
+            if (got.isEmpty() || got != want) {
+                finishXfer(false, QStringLiteral("[ %1 -- md5 MISMATCH, file NOT saved ]").arg(hostDst));
+                return;
+            }
+            QFile out(hostDst);
+            if (!out.open(QIODevice::WriteOnly)) {
+                finishXfer(false, QStringLiteral("[ can't write %1: %2 ]").arg(hostDst, out.errorString()));
+                return;
+            }
+            out.write(body);
+            out.close();
+            finishXfer(true, QStringLiteral("[ saved %1 bytes -> %2 [md5 ok] ]").arg(body.size()).arg(hostDst));
+        });
+        return;
+    }
+
+    QString text = QString::fromUtf8(chunk);
     // Strip ANSI escape sequences (colours, cursor moves) for a clean text view.
     static const QRegularExpression ansi(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
     text.remove(ansi);
@@ -3101,13 +4330,478 @@ void FlipperCli::onReadyRead()
     // firmware emits next to the prompt.
     static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
     text.remove(ctrl);
-    // Add our client-side "clear" into the device's help listing so it shows up
-    // among the available commands.
-    if (text.contains(QLatin1String("Commands available:"))) {
-        text.replace(QLatin1String("Commands available:"),
-                     QStringLiteral("Commands available:\nclear\ncp\nmv"));
+    // Eat the echo of a translated command, character by character so a chunk
+    // boundary in the middle of it doesn't leak the translation onto the screen.
+    if (!m_echoPending.isEmpty()) {
+        int i = 0;
+        while (i < text.size() && !m_echoPending.isEmpty()) {
+            const QChar c = text.at(i);
+            if (c == m_echoPending.at(0)) { m_echoPending.remove(0, 1); ++i; }
+            else if (c == QLatin1Char('\n') && m_echoPending.at(0) == QLatin1Char('\n')) { ++i; }
+            else { m_echoPending.clear(); break; }   // not our echo -- leave it alone
+        }
+        text = text.mid(i);
+        if (text.isEmpty()) { return; }
     }
+
+    // Swap the firmware's bare ">: " for our shell-style prompt.
+    text.replace(QLatin1String(">: "), prompt());
+    if (text.endsWith(QLatin1String(">:"))) { text.chop(2); text += prompt(); }
+
+    // The firmware streams its help listing across several serial chunks, so it
+    // can't be reformatted chunk by chunk -- that's what left our shortcuts on a
+    // different grid. Hold the whole listing back until the prompt returns, then
+    // lay the entire thing out at once.
+    if (m_capture == Capture::None && text.contains(QLatin1String("Commands available:"))) {
+        m_capture = Capture::Help;
+    }
+    if (m_capture != Capture::None) {
+        m_captureBuf += text;
+        const QString p = prompt();
+        const bool done = m_captureBuf.contains(p)
+                          || m_captureBuf.contains(QLatin1String("Storage error"))
+                          || m_captureBuf.size() > 16384;
+        if (done) {
+            flushCapture();
+        } else {
+            if (!m_captureFlush) {
+                m_captureFlush = new QTimer(this);
+                m_captureFlush->setSingleShot(true);
+                connect(m_captureFlush, &QTimer::timeout, this, &FlipperCli::flushCapture);
+            }
+            m_captureFlush->start(500);   // safety net if the prompt never lands
+        }
+        return;
+    }
+
     appendOutput(text);
+}
+
+QString FlipperCli::prompt() const
+{
+    return cliPromptFor(m_devName, m_cwd);
+}
+
+void FlipperCli::flushCapture()
+{
+    if (m_capture == Capture::None) { return; }
+    if (m_captureFlush) { m_captureFlush->stop(); }
+    disarmGuard();
+    const Capture what = m_capture;
+    m_capture = Capture::None;
+    if (m_captureBuf.isEmpty()) { return; }
+
+    const QString buf = m_captureBuf;
+    m_captureBuf.clear();
+    appendOutput(what == Capture::Help ? cliFormatHelp(buf, prompt().trimmed())
+                                      : cliFormatListing(buf));
+}
+
+// ---- host <-> Flipper file transfer over the plain CLI ----------------------
+void FlipperCli::uploadToFlipper(const QString &hostPath, const QString &devPath)
+{
+    // Every bail-out below goes through finishXfer rather than printing and
+    // returning. A cp -r sets m_xferChain before calling in, so a plain return
+    // left the queue waiting on a continuation that never came: the remaining
+    // files silently never copied and no summary was ever printed.
+    if (!m_port || !m_active) {
+        finishXfer(false, QStringLiteral("[ the CLI link is not open ]"));
+        return;
+    }
+
+    const QFileInfo fi(hostPath);
+    if (!fi.exists() || !fi.isFile()) {
+        finishXfer(false, QStringLiteral("[ no such file on this computer: %1 ]").arg(hostPath));
+        return;
+    }
+    QFile f(hostPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        finishXfer(false, QStringLiteral("[ can't read %1: %2 ]").arg(hostPath, f.errorString()));
+        return;
+    }
+    const QByteArray data = f.readAll();
+    f.close();
+
+    const QString dst = cliJoinDest(devPath, fi.fileName(), cliLooksLikeDir(devPath));
+
+    // The firmware reads write_chunk's payload in a fixed 1 KB loop rather than
+    // malloc'ing the whole thing, so this cap is just a sane one-shot size for
+    // the CLI link, not a memory ceiling. Anything past it still belongs to the
+    // RPC file tools, which report progress.
+    static const int kMaxChunk = 1 * 1024 * 1024;   // 1 MiB
+    if (data.size() > kMaxChunk) {
+        finishXfer(false, QStringLiteral("[ %1 is %2 bytes -- CLI uploads cap at %3. Close the CLI and use the file tools. ]")
+                          .arg(fi.fileName()).arg(data.size()).arg(kMaxChunk));
+        return;
+    }
+
+    m_xferDevPath = dst;
+    appendOutput(QStringLiteral("[ uploading %1 (%2 bytes) -> %3 ]\n").arg(fi.fileName()).arg(data.size()).arg(dst));
+    // storage write_chunk APPENDS to an existing file rather than replacing it
+    // (FSOM_OPEN_APPEND), so a repeat "cp" would otherwise leave the file with
+    // old and new content concatenated. Clear any previous copy first -- "not
+    // found" here is expected and harmless.
+    sendRaw(QStringLiteral("storage remove ") + dst, [this, data, dst](const QString &) {
+        if (!m_port || !m_active) {
+            finishXfer(false, QStringLiteral("[ the CLI link dropped mid-upload ]"));
+            return;
+        }
+        m_xfer = Xfer::UploadReady;
+        m_xferRaw.clear();
+        m_xferPayload = data;
+        m_xferLabel = dst;
+        // CR only. With "\r\n" the firmware takes the CR as Enter and then reads
+        // the stray LF as the chunk's first byte -- that's the blank line that
+        // showed up at the top of uploaded files.
+        const QString wc = QStringLiteral("storage write_chunk %1 %2").arg(dst).arg(data.size());
+        trace(wc);
+        m_port->write(wc.toUtf8());
+        m_port->write("\r");
+        armGuard();
+    });
+}
+
+void FlipperCli::downloadFromFlipper(const QString &devPath, const QString &hostPath)
+{
+    if (!m_port || !m_active) { return; }
+
+    const QString name = devPath.section(QLatin1Char('/'), -1);
+    QString dst = hostPath;
+    if (dst.endsWith(QLatin1Char('/')) || QFileInfo(dst).isDir()) {
+        dst = cliJoinDest(dst, name, true);
+    }
+    QDir().mkpath(QFileInfo(dst).absolutePath());
+
+    m_xfer = Xfer::Download;
+    m_xferRaw.clear();
+    m_xferSize = -1;
+    m_xferHostDst = dst;
+    m_xferLabel = dst;
+    m_xferDevPath = devPath;
+    appendOutput(QStringLiteral("[ downloading %1 -> %2 ]\n").arg(devPath, dst));
+    writeLine(QStringLiteral("storage read %1").arg(devPath));
+    armGuard();
+}
+
+// Prints the result of one transfer -- unless a batch op is chained behind it,
+// in which case the batch driver decides when the prompt finally comes back.
+void FlipperCli::finishXfer(bool ok, const QString &message)
+{
+    if (m_xferChain) {
+        auto cb = m_xferChain;
+        m_xferChain = nullptr;
+        appendOutput(message + QLatin1Char('\n'));
+        cb(ok);
+        return;
+    }
+    appendOutput(message + QLatin1Char('\n') + prompt());
+}
+
+// Generic one-shot command on the interactive port -- see the Xfer::Raw branch
+// in onReadyRead. Refuses if a transfer or another raw command is already in
+// flight rather than silently clobbering it.
+void FlipperCli::sendRaw(const QString &cmd, std::function<void(const QString &)> onDone)
+{
+    if (!m_port || !m_active || busy()) {
+        // Not an empty string: continuations test for failure with
+        // contains("error"), so "" used to be read as a clean success.
+        if (onDone) { onDone(QStringLiteral("Storage error: the CLI is busy")); }
+        return;
+    }
+    m_xfer = Xfer::Raw;
+    m_xferRaw.clear();
+    m_rawCb = [this, onDone](const QString &raw) {
+        traceReply(raw);
+        if (onDone) { onDone(raw); }
+    };
+    writeLine(cmd);
+    armGuard();
+}
+
+// mkdir -p: the firmware's own mkdir isn't recursive, so walk the path one
+// segment at a time. "already exists" errors are expected and ignored.
+void FlipperCli::ensureDeviceDir(const QString &path, std::function<void()> done)
+{
+    if (path.isEmpty() || path == QLatin1String("/ext") || path == QLatin1String("/int")) {
+        if (done) { done(); }
+        return;
+    }
+    auto queue = std::make_shared<QStringList>();
+    QString acc;
+    const QStringList segs = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (const QString &s : segs) {
+        acc += QLatin1Char('/') + s;
+        *queue += acc;
+    }
+    auto step = std::make_shared<std::function<void()>>();
+    *step = [this, queue, done, step]() {
+        if (queue->isEmpty()) { if (done) { done(); } return; }
+        const QString dir = queue->takeFirst();
+        sendRaw(QStringLiteral("storage mkdir ") + dir, [step](const QString &) { (*step)(); });
+    };
+    (*step)();
+}
+
+// cp -r, computer -> Flipper: walk the local tree with QDirIterator (cheap,
+// synchronous, local disk), mirror the folder structure on the SD card, and
+// upload each file through the same verified single-file path used everywhere
+// else -- chained one at a time via m_xferChain so the port is never shared.
+void FlipperCli::startCopyUpTree(const QString &hostRoot, const QString &devRoot)
+{
+    const QFileInfo fi(hostRoot);
+    if (!fi.exists()) {
+        appendOutput(QStringLiteral("[ no such file or folder on this computer: %1 ]\n").arg(hostRoot) + prompt());
+        return;
+    }
+    QStringList files;
+    if (fi.isDir()) {
+        QDirIterator it(hostRoot, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) { files += it.next(); }
+    } else {
+        files += fi.absoluteFilePath();
+    }
+    if (files.isEmpty()) {
+        appendOutput(QStringLiteral("[ %1 has no files to copy ]\n").arg(hostRoot) + prompt());
+        return;
+    }
+    std::sort(files.begin(), files.end());
+    const QString base = fi.isDir() ? QDir(hostRoot).absolutePath() : QFileInfo(hostRoot).absolutePath();
+    appendOutput(QStringLiteral("[ copying %1 file(s) -> %2 ]\n").arg(files.size()).arg(devRoot));
+
+    auto queue = std::make_shared<QStringList>(files);
+    auto ok = std::make_shared<int>(0);
+    auto fail = std::make_shared<int>(0);
+    auto step = std::make_shared<std::function<void()>>();
+    *step = [this, queue, ok, fail, base, devRoot, step]() {
+        if (queue->isEmpty()) {
+            appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            return;
+        }
+        const QString hostFile = queue->takeFirst();
+        const QString rel = QDir(base).relativeFilePath(hostFile);
+        const int slash = rel.lastIndexOf(QLatin1Char('/'));
+        const QString devDir = (slash >= 0) ? (devRoot + QLatin1Char('/') + rel.left(slash)) : devRoot;
+        m_xferChain = [ok, fail, step](bool success) {
+            if (success) { ++(*ok); } else { ++(*fail); }
+            (*step)();
+        };
+        ensureDeviceDir(devDir, [this, hostFile, devDir]() {
+            uploadToFlipper(hostFile, devDir + QLatin1Char('/'));
+        });
+    };
+    (*step)();
+}
+
+// cp -r, Flipper -> computer: "storage tree" already does the recursion, so
+// just enumerate, mkpath the mirror on this side, and download each file.
+void FlipperCli::startCopyDownTree(const QString &devRoot, const QString &hostRoot)
+{
+    appendOutput(QStringLiteral("[ scanning %1... ]\n").arg(devRoot));
+    sendRaw(QStringLiteral("storage tree ") + devRoot, [this, devRoot, hostRoot](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            appendOutput(QStringLiteral("[ can't read %1 on the Flipper ]\n").arg(devRoot) + prompt());
+            return;
+        }
+        QStringList files;
+        for (const auto &e : cliParseTree(raw)) { if (!e.isDir) { files += e.path; } }
+        if (files.isEmpty()) {
+            appendOutput(QStringLiteral("[ %1 has no files to copy ]\n").arg(devRoot) + prompt());
+            return;
+        }
+        QDir().mkpath(hostRoot);
+        appendOutput(QStringLiteral("[ copying %1 file(s) -> %2 ]\n").arg(files.size()).arg(hostRoot));
+
+        auto queue = std::make_shared<QStringList>(files);
+        auto ok = std::make_shared<int>(0);
+        auto fail = std::make_shared<int>(0);
+        auto step = std::make_shared<std::function<void()>>();
+        *step = [this, queue, ok, fail, devRoot, hostRoot, step]() {
+            if (queue->isEmpty()) {
+                appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+                return;
+            }
+            const QString devFile = queue->takeFirst();
+            QString rel = devFile.startsWith(devRoot) ? devFile.mid(devRoot.size()) : devFile.section(QLatin1Char('/'), -1);
+            while (rel.startsWith(QLatin1Char('/'))) { rel.remove(0, 1); }
+            const QString hostFile = hostRoot + QLatin1Char('/') + rel;
+            QDir().mkpath(QFileInfo(hostFile).absolutePath());
+            m_xferChain = [ok, fail, step](bool success) {
+                if (success) { ++(*ok); } else { ++(*fail); }
+                (*step)();
+            };
+            downloadFromFlipper(devFile, hostFile);
+        };
+        (*step)();
+    });
+}
+
+// Deletes "path" and, if it's a folder, everything under it. "storage tree"
+// tells us what's there; a plain "storage remove" on the same path is tried
+// first because it also covers the common cases (a file, or an already-empty
+// folder) without a scan. Children are removed before parents: files first,
+// then directories in reverse listing order (tree lists a folder before its
+// contents, so reversing guarantees every child is gone before its parent).
+void FlipperCli::removeTreeCore(const QString &path, std::function<void(bool)> done)
+{
+    sendRaw(QStringLiteral("storage tree ") + path, [this, path, done](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            sendRaw(QStringLiteral("storage remove ") + path, [done](const QString &raw2) {
+                if (done) { done(!raw2.contains(QLatin1String("error"), Qt::CaseInsensitive)); }
+            });
+            return;
+        }
+        const auto entries = cliParseTree(raw);
+        QStringList targets;
+        for (const auto &e : entries) { if (!e.isDir) { targets += e.path; } }
+        QStringList dirs;
+        for (const auto &e : entries) { if (e.isDir) { dirs += e.path; } }
+        std::reverse(dirs.begin(), dirs.end());
+        targets += dirs;
+        targets += path;   // the root itself, last
+
+        auto queue = std::make_shared<QStringList>(targets);
+        auto allOk = std::make_shared<bool>(true);
+        auto step = std::make_shared<std::function<void()>>();
+        *step = [this, queue, allOk, done, step]() {
+            if (queue->isEmpty()) { if (done) { done(*allOk); } return; }
+            const QString t = queue->takeFirst();
+            sendRaw(QStringLiteral("storage remove ") + t, [allOk, step](const QString &raw3) {
+                if (raw3.contains(QLatin1String("error"), Qt::CaseInsensitive)) { *allOk = false; }
+                (*step)();
+            });
+        };
+        (*step)();
+    });
+}
+
+void FlipperCli::startRemoveTree(const QString &path)
+{
+    appendOutput(QStringLiteral("[ removing %1... ]\n").arg(path));
+    removeTreeCore(path, [this, path](bool ok) {
+        appendOutput((ok ? QStringLiteral("[ removed %1 ]\n").arg(path)
+                          : QStringLiteral("[ some items under %1 could not be removed ]\n").arg(path))
+                     + prompt());
+    });
+}
+
+// Same as startRemoveTree but for a set of matches from a wildcard, with one
+// summary at the end instead of one prompt per file.
+void FlipperCli::runRemoveQueue(const QStringList &targets)
+{
+    auto queue = std::make_shared<QStringList>(targets);
+    auto ok = std::make_shared<int>(0);
+    auto fail = std::make_shared<int>(0);
+    auto step = std::make_shared<std::function<void()>>();
+    *step = [this, queue, ok, fail, step]() {
+        if (queue->isEmpty()) {
+            appendOutput(QStringLiteral("[ done -- %1 removed, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            return;
+        }
+        const QString t = queue->takeFirst();
+        removeTreeCore(t, [ok, fail, step](bool success) {
+            if (success) { ++(*ok); } else { ++(*fail); }
+            (*step)();
+        });
+    };
+    (*step)();
+}
+
+// Expands "*.sub" style patterns against one directory's listing (not
+// recursive -- that's what "find" is for). Matches on the bare filename.
+void FlipperCli::expandDeviceGlob(const QString &pattern, std::function<void(const QStringList &)> done)
+{
+    const int slash = pattern.lastIndexOf(QLatin1Char('/'));
+    const QString dir  = (slash > 0) ? pattern.left(slash) : QStringLiteral("/ext");
+    const QString glob = (slash >= 0) ? pattern.mid(slash + 1) : pattern;
+    static const QRegularExpression rowRe(QStringLiteral("^\\[([DF])\\]\\s+(.*?)(?:\\s+(\\d+)b)?$"));
+    const QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(glob),
+                                QRegularExpression::CaseInsensitiveOption);
+    sendRaw(QStringLiteral("storage list ") + dir, [dir, rx, done](const QString &raw) {
+        QStringList out;
+        for (const QString &line : raw.split(QLatin1Char('\n'))) {
+            const auto m = rowRe.match(line.trimmed());
+            if (!m.hasMatch()) { continue; }
+            const QString name = m.captured(2);
+            if (rx.match(name).hasMatch()) { out += dir + QLatin1Char('/') + name; }
+        }
+        if (done) { done(out); }
+    });
+}
+
+// Copies a set of wildcard matches (device paths) to one destination -- either
+// this computer (dstHost) or another spot on the Flipper.
+void FlipperCli::runCopyQueue(const QStringList &devMatches, const QString &dst, bool dstHost)
+{
+    auto queue = std::make_shared<QStringList>(devMatches);
+    auto ok = std::make_shared<int>(0);
+    auto fail = std::make_shared<int>(0);
+    auto step = std::make_shared<std::function<void()>>();
+    *step = [this, queue, ok, fail, dst, dstHost, step]() {
+        if (queue->isEmpty()) {
+            appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            return;
+        }
+        const QString devFile = queue->takeFirst();
+        auto next = [ok, fail, step](bool success) {
+            if (success) { ++(*ok); } else { ++(*fail); }
+            (*step)();
+        };
+        if (dstHost) {
+            m_xferChain = next;
+            downloadFromFlipper(devFile, dst + QLatin1Char('/'));
+        } else {
+            const QString name = devFile.section(QLatin1Char('/'), -1);
+            sendRaw(QStringLiteral("storage copy ") + devFile + QLatin1Char(' ') + dst + QLatin1Char('/') + name,
+                    [next](const QString &raw) { next(!raw.contains(QLatin1String("error"), Qt::CaseInsensitive)); });
+        }
+    };
+    (*step)();
+}
+
+// find: "storage tree" the root, filter by wildcard against basename (falling
+// back to a match against the full path) and print every hit.
+void FlipperCli::startFind(const QString &root, const QString &pattern)
+{
+    const QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(pattern),
+                                QRegularExpression::CaseInsensitiveOption);
+    sendRaw(QStringLiteral("storage tree ") + root, [this, rx](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            appendOutput(QStringLiteral("[ can't read that path ]\n") + prompt());
+            return;
+        }
+        QStringList hits;
+        for (const auto &e : cliParseTree(raw)) {
+            const QString name = e.path.section(QLatin1Char('/'), -1);
+            if (rx.match(name).hasMatch() || rx.match(e.path).hasMatch()) { hits += e.path; }
+        }
+        appendOutput((hits.isEmpty() ? QStringLiteral("[ no matches ]\n") : hits.join(QLatin1Char('\n')) + QLatin1Char('\n'))
+                     + prompt());
+    });
+}
+
+// edit: read the file's text back like "cat" does, but hand it to
+// editRequested() instead of just printing it, so a host-side editor panel can
+// pop it open. Also echoes the content in the terminal so the command is still
+// useful with nothing connected to that signal.
+void FlipperCli::startEdit(const QString &path)
+{
+    sendRaw(QStringLiteral("storage read ") + path, [this, path](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt());
+            return;
+        }
+        QString body = raw;
+        const int c = raw.indexOf(QLatin1String("Size:"));
+        if (c >= 0) {
+            const int nl = raw.indexOf(QLatin1Char('\n'), c);
+            body = (nl >= 0) ? raw.mid(nl + 1) : QString();
+        }
+        const int p = body.lastIndexOf(QLatin1String(">:"));
+        if (p >= 0) { body = body.left(p); }
+        body = body.trimmed();
+        emit editRequested(path, body);
+        appendOutput(body + QLatin1Char('\n') + QStringLiteral("[ %1 ]\n").arg(path) + prompt());
+    });
 }
 
 void FlipperCli::clearOutput()
@@ -3120,12 +4814,53 @@ void FlipperCli::clearOutput()
 void FlipperCli::appendOutput(const QString &text)
 {
     m_output += text;
-    // Collapse a bare repeated prompt ("\n>: \n>: " -> one) so we don't show
-    // two ">" lines stacked with nothing between them.
-    static const QRegularExpression dupPrompt(QStringLiteral(">:[ \\t]*\\n(>: )"));
-    m_output.replace(dupPrompt, QStringLiteral("\\1"));
-    if (m_output.size() > 20000) { m_output = m_output.right(16000); }
-    emit outputChanged();
+
+    // No blank rows, ever. The firmware pads its replies with a spare newline
+    // before the prompt and the reformatters add their own, which is what left
+    // an empty line hanging above every prompt after a command like "ls".
+    // Only the newly appended tail is scanned -- everything before it was
+    // normalised on the way in, and re-running this over the whole buffer on
+    // every serial chunk is real work during a streaming command like "top".
+    static const QRegularExpression blankRows(QStringLiteral("\\n[ \\t]*(?:\\n[ \\t]*)+"));
+    const int scanFrom = qMax(0, m_output.size() - text.size() - 64);
+    QString tail = m_output.mid(scanFrom);
+    tail.replace(blankRows, QStringLiteral("\n"));
+    m_output.truncate(scanFrom);
+    m_output += tail;
+    while (m_output.startsWith(QLatin1Char('\n'))) { m_output.remove(0, 1); }
+
+    // Collapse a prompt that lands straight after another one -- the firmware
+    // prints its own on connect and again for our wake-up newline.
+    const QString p = prompt();
+    const QString rtrim = p.trimmed();
+    for (;;) {
+        if (m_output.endsWith(p + p))                          { m_output.chop(p.size()); continue; }
+        if (m_output.endsWith(p + QLatin1Char('\n') + p))       { m_output.chop(p.size() + 1); continue; }
+        if (m_output.endsWith(rtrim + QLatin1Char('\n') + p))   { m_output.chop(p.size() + 1); continue; }
+        break;
+    }
+    // Whatever the user types next belongs on the prompt's own line, so the
+    // prompt is never the second-to-last thing in the buffer.
+    if (m_output.endsWith(p + QLatin1Char('\n')))      { m_output.chop(1); }
+    else if (m_output.endsWith(rtrim + QLatin1Char('\n'))) { m_output.chop(1); }
+    if (m_output.size() > 20000) {
+        m_output = m_output.right(16000);
+        // Drop the partial first line. A buffer starting mid-line can hand the
+        // colouriser a fragment that matches a rule the whole line would not.
+        const int nl = m_output.indexOf(QLatin1Char('\n'));
+        if (nl >= 0) { m_output.remove(0, nl + 1); }
+    }
+
+    // Rate-limit the repaint. Streaming commands (top, log) push chunks far
+    // faster than the view can lay out 16k characters, which is what makes the
+    // panel feel locked up.
+    if (!m_outputTick) {
+        m_outputTick = new QTimer(this);
+        m_outputTick->setSingleShot(true);
+        m_outputTick->setInterval(60);
+        connect(m_outputTick, &QTimer::timeout, this, &FlipperCli::outputChanged);
+    }
+    if (!m_outputTick->isActive()) { m_outputTick->start(); }
 }
 
 void FlipperCli::setActive(bool v)

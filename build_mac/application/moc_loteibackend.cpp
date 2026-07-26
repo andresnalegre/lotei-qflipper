@@ -86,6 +86,7 @@ template <> constexpr inline auto LoteiBackend::qt_create_metaobjectdata<qt_meta
         "applyPreset",
         "name",
         "applyNamePersonality",
+        "syncMemoryToFlipper",
         "thinking",
         "configured",
         "hasAudio",
@@ -202,34 +203,36 @@ template <> constexpr inline auto LoteiBackend::qt_create_metaobjectdata<qt_meta
         }}),
         // Method 'applyNamePersonality'
         QtMocHelpers::MethodData<void()>(46, 2, QMC::AccessPublic, QMetaType::Void),
+        // Method 'syncMemoryToFlipper'
+        QtMocHelpers::MethodData<void()>(47, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'thinking'
-        QtMocHelpers::PropertyData<bool>(47, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<bool>(48, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
         // property 'configured'
-        QtMocHelpers::PropertyData<bool>(48, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
-        // property 'hasAudio'
         QtMocHelpers::PropertyData<bool>(49, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
+        // property 'hasAudio'
+        QtMocHelpers::PropertyData<bool>(50, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Constant),
         // property 'muted'
-        QtMocHelpers::PropertyData<bool>(50, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 3),
+        QtMocHelpers::PropertyData<bool>(51, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 3),
         // property 'voiceName'
-        QtMocHelpers::PropertyData<QString>(51, QMetaType::QString, QMC::DefaultPropertyFlags, 4),
+        QtMocHelpers::PropertyData<QString>(52, QMetaType::QString, QMC::DefaultPropertyFlags, 4),
         // property 'modelName'
-        QtMocHelpers::PropertyData<QString>(52, QMetaType::QString, QMC::DefaultPropertyFlags, 5),
+        QtMocHelpers::PropertyData<QString>(53, QMetaType::QString, QMC::DefaultPropertyFlags, 5),
         // property 'voiceVolume'
-        QtMocHelpers::PropertyData<qreal>(53, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 6),
+        QtMocHelpers::PropertyData<qreal>(54, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 6),
         // property 'musicVolume'
-        QtMocHelpers::PropertyData<qreal>(54, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 7),
+        QtMocHelpers::PropertyData<qreal>(55, QMetaType::QReal, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 7),
         // property 'setupComplete'
-        QtMocHelpers::PropertyData<bool>(55, QMetaType::Bool, QMC::DefaultPropertyFlags, 8),
+        QtMocHelpers::PropertyData<bool>(56, QMetaType::Bool, QMC::DefaultPropertyFlags, 8),
         // property 'ollamaOnline'
-        QtMocHelpers::PropertyData<bool>(56, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
+        QtMocHelpers::PropertyData<bool>(57, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
         // property 'manualName'
-        QtMocHelpers::PropertyData<QString>(57, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 9),
+        QtMocHelpers::PropertyData<QString>(58, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 9),
         // property 'agentEnabled'
-        QtMocHelpers::PropertyData<bool>(58, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
+        QtMocHelpers::PropertyData<bool>(59, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
         // property 'agentDir'
-        QtMocHelpers::PropertyData<QString>(59, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
+        QtMocHelpers::PropertyData<QString>(60, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 10),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -290,6 +293,7 @@ void LoteiBackend::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id
             if (_a[0]) *reinterpret_cast<QStringList*>(_a[0]) = std::move(_r); }  break;
         case 33: _t->applyPreset((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         case 34: _t->applyNamePersonality(); break;
+        case 35: _t->syncMemoryToFlipper(); break;
         default: ;
         }
     }
@@ -381,14 +385,14 @@ int LoteiBackend::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 35)
+        if (_id < 36)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 35;
+        _id -= 36;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 35)
+        if (_id < 36)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 35;
+        _id -= 36;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty
@@ -845,15 +849,30 @@ template <> constexpr inline auto FlipperCli::qt_create_metaobjectdata<qt_meta_t
         "activeChanged",
         "outputChanged",
         "statusChanged",
+        "verboseChanged",
+        "coloredChanged",
+        "promptChanged",
+        "completion",
+        "line",
+        "editRequested",
+        "path",
+        "content",
         "onReadyRead",
         "send",
         "cmd",
         "interrupt",
         "clearOutput",
+        "complete",
+        "clipboardText",
+        "copyToClipboard",
+        "text",
         "open",
         "active",
         "output",
-        "status"
+        "status",
+        "verbose",
+        "colored",
+        "promptText"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -865,26 +884,56 @@ template <> constexpr inline auto FlipperCli::qt_create_metaobjectdata<qt_meta_t
         QtMocHelpers::SignalData<void()>(4, 2, QMC::AccessPublic, QMetaType::Void),
         // Signal 'statusChanged'
         QtMocHelpers::SignalData<void()>(5, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'verboseChanged'
+        QtMocHelpers::SignalData<void()>(6, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'coloredChanged'
+        QtMocHelpers::SignalData<void()>(7, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'promptChanged'
+        QtMocHelpers::SignalData<void()>(8, 2, QMC::AccessPublic, QMetaType::Void),
+        // Signal 'completion'
+        QtMocHelpers::SignalData<void(const QString &)>(9, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 10 },
+        }}),
+        // Signal 'editRequested'
+        QtMocHelpers::SignalData<void(const QString &, const QString &)>(11, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 12 }, { QMetaType::QString, 13 },
+        }}),
         // Slot 'onReadyRead'
-        QtMocHelpers::SlotData<void()>(6, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(14, 2, QMC::AccessPrivate, QMetaType::Void),
         // Method 'send'
-        QtMocHelpers::MethodData<void(const QString &)>(7, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 8 },
+        QtMocHelpers::MethodData<void(const QString &)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 16 },
         }}),
         // Method 'interrupt'
-        QtMocHelpers::MethodData<void()>(9, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(17, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'clearOutput'
-        QtMocHelpers::MethodData<void()>(10, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(18, 2, QMC::AccessPublic, QMetaType::Void),
+        // Method 'complete'
+        QtMocHelpers::MethodData<void(const QString &)>(19, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 10 },
+        }}),
+        // Method 'clipboardText'
+        QtMocHelpers::MethodData<QString() const>(20, 2, QMC::AccessPublic, QMetaType::QString),
+        // Method 'copyToClipboard'
+        QtMocHelpers::MethodData<void(const QString &) const>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 22 },
+        }}),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'open'
-        QtMocHelpers::PropertyData<bool>(11, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
+        QtMocHelpers::PropertyData<bool>(23, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
         // property 'active'
-        QtMocHelpers::PropertyData<bool>(12, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<bool>(24, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
         // property 'output'
-        QtMocHelpers::PropertyData<QString>(13, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<QString>(25, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
         // property 'status'
-        QtMocHelpers::PropertyData<QString>(14, QMetaType::QString, QMC::DefaultPropertyFlags, 3),
+        QtMocHelpers::PropertyData<QString>(26, QMetaType::QString, QMC::DefaultPropertyFlags, 3),
+        // property 'verbose'
+        QtMocHelpers::PropertyData<bool>(27, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 4),
+        // property 'colored'
+        QtMocHelpers::PropertyData<bool>(28, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 5),
+        // property 'promptText'
+        QtMocHelpers::PropertyData<QString>(29, QMetaType::QString, QMC::DefaultPropertyFlags, 6),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -910,10 +959,19 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 1: _t->activeChanged(); break;
         case 2: _t->outputChanged(); break;
         case 3: _t->statusChanged(); break;
-        case 4: _t->onReadyRead(); break;
-        case 5: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 6: _t->interrupt(); break;
-        case 7: _t->clearOutput(); break;
+        case 4: _t->verboseChanged(); break;
+        case 5: _t->coloredChanged(); break;
+        case 6: _t->promptChanged(); break;
+        case 7: _t->completion((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 8: _t->editRequested((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 9: _t->onReadyRead(); break;
+        case 10: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 11: _t->interrupt(); break;
+        case 12: _t->clearOutput(); break;
+        case 13: _t->complete((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 14: { QString _r = _t->clipboardText();
+            if (_a[0]) *reinterpret_cast<QString*>(_a[0]) = std::move(_r); }  break;
+        case 15: _t->copyToClipboard((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         default: ;
         }
     }
@@ -926,6 +984,16 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
             return;
         if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)()>(_a, &FlipperCli::statusChanged, 3))
             return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)()>(_a, &FlipperCli::verboseChanged, 4))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)()>(_a, &FlipperCli::coloredChanged, 5))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)()>(_a, &FlipperCli::promptChanged, 6))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & )>(_a, &FlipperCli::completion, 7))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & , const QString & )>(_a, &FlipperCli::editRequested, 8))
+            return;
     }
     if (_c == QMetaObject::ReadProperty) {
         void *_v = _a[0];
@@ -934,6 +1002,9 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 1: *reinterpret_cast<bool*>(_v) = _t->active(); break;
         case 2: *reinterpret_cast<QString*>(_v) = _t->output(); break;
         case 3: *reinterpret_cast<QString*>(_v) = _t->status(); break;
+        case 4: *reinterpret_cast<bool*>(_v) = _t->verbose(); break;
+        case 5: *reinterpret_cast<bool*>(_v) = _t->colored(); break;
+        case 6: *reinterpret_cast<QString*>(_v) = _t->promptText(); break;
         default: break;
         }
     }
@@ -941,6 +1012,8 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         void *_v = _a[0];
         switch (_id) {
         case 0: _t->setOpen(*reinterpret_cast<bool*>(_v)); break;
+        case 4: _t->setVerbose(*reinterpret_cast<bool*>(_v)); break;
+        case 5: _t->setColored(*reinterpret_cast<bool*>(_v)); break;
         default: break;
         }
     }
@@ -965,20 +1038,20 @@ int FlipperCli::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 8)
+        if (_id < 16)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 8;
+        _id -= 16;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 8)
+        if (_id < 16)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 8;
+        _id -= 16;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty
             || _c == QMetaObject::RegisterPropertyMetaType) {
         qt_static_metacall(this, _c, _id, _a);
-        _id -= 4;
+        _id -= 7;
     }
     return _id;
 }
@@ -1005,5 +1078,35 @@ void FlipperCli::outputChanged()
 void FlipperCli::statusChanged()
 {
     QMetaObject::activate(this, &staticMetaObject, 3, nullptr);
+}
+
+// SIGNAL 4
+void FlipperCli::verboseChanged()
+{
+    QMetaObject::activate(this, &staticMetaObject, 4, nullptr);
+}
+
+// SIGNAL 5
+void FlipperCli::coloredChanged()
+{
+    QMetaObject::activate(this, &staticMetaObject, 5, nullptr);
+}
+
+// SIGNAL 6
+void FlipperCli::promptChanged()
+{
+    QMetaObject::activate(this, &staticMetaObject, 6, nullptr);
+}
+
+// SIGNAL 7
+void FlipperCli::completion(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 7, nullptr, _t1);
+}
+
+// SIGNAL 8
+void FlipperCli::editRequested(const QString & _t1, const QString & _t2)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 8, nullptr, _t1, _t2);
 }
 QT_WARNING_POP

@@ -126,7 +126,7 @@ Rectangle {
             listView.positionViewAtEnd();
         }
         function onScriptSaveError(message) {
-            root.appendMessage("lotei", "⚠️ Não consegui salvar: " + message);
+            root.appendMessage("lotei", "⚠️ Couldn't save: " + message);
             listView.positionViewAtEnd();
         }
     }
@@ -363,7 +363,7 @@ Rectangle {
 
                 // ---- Manual save panel (model-free) --------------------------
                 // Shown for LOTEI replies that contain a code block. YOU pick the
-                // folder + name and hit Salvar; the app writes straight to the SD.
+                // folder + name and hit save; the app writes straight to the SD.
                 // The AI drafts, you save -- no fumbled tool calls.
                 Rectangle {
                     visible: model.role === "lotei" && model.text.indexOf("```") >= 0
@@ -420,7 +420,7 @@ Rectangle {
                                     }
                                 }
                                 Text {
-                                    text: "▼ salvar"
+                                    text: "▼ save"
                                     color: saveBtn.containsMouse ? Theme.color.lightgreen : Theme.color.lightorange2
                                     font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                                     MouseArea {

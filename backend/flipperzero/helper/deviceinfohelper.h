@@ -62,6 +62,9 @@ private:
     void fetchDeviceInfo();
     void fetchDeviceInfoLegacy();
     void fetchDeviceInfoProperty();
+    // The first boot after a firmware update is legitimately slow, so this one
+    // query gets a longer deadline and a couple of retries.
+    int m_devInfoAttempts = 0;
     void checkSDCard();
     void checkManifest();
     void getTimeSkew();

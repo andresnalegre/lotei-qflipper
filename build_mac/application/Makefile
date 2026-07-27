@@ -1934,6 +1934,7 @@ moc_application.cpp: ../../application/application.h \
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonObject \
 		/opt/homebrew/lib/QtNetwork.framework/Headers/QNetworkAccessManager \
@@ -1978,6 +1979,7 @@ moc_loteibackend.cpp: ../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
 		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVariant \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonObject \
@@ -2070,6 +2072,7 @@ application.o: ../../application/application.cpp ../../application/application.h
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonObject \
 		/opt/homebrew/lib/QtNetwork.framework/Headers/QNetworkAccessManager \
@@ -2080,7 +2083,6 @@ application.o: ../../application/application.cpp ../../application/application.h
 		/opt/homebrew/lib/QtCore.framework/Headers/QDebug \
 		/opt/homebrew/lib/QtCore.framework/Headers/QLocale \
 		/opt/homebrew/lib/QtCore.framework/Headers/QSysInfo \
-		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QTranslator \
 		/opt/homebrew/lib/QtQml.framework/Headers/QQmlContext \
 		/opt/homebrew/lib/QtQuick.framework/Headers/QQuickWindow \
@@ -2154,6 +2156,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
 		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVariant \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonObject \
@@ -2189,7 +2192,6 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		../../dfu/usbdeviceinfo.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMetaType \
 		../../backend/flipperzero/deviceinfo.h \
-		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtSerialPort.framework/Headers/QSerialPortInfo \
 		../../backend/flipperzero/deviceregion.h \
 		../../backend/flipperzero/devicecolor.h \
@@ -2238,6 +2240,7 @@ main.o: ../../application/main.cpp ../../application/application.h \
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
+		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonObject \
 		/opt/homebrew/lib/QtNetwork.framework/Headers/QNetworkAccessManager \

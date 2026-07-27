@@ -9,10 +9,16 @@ import Misc 1.0
 AbstractOverlay {
     id: overlay
 
+    // Same balancing as UpdateOverlay, but a bigger number: this screen has no
+    // status line under the button, so its content ends ~36px higher and the
+    // empty space below was correspondingly larger. Mirrored on the device
+    // widget in MainWindow.
+    readonly property int contentShift: 42
+
     TextLabel {
         id: successLabel
 
-        y: 19
+        y: 19 + overlay.contentShift
 
         capitalized: false
         visible: Backend.backendState === ApplicationBackend.Finished
@@ -172,7 +178,7 @@ AbstractOverlay {
         anchors.horizontalCenter: parent.horizontalCenter
         visible: Backend.backendState === ApplicationBackend.Finished
         focus: visible
-        y: 270
+        y: 270 + overlay.contentShift
 
         Keys.onPressed: continueAction.trigger()
     }

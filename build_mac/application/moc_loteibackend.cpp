@@ -207,13 +207,13 @@ template <> constexpr inline auto LoteiBackend::qt_create_metaobjectdata<qt_meta
         // Method 'applyNamePersonality'
         QtMocHelpers::MethodData<void()>(46, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'logAction'
-        QtMocHelpers::MethodData<void(const QString &) const>(47, 2, QMC::AccessPrivate, QMetaType::Void, {{
+        QtMocHelpers::MethodData<void(const QString &) const>(47, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 48 },
         }}),
         // Method 'reloadMemory'
-        QtMocHelpers::MethodData<void()>(49, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(49, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'syncMemoryToFlipper'
-        QtMocHelpers::MethodData<void()>(50, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(50, 2, QMC::AccessPublic, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'thinking'
@@ -663,13 +663,38 @@ template <> constexpr inline auto FirmwareStore::qt_create_metaobjectdata<qt_met
         "note",
         "failed",
         "message",
+        "setInstalledChannel",
+        "id",
+        "reinstallInstalled",
+        "select",
+        "clearSelection",
+        "installSelected",
         "refresh",
         "install",
         "cycleChannel",
         "open",
         "sources",
         "QVariantList",
-        "busy"
+        "busy",
+        "deviceVersion",
+        "installedIndex",
+        "installedName",
+        "installedLatest",
+        "installedReady",
+        "updateAvailable",
+        "installedDate",
+        "selectedIndex",
+        "hasSelection",
+        "selectedName",
+        "selectedVersion",
+        "selectedDate",
+        "checking",
+        "checkSummary",
+        "installedChannels",
+        "installedChannelModel",
+        "installedChannel",
+        "installedFromChannel",
+        "channelSwitchPending"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -691,24 +716,76 @@ template <> constexpr inline auto FirmwareStore::qt_create_metaobjectdata<qt_met
         QtMocHelpers::SignalData<void(int, const QString &)>(11, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::Int, 8 }, { QMetaType::QString, 12 },
         }}),
+        // Method 'setInstalledChannel'
+        QtMocHelpers::MethodData<void(const QString &)>(13, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 14 },
+        }}),
+        // Method 'reinstallInstalled'
+        QtMocHelpers::MethodData<void()>(15, 2, QMC::AccessPublic, QMetaType::Void),
+        // Method 'select'
+        QtMocHelpers::MethodData<void(int)>(16, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Int, 8 },
+        }}),
+        // Method 'clearSelection'
+        QtMocHelpers::MethodData<void()>(17, 2, QMC::AccessPublic, QMetaType::Void),
+        // Method 'installSelected'
+        QtMocHelpers::MethodData<void()>(18, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'refresh'
-        QtMocHelpers::MethodData<void()>(13, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(19, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'install'
-        QtMocHelpers::MethodData<void(int)>(14, 2, QMC::AccessPublic, QMetaType::Void, {{
+        QtMocHelpers::MethodData<void(int)>(20, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::Int, 8 },
         }}),
         // Method 'cycleChannel'
-        QtMocHelpers::MethodData<void(int)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
+        QtMocHelpers::MethodData<void(int)>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::Int, 8 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'open'
-        QtMocHelpers::PropertyData<bool>(16, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
+        QtMocHelpers::PropertyData<bool>(22, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
         // property 'sources'
-        QtMocHelpers::PropertyData<QVariantList>(17, 0x80000000 | 18, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
+        QtMocHelpers::PropertyData<QVariantList>(23, 0x80000000 | 24, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
         // property 'busy'
-        QtMocHelpers::PropertyData<bool>(19, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<bool>(25, QMetaType::Bool, QMC::DefaultPropertyFlags, 2),
+        // property 'deviceVersion'
+        QtMocHelpers::PropertyData<QString>(26, QMetaType::QString, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 1),
+        // property 'installedIndex'
+        QtMocHelpers::PropertyData<int>(27, QMetaType::Int, QMC::DefaultPropertyFlags, 1),
+        // property 'installedName'
+        QtMocHelpers::PropertyData<QString>(28, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'installedLatest'
+        QtMocHelpers::PropertyData<QString>(29, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'installedReady'
+        QtMocHelpers::PropertyData<bool>(30, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        // property 'updateAvailable'
+        QtMocHelpers::PropertyData<bool>(31, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        // property 'installedDate'
+        QtMocHelpers::PropertyData<QString>(32, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'selectedIndex'
+        QtMocHelpers::PropertyData<int>(33, QMetaType::Int, QMC::DefaultPropertyFlags, 1),
+        // property 'hasSelection'
+        QtMocHelpers::PropertyData<bool>(34, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        // property 'selectedName'
+        QtMocHelpers::PropertyData<QString>(35, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'selectedVersion'
+        QtMocHelpers::PropertyData<QString>(36, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'selectedDate'
+        QtMocHelpers::PropertyData<QString>(37, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'checking'
+        QtMocHelpers::PropertyData<bool>(38, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        // property 'checkSummary'
+        QtMocHelpers::PropertyData<QString>(39, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'installedChannels'
+        QtMocHelpers::PropertyData<QStringList>(40, QMetaType::QStringList, QMC::DefaultPropertyFlags, 1),
+        // property 'installedChannelModel'
+        QtMocHelpers::PropertyData<QVariantList>(41, 0x80000000 | 24, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
+        // property 'installedChannel'
+        QtMocHelpers::PropertyData<QString>(42, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'installedFromChannel'
+        QtMocHelpers::PropertyData<QString>(43, QMetaType::QString, QMC::DefaultPropertyFlags, 1),
+        // property 'channelSwitchPending'
+        QtMocHelpers::PropertyData<bool>(44, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -736,9 +813,14 @@ void FirmwareStore::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         case 3: _t->readyToInstall((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         case 4: _t->progress((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<qreal>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
         case 5: _t->failed((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
-        case 6: _t->refresh(); break;
-        case 7: _t->install((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
-        case 8: _t->cycleChannel((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 6: _t->setInstalledChannel((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 7: _t->reinstallInstalled(); break;
+        case 8: _t->select((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 9: _t->clearSelection(); break;
+        case 10: _t->installSelected(); break;
+        case 11: _t->refresh(); break;
+        case 12: _t->install((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 13: _t->cycleChannel((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
         default: ;
         }
     }
@@ -762,6 +844,25 @@ void FirmwareStore::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         case 0: *reinterpret_cast<bool*>(_v) = _t->isOpen(); break;
         case 1: *reinterpret_cast<QVariantList*>(_v) = _t->sources(); break;
         case 2: *reinterpret_cast<bool*>(_v) = _t->busy(); break;
+        case 3: *reinterpret_cast<QString*>(_v) = _t->deviceVersion(); break;
+        case 4: *reinterpret_cast<int*>(_v) = _t->installedIndex(); break;
+        case 5: *reinterpret_cast<QString*>(_v) = _t->installedName(); break;
+        case 6: *reinterpret_cast<QString*>(_v) = _t->installedLatest(); break;
+        case 7: *reinterpret_cast<bool*>(_v) = _t->installedReady(); break;
+        case 8: *reinterpret_cast<bool*>(_v) = _t->updateAvailable(); break;
+        case 9: *reinterpret_cast<QString*>(_v) = _t->installedDate(); break;
+        case 10: *reinterpret_cast<int*>(_v) = _t->selectedIndex(); break;
+        case 11: *reinterpret_cast<bool*>(_v) = _t->hasSelection(); break;
+        case 12: *reinterpret_cast<QString*>(_v) = _t->selectedName(); break;
+        case 13: *reinterpret_cast<QString*>(_v) = _t->selectedVersion(); break;
+        case 14: *reinterpret_cast<QString*>(_v) = _t->selectedDate(); break;
+        case 15: *reinterpret_cast<bool*>(_v) = _t->checking(); break;
+        case 16: *reinterpret_cast<QString*>(_v) = _t->checkSummary(); break;
+        case 17: *reinterpret_cast<QStringList*>(_v) = _t->installedChannels(); break;
+        case 18: *reinterpret_cast<QVariantList*>(_v) = _t->installedChannelModel(); break;
+        case 19: *reinterpret_cast<QString*>(_v) = _t->installedChannel(); break;
+        case 20: *reinterpret_cast<QString*>(_v) = _t->installedFromChannel(); break;
+        case 21: *reinterpret_cast<bool*>(_v) = _t->channelSwitchPending(); break;
         default: break;
         }
     }
@@ -769,6 +870,7 @@ void FirmwareStore::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         void *_v = _a[0];
         switch (_id) {
         case 0: _t->setOpen(*reinterpret_cast<bool*>(_v)); break;
+        case 3: _t->setDeviceVersion(*reinterpret_cast<QString*>(_v)); break;
         default: break;
         }
     }
@@ -793,20 +895,20 @@ int FirmwareStore::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 9)
+        if (_id < 14)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 9;
+        _id -= 14;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 9)
+        if (_id < 14)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 9;
+        _id -= 14;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty
             || _c == QMetaObject::RegisterPropertyMetaType) {
         qt_static_metacall(this, _c, _id, _a);
-        _id -= 3;
+        _id -= 22;
     }
     return _id;
 }

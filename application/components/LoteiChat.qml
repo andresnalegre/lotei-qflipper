@@ -250,10 +250,11 @@ Rectangle {
 
     // One fixed greeting on startup; everything after that is the model talking.
     Component.onCompleted: {
-        // memory.txt on the card is the source of truth; pick it up before the
-        // first turn rather than trusting the local cache.
+        // The greeting goes first on purpose. It used to sit after a
+        // reloadMemory() call, and anything that threw in there took the
+        // greeting with it -- the chat opened silent.
+        appendMessage("lotei", "Hey, how can I help you today?");
         Lotei.reloadMemory();
-        appendMessage("lotei", "Hey boss, how can I help you today?");
     }
 
     ColumnLayout {

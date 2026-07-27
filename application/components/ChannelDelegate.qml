@@ -9,8 +9,27 @@ import Primitives 1.0
 ItemDelegate {
     id: control
 
-    text: name
-    readonly property bool last: index === ListView.view.model.count - 1
+    // Two model shapes reach this delegate: the stock C++ channel model, which
+    // exposes "name" and "description" as roles, and a plain string list for a
+    // community firmware's own channels. Reading "name" against the string list
+    // silently yields undefined -- which is why those rows rendered as bare
+    // colour bars with no text.
+    text: (typeof name !== "undefined") ? name
+        : (modelData && modelData.name !== undefined) ? modelData.name
+        : (modelData !== undefined ? String(modelData) : "")
+
+    readonly property string blurb: (typeof description !== "undefined") ? description
+                                  : (modelData && modelData.description !== undefined) ? modelData.description
+                                  : ""
+
+    readonly property bool last: {
+        const m = ListView.view.model;
+        const n = !m ? 0
+                : (m.count !== undefined) ? m.count      // QAbstractListModel
+                : (m.length !== undefined) ? m.length    // string list / JS array
+                : 0;
+        return index === n - 1;
+    }
 
     highlighted: control.highlightedIndex === index
     hoverEnabled: control.hoverEnabled
@@ -26,8 +45,10 @@ ItemDelegate {
             Layout.topMargin: 2
             Layout.bottomMargin: 2
 
-            color: text === "development" ? "orangered" :
-                   text === "release-candidate" ? "blueviolet" : "limegreen"
+            // Stock channels spell them out; forks abbreviate. Same meaning,
+            // so the same colour.
+            color: (text === "development" || text === "dev") ? "orangered" :
+                   (text === "release-candidate" || text === "rc") ? "blueviolet" : "limegreen"
         }
 
         TextLabel {
@@ -53,8 +74,8 @@ ItemDelegate {
 
     ToolTip {
         delay: 300
-        visible: parent.hovered
-        text: description
+        visible: parent.hovered && control.blurb.length > 0
+        text: control.blurb
         implicitWidth: 250
     }
 }

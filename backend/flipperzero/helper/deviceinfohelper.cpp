@@ -230,8 +230,24 @@ void VCPDeviceInfoHelper::fetchDeviceInfoProperty()
 {
     auto *operation = m_rpc->propertyGet(QByteArrayLiteral("devinfo"));
 
+    // On the first boot after an update the Flipper is unpacking resources and
+    // rebuilding its databases while this asks for devinfo. The generic 30s
+    // deadline expires, the helper reports an invalid device, and the update
+    // operation never completes -- which left the "Installing Firmware" screen
+    // on forever even though the flash had succeeded. Give this specific query
+    // room, and treat a miss as "still busy" rather than "broken device".
+    operation->setTimeout(90000);
+    ++m_devInfoAttempts;
+
     connect(operation, &AbstractOperation::finished, this, [=]() {
         if(operation->isError()) {
+            if(m_devInfoAttempts < 3) {
+                qCInfo(CATEGORY_DEBUG).noquote()
+                    << QStringLiteral("devinfo attempt %1 failed (%2) -- retrying")
+                       .arg(m_devInfoAttempts).arg(operation->errorString());
+                QTimer::singleShot(3000, this, [=]() { fetchDeviceInfoProperty(); });
+                return;
+            }
             finishWithError(BackendError::InvalidDevice, QStringLiteral("Failed to get device information: %1").arg(operation->errorString()));
             return;
         }

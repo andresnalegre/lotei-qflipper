@@ -19,6 +19,7 @@
 #include <QProcess>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QLoggingCategory>
 #include <QGuiApplication>
@@ -2838,6 +2839,9 @@ FirmwareStore::FirmwareStore(QObject *parent)
         const QString saved = st.value(QStringLiteral("firmware/ch/") + s.name).toString();
         if (!saved.isEmpty()) { s.wantChannel = saved; }
     }
+    // Start from what was learned last run, so the UI is correct before -- and
+    // regardless of -- what the network says this time.
+    for (int i = 0; i < m_sources.size(); ++i) { loadDerived(i); }
 }
 
 void FirmwareStore::setOpen(bool value)
@@ -2845,7 +2849,7 @@ void FirmwareStore::setOpen(bool value)
     if (value == m_open) { return; }
     m_open = value;
     emit openChanged();
-    if (m_open) { refresh(); }   // freshen versions each time the panel opens
+    if (m_open) { refreshIfStale(); }   // freshen only if the cache aged out
 }
 
 void FirmwareStore::setBusy(bool value)
@@ -2855,10 +2859,320 @@ void FirmwareStore::setBusy(bool value)
     emit busyChanged();
 }
 
-QVariantList FirmwareStore::sources() const
+void FirmwareStore::setDeviceVersion(const QString &v)
+{
+    if (m_deviceVersion == v) { return; }
+    m_deviceVersion = v;
+    emit changed();
+
+    // The main screen needs to know whether an update exists before the user
+    // ever opens the store panel, so the first time a device reports in, go
+    // fetch. Without this the button would have nothing to compare against.
+    if (!m_deviceVersion.trimmed().isEmpty()) {
+        const int i = installedIndex();
+        loteiLog(QStringLiteral("firmware: device reports %1 -> %2")
+                 .arg(m_deviceVersion.trimmed(),
+                      i >= 0 ? m_sources.at(i).name : QStringLiteral("no matching source")));
+    }
+
+    if (!m_deviceVersion.trimmed().isEmpty() && !m_fetchedOnce) {
+        m_fetchedOnce = true;
+        refreshIfStale();
+    }
+}
+
+// Counts a lookup in and, on the last one, works out what to tell the user.
+// A source only counts as an update if it is a build the device is not already
+// running -- otherwise "updates found" would fire for every source in the list.
+void FirmwareStore::noteLookupDone(int index)
+{
+    if (m_pending <= 0) { return; }
+    --m_pending;
+    if (m_pending > 0) { return; }
+
+    int reachable = 0;
+    for (const Source &src : m_sources) {
+        if (src.status == QLatin1String("ready")) { ++reachable; }
+    }
+
+    // An "update" means a newer build of the firmware THIS Flipper is running.
+    // Counting every source whose version differs was meaningless: with six
+    // firmwares listed, five always differ, so it reported "5 new releases
+    // found" while there was nothing to update -- they were other people's
+    // firmwares, not this one's.
+    m_foundUpdates = updateAvailable() ? 1 : 0;
+
+    if (reachable == 0) {
+        m_checkSummary = QStringLiteral("Couldn't reach any source");
+    } else if (m_foundUpdates > 0) {
+        // Naming the build is the point: the same version then shows up in the
+        // store and the main screen offers the update, so the message and the
+        // rest of the app agree.
+        m_checkSummary = QStringLiteral("%1 %2 available")
+                         .arg(installedName(), installedLatest());
+    } else if (!installedReady()) {
+        m_checkSummary = QStringLiteral("Couldn't check your firmware");
+    } else {
+        // Nothing newer than what is installed. Say it plainly -- a count of
+        // other firmwares' releases read as "it found things and did nothing".
+        m_checkSummary = QStringLiteral("Everything is up to date");
+    }
+    loteiLog(QStringLiteral("firmware: %1").arg(m_checkSummary));
+    Q_UNUSED(index)
+}
+
+QStringList FirmwareStore::installedChannels() const
+{
+    const int i = installedIndex();
+    if (i < 0) { return QStringList(); }
+    const Source &s = m_sources.at(i);
+    // Same rule as the store panel: no picker when every channel resolves to
+    // the same build.
+    if (distinctChannelCount(s) <= 1) { return QStringList{ currentChannelId(s) }; }
+    return s.channels;
+}
+
+QVariantList FirmwareStore::installedChannelModel() const
 {
     QVariantList out;
-    for (const Source &s : m_sources) {
+    for (const QString &id : installedChannels()) {
+        QVariantMap m;
+        m.insert(QStringLiteral("name"), id);
+        out.append(m);
+    }
+    return out;
+}
+
+QString FirmwareStore::installedChannel() const
+{
+    const int i = installedIndex();
+    return (i >= 0) ? currentChannelId(m_sources.at(i)) : QString();
+}
+
+void FirmwareStore::setInstalledChannel(const QString &id)
+{
+    const int i = installedIndex();
+    if (i < 0 || !m_sources.at(i).channels.contains(id)) { return; }
+    if (m_sources.at(i).wantChannel == id) { return; }
+    m_sources[i].wantChannel = id;
+    QSettings().setValue(QStringLiteral("firmware/ch/") + m_sources.at(i).name, id);
+    if (!m_sources.at(i).raw.isEmpty() || loadDerived(i)) { deriveFromCache(i); }
+    else                                                  { fetchOne(i); }
+
+    // Worth stating outright: for a GitHub source "dev" is the newest release
+    // and "release" is the newest non-prerelease. When the newest release is
+    // not flagged as a prerelease those are the same object, so switching
+    // channel legitimately lands on the same build and the main button stays
+    // on "Up to date". This line is what makes that visible instead of looking
+    // like the switch did nothing.
+    loteiLog(QStringLiteral("firmware: %1 channel -> %2, resolves to %3")
+             .arg(m_sources.at(i).name, id,
+                  m_sources.at(i).latest.isEmpty() ? QStringLiteral("nothing yet")
+                                                   : m_sources.at(i).latest));
+    emit changed();
+}
+
+// Reinstall means "the build already on the device, from the source it came
+// from" -- not the official channel, which is what the stock action would do
+// and which on a fork would silently replace it with a different firmware.
+// The device only reports a version string, never which channel it came from.
+// Without remembering it, "you are on release, dev is available" is unanswerable
+// -- so the channel is recorded whenever this app is the one doing the flashing.
+void FirmwareStore::rememberFlashedChannel(int index)
+{
+    if (index < 0 || index >= m_sources.size()) { return; }
+    const Source &s = m_sources.at(index);
+    QSettings().setValue(QStringLiteral("firmware/flashedCh/") + s.name, currentChannelId(s));
+    QSettings().setValue(QStringLiteral("firmware/flashedVer/") + s.name, s.latest);
+}
+
+QString FirmwareStore::installedFromChannel() const
+{
+    const int i = installedIndex();
+    if (i < 0) { return QString(); }
+    QSettings st;
+    const QString ver = st.value(QStringLiteral("firmware/flashedVer/") + m_sources.at(i).name).toString();
+    // Only trust the record if it describes the build actually running; the
+    // user may have flashed from somewhere else since.
+    if (ver.isEmpty() || ver.compare(m_deviceVersion.trimmed(), Qt::CaseInsensitive) != 0) { return QString(); }
+    return st.value(QStringLiteral("firmware/flashedCh/") + m_sources.at(i).name).toString();
+}
+
+bool FirmwareStore::channelSwitchPending() const
+{
+    const QString from = installedFromChannel();
+    if (from.isEmpty() || !installedReady()) { return false; }
+    return from.compare(installedChannel(), Qt::CaseInsensitive) != 0;
+}
+
+void FirmwareStore::reinstallInstalled()
+{
+    const int i = installedIndex();
+    if (i < 0 || !installedReady()) { return; }
+    install(i);
+}
+
+QString FirmwareStore::installedDate() const
+{
+    const int i = installedIndex();
+    return (i >= 0) ? m_sources.at(i).date : QString();
+}
+
+QString FirmwareStore::selectedName() const
+{
+    return hasSelection() ? m_sources.at(m_selected).name : QString();
+}
+
+QString FirmwareStore::selectedVersion() const
+{
+    return hasSelection() ? m_sources.at(m_selected).latest : QString();
+}
+
+QString FirmwareStore::selectedDate() const
+{
+    return hasSelection() ? m_sources.at(m_selected).date : QString();
+}
+
+void FirmwareStore::select(int index)
+{
+    if (index < 0 || index >= m_sources.size()) { return; }
+    // Picking the staged row again unstages it, so there is a way back without
+    // hunting for a separate cancel control.
+    m_selected = (m_selected == index) ? -1 : index;
+    emit changed();
+}
+
+void FirmwareStore::clearSelection()
+{
+    if (m_selected < 0) { return; }
+    m_selected = -1;
+    emit changed();
+}
+
+void FirmwareStore::installSelected()
+{
+    if (!hasSelection()) { return; }
+    install(m_selected);
+}
+
+QString FirmwareStore::installedName() const
+{
+    const int i = installedIndex();
+    return (i >= 0) ? m_sources.at(i).name : QString();
+}
+
+QString FirmwareStore::installedLatest() const
+{
+    const int i = installedIndex();
+    return (i >= 0) ? m_sources.at(i).latest : QString();
+}
+
+bool FirmwareStore::installedReady() const
+{
+    const int i = installedIndex();
+    return (i >= 0) && m_sources.at(i).status == QLatin1String("ready")
+           && !m_sources.at(i).tgzUrl.isEmpty();
+}
+
+// Same equality-not-ordering reasoning as in sources(): the store only ever
+// lists the newest build, so "differs from what is running" is what can be
+// claimed honestly.
+bool FirmwareStore::updateAvailable() const
+{
+    if (!installedReady()) { return false; }
+    // A different build, or the same build from a different channel -- both are
+    // something to offer. The second case only fires when this app flashed the
+    // current build and therefore knows which channel it came from.
+    if (installedLatest().compare(m_deviceVersion.trimmed(), Qt::CaseInsensitive) != 0) { return true; }
+    return channelSwitchPending();
+}
+
+// Each firmware stamps its version with a recognisable shape, so the running
+// build can be traced back to the source it came from without asking the device
+// anything extra. Unknown shapes fall through to Official, which is where a
+// plain "1.4.3" or a bare commit hash comes from.
+int FirmwareStore::installedIndex() const
+{
+    const QString v = m_deviceVersion.trimmed();
+    if (v.isEmpty()) { return -1; }
+
+    QString want;
+    if (v.startsWith(QLatin1String("mntm"), Qt::CaseInsensitive))        { want = QStringLiteral("Momentum"); }
+    else if (v.startsWith(QLatin1String("unlshd"), Qt::CaseInsensitive)) { want = QStringLiteral("Unleashed"); }
+    else if (v.startsWith(QLatin1String("RM"), Qt::CaseSensitive))       { want = QStringLiteral("RogueMaster"); }
+    else if (v.contains(QLatin1String("arf"), Qt::CaseInsensitive))      { want = QStringLiteral("ARF"); }
+    else                                                                 { want = QStringLiteral("Official"); }
+
+    for (int i = 0; i < m_sources.size(); ++i) {
+        if (m_sources.at(i).name.compare(want, Qt::CaseInsensitive) == 0) { return i; }
+    }
+    return -1;
+}
+
+// What a given channel of this source would resolve to, without touching the
+// source's own state. Mirrors the picking rules in deriveFromCache().
+QString FirmwareStore::channelVersion(const Source &s, const QString &ch) const
+{
+    if (s.raw.isEmpty()) { return QString(); }
+
+    if (s.kind == Kind::DirJson) {
+        const QJsonArray channels = QJsonDocument::fromJson(s.raw).object()
+                                    .value(QStringLiteral("channels")).toArray();
+        for (const QJsonValue &cv : channels) {
+            const QJsonObject c = cv.toObject();
+            if (c.value(QStringLiteral("id")).toString() != ch) { continue; }
+            const QJsonArray versions = c.value(QStringLiteral("versions")).toArray();
+            if (versions.isEmpty()) { return QString(); }
+            return versions.first().toObject().value(QStringLiteral("version")).toString();
+        }
+        return QString();
+    }
+
+    const QJsonArray rels = QJsonDocument::fromJson(s.raw).array();
+    if (rels.isEmpty()) { return QString(); }
+    if (ch == QLatin1String("dev")) {
+        for (const QJsonValue &rv : rels) {
+            const QJsonObject r = rv.toObject();
+            if (r.value(QStringLiteral("prerelease")).toBool()) {
+                return r.value(QStringLiteral("tag_name")).toString();
+            }
+        }
+        return rels.first().toObject().value(QStringLiteral("tag_name")).toString();
+    }
+    for (const QJsonValue &rv : rels) {
+        const QJsonObject r = rv.toObject();
+        if (!r.value(QStringLiteral("prerelease")).toBool()) {
+            return r.value(QStringLiteral("tag_name")).toString();
+        }
+    }
+    return rels.first().toObject().value(QStringLiteral("tag_name")).toString();
+}
+
+// A channel picker is only worth showing when the channels actually lead
+// somewhere different. Unleashed and RogueMaster list release and dev but
+// publish no prereleases, so both land on the same build -- a dropdown there
+// invites a choice that changes nothing. Decided from the data rather than a
+// hand-kept list, so it follows whatever those repos do next.
+int FirmwareStore::distinctChannelCount(const Source &s) const
+{
+    if (s.channels.size() <= 1) { return s.channels.size(); }
+    // Nothing fetched this session: keep the picker so a switch can go fetch.
+    if (s.raw.isEmpty()) { return s.channels.size(); }
+
+    QStringList seen;
+    for (const QString &ch : s.channels) {
+        const QString v = channelVersion(s, ch);
+        if (!v.isEmpty() && !seen.contains(v, Qt::CaseInsensitive)) { seen << v; }
+    }
+    return (seen.size() > 1) ? s.channels.size() : 1;
+}
+
+QVariantList FirmwareStore::sources() const
+{
+    const int running = installedIndex();
+    QVariantList out;
+    for (int i = 0; i < m_sources.size(); ++i) {
+        const Source &s = m_sources.at(i);
         QVariantMap m;
         m.insert(QStringLiteral("name"), s.name);
         m.insert(QStringLiteral("blurb"), s.blurb);
@@ -2866,7 +3180,27 @@ QVariantList FirmwareStore::sources() const
         m.insert(QStringLiteral("status"), s.status);
         m.insert(QStringLiteral("ready"), s.status == QLatin1String("ready") && !s.tgzUrl.isEmpty());
         m.insert(QStringLiteral("channel"), fwChannelLabel(currentChannelId(s)));
-        m.insert(QStringLiteral("channelCount"), s.channels.size());
+        m.insert(QStringLiteral("channelCount"), distinctChannelCount(s));
+
+        // Same firmware family as the one running?
+        const bool installed = (i == running);
+        // Deliberately an equality test, not an ordering one. Version strings
+        // across these forks have no comparable format ("unlshd-080e" vs
+        // "unlshd-089", "RM0722-1811-ff9f4feb"), so claiming which is newer
+        // would be guesswork. The store only ever lists the latest build, so
+        // "differs from what is running" is the honest reading of "update".
+        const bool sameBuild = installed && !s.latest.isEmpty()
+                               && s.latest.compare(m_deviceVersion.trimmed(), Qt::CaseInsensitive) == 0;
+        m.insert(QStringLiteral("date"), s.date);
+        m.insert(QStringLiteral("installed"), installed);
+        m.insert(QStringLiteral("upToDate"), sameBuild);
+        m.insert(QStringLiteral("selected"), i == m_selected);
+        // This panel picks; it never flashes. The only button that starts an
+        // install is the one on the main screen, so a row can be staged
+        // ("IMPORT"), already staged ("IMPORTED"), or the build already running.
+        m.insert(QStringLiteral("action"), sameBuild      ? QStringLiteral("INSTALLED")
+                                         : (i == m_selected) ? QStringLiteral("IMPORTED")
+                                                             : QStringLiteral("IMPORT"));
         out.append(m);
     }
     return out;
@@ -2874,13 +3208,40 @@ QVariantList FirmwareStore::sources() const
 
 void FirmwareStore::refresh()
 {
+    loteiLog(QStringLiteral("firmware: checking %1 sources").arg(m_sources.size()));
+    m_lastFetch = QDateTime::currentDateTime();
+    m_pending = m_sources.size();
+    m_foundUpdates = 0;
+    m_checkSummary.clear();
     for (int i = 0; i < m_sources.size(); ++i) {
-        m_sources[i].status = QStringLiteral("checking");
-        m_sources[i].latest.clear();
-        m_sources[i].tgzUrl.clear();
+        // Only a source with nothing cached shows "checking". Clearing the
+        // version of a source we already know turns a slow or rate-limited
+        // reply into a row that reads "unavailable" for no reason.
+        if (m_sources[i].raw.isEmpty()) {
+            m_sources[i].status = QStringLiteral("checking");
+            m_sources[i].latest.clear();
+            m_sources[i].tgzUrl.clear();
+            m_sources[i].date.clear();
+        }
     }
     emit changed();
     for (int i = 0; i < m_sources.size(); ++i) { fetchOne(i); }
+}
+
+// Opening the panel shouldn't cost network requests when the answer is minutes
+// old. "check for updates" still calls refresh() directly and always goes out.
+void FirmwareStore::refreshIfStale()
+{
+    const bool haveAll = [this]() {
+        for (const Source &s : m_sources) { if (s.raw.isEmpty()) { return false; } }
+        return true;
+    }();
+    if (haveAll && m_lastFetch.isValid() && m_lastFetch.secsTo(QDateTime::currentDateTime()) < 600) {
+        loteiLog(QStringLiteral("firmware: versions are %1s old, not re-checking")
+                 .arg(m_lastFetch.secsTo(QDateTime::currentDateTime())));
+        return;
+    }
+    refresh();
 }
 
 QString FirmwareStore::currentChannelId(const Source &s) const
@@ -2910,7 +3271,27 @@ void FirmwareStore::fetchOne(int index)
         Source &s = m_sources[index];
 
         if (reply->error() != QNetworkReply::NoError) {
-            s.status = QStringLiteral("error");
+            // Say what actually went wrong. GitHub answers 403 once the
+            // unauthenticated 60-per-hour budget is spent, and four of these
+            // sources share it -- without this line "unavailable" looks like a
+            // broken source rather than a spent quota.
+            const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QString why = (http == 403 || http == 429)
+                                ? QStringLiteral("rate limited by GitHub (HTTP %1) -- the hourly quota is shared by every firmware source").arg(http)
+                                : (http > 0 ? QStringLiteral("HTTP %1").arg(http) : reply->errorString());
+            loteiLog(QStringLiteral("firmware: %1 lookup failed -- %2").arg(s.name, why));
+
+            // Whatever was fetched last time is still perfectly good, so fall
+            // back to it instead of blanking the row to "unavailable".
+            if (!s.raw.isEmpty()) {
+                deriveFromCache(index);
+                loteiLog(QStringLiteral("firmware: %1 kept this session's cached %2").arg(s.name, s.latest));
+            } else if (loadDerived(index)) {
+                loteiLog(QStringLiteral("firmware: %1 restored saved %2").arg(s.name, s.latest));
+            } else {
+                s.status = QStringLiteral("error");
+            }
+            noteLookupDone(index);   // after the fallback, for the same reason
             emit changed();
             return;
         }
@@ -2936,6 +3317,20 @@ void FirmwareStore::fetchOne(int index)
         }
 
         deriveFromCache(index);
+        if (s.status == QLatin1String("ready")) {
+            loteiLog(QStringLiteral("firmware: %1 [%2] -> %3%4")
+                     .arg(s.name, currentChannelId(s), s.latest,
+                          s.date.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(s.date)));
+        } else {
+            loteiLog(QStringLiteral("firmware: %1 [%2] replied, but no usable build was found in it")
+                     .arg(s.name, currentChannelId(s)));
+        }
+        // Counted last, on purpose. This is what closes the verdict when the
+        // final lookup lands, and it reads every source's resolved state -- so
+        // running it before deriveFromCache() judged the last source on data it
+        // had not parsed yet, and reported "couldn't check your firmware" one
+        // line before printing that same firmware's version.
+        noteLookupDone(index);
         emit changed();
     });
 }
@@ -2947,7 +3342,13 @@ void FirmwareStore::deriveFromCache(int index)
     const QString ch = currentChannelId(s);
     s.latest.clear();
     s.tgzUrl.clear();
-    if (s.raw.isEmpty()) { s.status = QStringLiteral("error"); return; }
+    s.date.clear();
+    if (s.raw.isEmpty()) {
+        // No payload this session (fresh start, or the fetch was refused).
+        // Whatever was saved for this channel still describes a real build.
+        if (!loadDerived(index)) { s.status = QStringLiteral("error"); }
+        return;
+    }
 
     if (s.kind == Kind::DirJson) {
         const QJsonArray channels = QJsonDocument::fromJson(s.raw).object()
@@ -2959,6 +3360,15 @@ void FirmwareStore::deriveFromCache(int index)
             if (versions.isEmpty()) { break; }
             const QJsonObject v0 = versions.first().toObject();
             s.latest = v0.value(QStringLiteral("version")).toString();
+            // directory.json carries a unix timestamp; some mirrors write an
+            // ISO string instead, so accept either rather than showing nothing.
+            const QJsonValue ts = v0.value(QStringLiteral("timestamp"));
+            if (ts.isDouble()) {
+                s.date = QDateTime::fromSecsSinceEpoch(qint64(ts.toDouble())).toString(QStringLiteral("yyyy-MM-dd"));
+            } else {
+                const QDateTime dt = QDateTime::fromString(v0.value(QStringLiteral("date")).toString(), Qt::ISODate);
+                if (dt.isValid()) { s.date = dt.toString(QStringLiteral("yyyy-MM-dd")); }
+            }
             for (const QJsonValue &fv : v0.value(QStringLiteral("files")).toArray()) {
                 const QJsonObject f = fv.toObject();
                 if (f.value(QStringLiteral("target")).toString() == QLatin1String("f7") &&
@@ -2969,11 +3379,20 @@ void FirmwareStore::deriveFromCache(int index)
             }
             break;
         }
-    } else {   // GitHub: "dev" = newest release, "release" = newest non-prerelease
+    } else {   // GitHub: "dev" = newest prerelease, "release" = newest stable
         const QJsonArray rels = QJsonDocument::fromJson(s.raw).array();
         QJsonObject chosen;
         if (ch == QLatin1String("dev")) {
-            if (!rels.isEmpty()) { chosen = rels.first().toObject(); }
+            // Was "the newest release, whatever it is" -- which on any repo that
+            // doesn't publish prereleases is the exact same object the release
+            // channel picks. The two channels then resolve to one build and
+            // switching between them looks like it does nothing. Prefer a real
+            // prerelease; fall back only when the repo has none.
+            for (const QJsonValue &rv : rels) {
+                const QJsonObject r = rv.toObject();
+                if (r.value(QStringLiteral("prerelease")).toBool()) { chosen = r; break; }
+            }
+            if (chosen.isEmpty() && !rels.isEmpty()) { chosen = rels.first().toObject(); }
         } else {
             for (const QJsonValue &rv : rels) {
                 const QJsonObject r = rv.toObject();
@@ -2983,6 +3402,9 @@ void FirmwareStore::deriveFromCache(int index)
         }
         if (!chosen.isEmpty()) {
             s.latest = chosen.value(QStringLiteral("tag_name")).toString();
+            const QDateTime dt = QDateTime::fromString(
+                chosen.value(QStringLiteral("published_at")).toString(), Qt::ISODate);
+            if (dt.isValid()) { s.date = dt.toString(QStringLiteral("yyyy-MM-dd")); }
             QString bestUrl, bestName, anyUrl, anyName;
             for (const QJsonValue &av : chosen.value(QStringLiteral("assets")).toArray()) {
                 const QJsonObject a = av.toObject();
@@ -3000,6 +3422,41 @@ void FirmwareStore::deriveFromCache(int index)
 
     s.status = (!s.latest.isEmpty() && !s.tgzUrl.isEmpty()) ? QStringLiteral("ready")
                                                             : QStringLiteral("error");
+    if (s.status == QLatin1String("ready")) { saveDerived(index); }
+}
+
+// The raw payloads only ever lived in memory, so every restart had to hit the
+// network again -- and four of the five sources share GitHub's 60-per-hour
+// unauthenticated budget. One rate-limited start was enough to leave the whole
+// panel reading "unavailable" and the main button "No data". Persisting the
+// handful of derived fields (not the payload, which runs to hundreds of KB)
+// means a restart shows the right thing immediately and the network is only
+// ever an improvement.
+void FirmwareStore::saveDerived(int index) const
+{
+    if (index < 0 || index >= m_sources.size()) { return; }
+    const Source &s = m_sources.at(index);
+    const QString key = QStringLiteral("firmware/cache/%1/%2/").arg(s.name, currentChannelId(s));
+    QSettings st;
+    st.setValue(key + QStringLiteral("latest"), s.latest);
+    st.setValue(key + QStringLiteral("tgz"), s.tgzUrl);
+    st.setValue(key + QStringLiteral("date"), s.date);
+}
+
+bool FirmwareStore::loadDerived(int index)
+{
+    if (index < 0 || index >= m_sources.size()) { return false; }
+    Source &s = m_sources[index];
+    const QString key = QStringLiteral("firmware/cache/%1/%2/").arg(s.name, currentChannelId(s));
+    QSettings st;
+    const QString latest = st.value(key + QStringLiteral("latest")).toString();
+    const QString tgz    = st.value(key + QStringLiteral("tgz")).toString();
+    if (latest.isEmpty() || tgz.isEmpty()) { return false; }
+    s.latest = latest;
+    s.tgzUrl = tgz;
+    s.date   = st.value(key + QStringLiteral("date")).toString();
+    s.status = QStringLiteral("ready");
+    return true;
 }
 
 void FirmwareStore::cycleChannel(int index)
@@ -3020,11 +3477,17 @@ void FirmwareStore::install(int index)
     if (index < 0 || index >= m_sources.size()) { return; }
     const Source src = m_sources.at(index);
 
+    // Everything below reports through failed()/progress(), which are wired to
+    // the store panel -- and that panel is closed when this runs from Reinstall
+    // in the tools tab. Without these lines the whole download is invisible:
+    // no progress, and a failure that never reaches the user.
     if (src.status != QLatin1String("ready") || src.tgzUrl.isEmpty()) {
+        loteiLog(QStringLiteral("firmware: install %1 refused -- no downloadable build").arg(src.name));
         emit failed(index, QStringLiteral("No downloadable build found -- try re-checking."));
         return;
     }
     if (m_busy) {
+        loteiLog(QStringLiteral("firmware: install %1 refused -- a download is already running").arg(src.name));
         emit failed(index, QStringLiteral("A download is already in progress."));
         return;
     }
@@ -3045,7 +3508,10 @@ void FirmwareStore::install(int index)
     req.setRawHeader("User-Agent", "Hyper-Zero-UI");
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
+    rememberFlashedChannel(index);
     setBusy(true);
+    loteiLog(QStringLiteral("firmware: downloading %1 %2 from %3")
+             .arg(src.name, src.latest, src.tgzUrl));
     emit progress(index, 0.0, QStringLiteral("Downloading %1…").arg(src.latest));
 
     QNetworkReply *reply = m_net.get(req);
@@ -3057,16 +3523,20 @@ void FirmwareStore::install(int index)
         reply->deleteLater();
         setBusy(false);
         if (reply->error() != QNetworkReply::NoError) {
+            loteiLog(QStringLiteral("firmware: download FAILED -- %1").arg(reply->errorString()));
             emit failed(index, QStringLiteral("Download failed: %1").arg(reply->errorString()));
             return;
         }
         QFile f(outPath);
         if (!f.open(QIODevice::WriteOnly)) {
+            loteiLog(QStringLiteral("firmware: couldn't write %1").arg(outPath));
             emit failed(index, QStringLiteral("Couldn't save the download to disk."));
             return;
         }
-        f.write(reply->readAll());
+        const QByteArray body = reply->readAll();
+        f.write(body);
         f.close();
+        loteiLog(QStringLiteral("firmware: downloaded %1 bytes -> %2").arg(body.size()).arg(outPath));
         emit progress(index, 1.0, QStringLiteral("Ready -- flashing…"));
         emit readyToInstall(QUrl::fromLocalFile(outPath).toString());
     });

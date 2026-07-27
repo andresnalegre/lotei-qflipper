@@ -10,6 +10,16 @@ AbstractOverlay {
     id: overlay
 
     signal selfUpdateRequested
+
+    // qFlipper's own firmwareUpdateState only ever compares the device against
+    // the OFFICIAL channel. On a Flipper running Unleashed or Momentum that
+    // comparison is meaningless -- it reports "Update" and, if pressed, quietly
+    // replaces the fork with official firmware. So when a fork is detected the
+    // button is driven by the firmware store instead, which knows the right
+    // source to compare against.
+    readonly property bool onFork: Firmware.installedIndex >= 0 &&
+                                   Firmware.installedName !== "Official"
+
     readonly property int centerX: 590
     readonly property int centerOffset: Math.min(overlay.width - (centerX + systemPathLabel.width + 34), 0)
 
@@ -211,6 +221,10 @@ AbstractOverlay {
         y: 277
 
         accent: {
+            if(Firmware.hasSelection) return MainButton.Default;
+            if(overlay.onFork) {
+                return Firmware.updateAvailable ? MainButton.Green : MainButton.Default;
+            }
             switch(Backend.firmwareUpdateState) {
             case ApplicationBackend.CanRepair:
                 return MainButton.Blue;
@@ -228,6 +242,27 @@ AbstractOverlay {
         ToolTip {
             id: installTip
             text: {
+                if(Firmware.hasSelection) {
+                    return qsTr("Install %1 %2 imported from the firmware store")
+                           .arg(Firmware.selectedName).arg(Firmware.selectedVersion);
+                }
+                if(overlay.onFork) {
+                    if(!Firmware.installedReady) {
+                        return qsTr("Couldn't reach the %1 release feed, so it isn't known whether a newer build exists. Press to try again.")
+                               .arg(Firmware.installedName);
+                    }
+                    if(Firmware.channelSwitchPending && Firmware.installedLatest === Firmware.deviceVersion) {
+                        return qsTr("Move %1 from the %2 channel to %3. Same build, different channel.")
+                               .arg(Firmware.installedName)
+                               .arg(Firmware.installedFromChannel)
+                               .arg(Firmware.installedChannel);
+                    }
+                    return Firmware.updateAvailable
+                           ? qsTr("Update %1 to %2 (%3 channel)")
+                             .arg(Firmware.installedName).arg(Firmware.installedLatest).arg(Firmware.installedChannel)
+                           : qsTr("%1 is already the newest build. Use Custom firmware to switch to a different one.")
+                             .arg(Firmware.installedName);
+                }
                 switch(Backend.firmwareUpdateState) {
                 case ApplicationBackend.CanRepair:
                     return qsTr("Repair a broken firmware installation. May erase your progress and settings.");
@@ -267,7 +302,9 @@ AbstractOverlay {
         anchors.topMargin: 5
 
         linkColor: {
-            if(Preferences.updateChannel === "development") {
+            if(Firmware.deviceVersion.length > 0) {
+                return Theme.color.lightgreen;      // this is what you are running
+            } else if(Preferences.updateChannel === "development") {
                 return Theme.color.lightred2;
             } else if(Preferences.updateChannel === "release-candidate") {
                 return "blueviolet";
@@ -278,9 +315,10 @@ AbstractOverlay {
             }
         }
 
-        visible: Backend.firmwareUpdateState !== ApplicationBackend.Unknown &&
-                 Backend.firmwareUpdateState !== ApplicationBackend.Checking &&
-                 Backend.firmwareUpdateState !== ApplicationBackend.ErrorOccured
+        visible: Firmware.deviceVersion.length > 0 ||
+                 (Backend.firmwareUpdateState !== ApplicationBackend.Unknown &&
+                  Backend.firmwareUpdateState !== ApplicationBackend.Checking &&
+                  Backend.firmwareUpdateState !== ApplicationBackend.ErrorOccured)
     }
 
     LinkButton {
@@ -307,12 +345,38 @@ AbstractOverlay {
     Action {
         id: updateButtonAction
 
-        enabled: Backend.firmwareUpdateState === ApplicationBackend.CanUpdate ||
-                 Backend.firmwareUpdateState === ApplicationBackend.CanInstall ||
-                 Backend.firmwareUpdateState === ApplicationBackend.CanRepair ||
-                 Backend.firmwareUpdateState === ApplicationBackend.ErrorOccured
+        enabled: Firmware.hasSelection
+                 ? !Firmware.busy
+                 : overlay.onFork
+                 ? ((Firmware.updateAvailable || !Firmware.installedReady) && !Firmware.busy)
+                 : (Backend.firmwareUpdateState === ApplicationBackend.CanUpdate ||
+                    Backend.firmwareUpdateState === ApplicationBackend.CanInstall ||
+                    Backend.firmwareUpdateState === ApplicationBackend.CanRepair ||
+                    Backend.firmwareUpdateState === ApplicationBackend.ErrorOccured)
 
         text: {
+            // A firmware imported from the store is an explicit choice, so it
+            // outranks any automatic update offer.
+            if(Firmware.hasSelection) return qsTr("Install");
+
+            // On a fork the only honest offer is "update to a newer build of
+            // the SAME firmware". Installing something else stays behind the
+            // two explicit doors below: Custom firmware and Install from file.
+            if(overlay.onFork) {
+                if(Firmware.busy)              return qsTr("Checking...");
+                // The source couldn't be reached, so whether a newer build
+                // exists is unknown. Offer the retry instead of a dead label.
+                if(!Firmware.installedReady)   return qsTr("Check");
+                // Same build, different channel: that is a switch, not an
+                // update, and saying "update" for it would be a lie.
+                if(Firmware.channelSwitchPending &&
+                   Firmware.installedLatest === Firmware.deviceVersion) {
+                    return qsTr("Switch to %1").arg(Firmware.installedChannel);
+                }
+                if(Firmware.updateAvailable)   return qsTr("Update");
+                return qsTr("Up to date");
+            }
+
             switch(Backend.firmwareUpdateState) {
             case Backend.Unknown:
                 return qsTr("No data");
@@ -337,11 +401,19 @@ AbstractOverlay {
 
     Action {
         id: changelogAction
-        enabled: Backend.firmwareUpdateState !== ApplicationBackend.Unknown &&
-                 Backend.firmwareUpdateState !== ApplicationBackend.Checking &&
-                 Backend.firmwareUpdateState !== ApplicationBackend.ErrorOccured
+        enabled: Firmware.deviceVersion.length > 0 ||
+                 (Backend.firmwareUpdateState !== ApplicationBackend.Unknown &&
+                  Backend.firmwareUpdateState !== ApplicationBackend.Checking &&
+                  Backend.firmwareUpdateState !== ApplicationBackend.ErrorOccured)
 
         text: {
+            // What is actually on the Flipper. This used to show the official
+            // channel's newest release, which on a fork names a version the
+            // device has never run.
+            if(Firmware.deviceVersion.length > 0) {
+                return Firmware.deviceVersion;
+            }
+
             let str;
 
             if(!enabled) {
@@ -370,11 +442,71 @@ AbstractOverlay {
 
     Action {
        id: customFirmwareAction
-       text: qsTr("Custom firmware")
+       // Once something is staged, this line is what shows it on the main
+       // screen -- and reopening the panel is how it gets changed or dropped.
+       // Name only. The link is centred with no width limit, so a version
+       // string like "RM0722-1811-ff9f4feb" ran off the panel -- and a line
+       // that changes width with the pick reads as inconsistent anyway. The
+       // exact version is in the panel and in the confirmation before flashing.
+       text: Firmware.hasSelection ? Firmware.selectedName : qsTr("Custom firmware")
        onTriggered: Firmware.open = true
     }
 
     function updateButtonFunc() {
+        // Nothing known about the running fork yet -- this press is a retry,
+        // not an install.
+        if(overlay.onFork && !Firmware.hasSelection && !Firmware.installedReady) {
+            Firmware.refresh();
+            return;
+        }
+
+        // Something was imported from the store: flash exactly that.
+        if(Firmware.hasSelection) {
+            const pickObj = {
+                title : qsTr("Install firmware?"),
+                customText: qsTr("Install"),
+                message: qsTr("%1 <font color=\"%2\">%3</font><br/>will be installed")
+                         .arg(Firmware.selectedName)
+                         .arg(Theme.color.lightgreen)
+                         .arg(Firmware.selectedVersion)
+            };
+
+            const pickCanGo = deviceInfo.storage.isExternalPresent ||
+                              deviceState.isRecoveryMode ||
+                              sdWarningDialog.result;
+            if(pickCanGo) {
+                confirmationDialog.openWithMessage(function() { Firmware.installSelected(); }, pickObj);
+            } else {
+                sdWarningDialog.open();
+            }
+            return;
+        }
+
+        // A fork updates from its own source, not from the official channel.
+        if(overlay.onFork) {
+            const forkObj = {
+                title : qsTr("Update firmware?"),
+                customText: qsTr("Update"),
+                message: qsTr("%1 <font color=\"%2\">%3</font><br/>from the %4 channel will be installed")
+                         .arg(Firmware.installedName)
+                         .arg(Theme.color.lightgreen)
+                         .arg(Firmware.installedLatest)
+                         .arg(Firmware.installedChannel)
+            };
+
+            const forkCanUpdate = deviceInfo.storage.isExternalPresent ||
+                                  deviceState.isRecoveryMode ||
+                                  sdWarningDialog.result;
+            if(forkCanUpdate) {
+                confirmationDialog.openWithMessage(function() {
+                    Firmware.install(Firmware.installedIndex);
+                }, forkObj);
+            } else {
+                sdWarningDialog.open();
+            }
+            return;
+        }
+
         const channelName = Preferences.updateChannel;
         const messageObj = deviceState.isRecoveryMode ? {
                 title : qsTr("Repair Device?"),
@@ -468,17 +600,27 @@ AbstractOverlay {
     }
 
     function reinstallFirmware() {
+        // Backend.mainAction installs the OFFICIAL channel. On a fork that is
+        // not a reinstall at all -- it swaps the firmware for a different one.
+        // When the running build has a known source, re-flash from there.
+        const viaStore = Firmware.installedReady && Firmware.installedName !== "Official";
+
         const messageObj = {
             title : qsTr("Reinstall firmware?"),
             customText: qsTr("Reinstall"),
-            message: qsTr("Current firmware version will be reinstalled")
+            message: viaStore
+                     ? qsTr("%1 <font color=\"%2\">%3</font><br/>will be flashed over itself")
+                       .arg(Firmware.installedName).arg(Theme.color.lightgreen).arg(Firmware.installedLatest)
+                     : qsTr("Current firmware version will be reinstalled")
         };
 
         const canReinstall = deviceInfo.storage.isExternalPresent ||
                              deviceState.isRecoveryMode ||
                              sdWarningDialog.result;
         if(canReinstall) {
-            confirmationDialog.openWithMessage(Backend.mainAction, messageObj);
+            confirmationDialog.openWithMessage(
+                viaStore ? function() { Firmware.reinstallInstalled(); } : Backend.mainAction,
+                messageObj);
         } else {
             sdWarningDialog.open();
         }

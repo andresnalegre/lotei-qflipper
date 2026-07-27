@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QByteArray>
 #include <QColor>
+#include <QDateTime>
 #include <QVariant>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -94,6 +95,14 @@ public:
     Q_INVOKABLE void applyPreset(const QString &name);   // set persona to a preset
     Q_INVOKABLE void applyNamePersonality();             // persona built from the Flipper's name
 
+    // These three are called from QML and were sitting under private:. Qt's
+    // QML engine refuses to invoke them there, so every call threw and took
+    // the rest of its handler down with it -- which is what stopped
+    // Backend.installFirmware() from ever running.
+    Q_INVOKABLE void logAction(const QString &what) const;
+    Q_INVOKABLE void reloadMemory();           // re-read memory.txt from the card
+    Q_INVOKABLE void syncMemoryToFlipper();    // back up memory + self to the SD
+
 signals:
     void replyReceived(const QString &text);
     void errorOccurred(const QString &text);
@@ -115,12 +124,7 @@ signals:
 
 private:
     void setThinking(bool value);
-    // Lets the QML side record the user's own file-manager actions in the same
-    // stream the assistant's tool calls go to, so LOGS shows both.
-    Q_INVOKABLE void logAction(const QString &what) const;
-
     // memory.txt can be edited by hand; these keep the in-memory copy honest.
-    Q_INVOKABLE void reloadMemory();   // re-read memory.txt from the card
     void applyMemoryText(const QString &text, const QString &source);
     void refreshMemoryFromDisk();
     void writeMemoryCache() const;
@@ -155,7 +159,6 @@ private:
                      std::function<void(const QString &)> done);
     void rememberFact(const QString &fact);   // append a durable fact to memory
     void loadPortableMemory();                 // pull memory/self from the Flipper SD
-    Q_INVOKABLE void syncMemoryToFlipper();    // back up memory + self to the SD
     int  forgetFacts(const QString &match);    // remove matching facts (or all); returns count
 
     QNetworkAccessManager m_net;
@@ -242,6 +245,39 @@ class FirmwareStore : public QObject
     Q_PROPERTY(bool open READ isOpen WRITE setOpen NOTIFY openChanged)
     Q_PROPERTY(QVariantList sources READ sources NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    // The version string the Flipper reports. Set from QML; every source in
+    // sources() is then tagged as installed / up to date / neither, so the UI
+    // can offer UPDATE instead of INSTALL for the firmware already running.
+    Q_PROPERTY(QString deviceVersion READ deviceVersion WRITE setDeviceVersion NOTIFY changed)
+    // Resolved from deviceVersion, for the main screen: which source is running,
+    // what its newest build is, and whether that differs from what is installed.
+    Q_PROPERTY(int installedIndex READ installedIndex NOTIFY changed)
+    Q_PROPERTY(QString installedName READ installedName NOTIFY changed)
+    Q_PROPERTY(QString installedLatest READ installedLatest NOTIFY changed)
+    Q_PROPERTY(bool installedReady READ installedReady NOTIFY changed)
+    Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY changed)
+    Q_PROPERTY(QString installedDate READ installedDate NOTIFY changed)
+    // A firmware picked in the store but not yet flashed. The panel only ever
+    // stages a choice; the install button on the main screen is what commits it.
+    Q_PROPERTY(int selectedIndex READ selectedIndex NOTIFY changed)
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY changed)
+    Q_PROPERTY(QString selectedName READ selectedName NOTIFY changed)
+    Q_PROPERTY(QString selectedVersion READ selectedVersion NOTIFY changed)
+    Q_PROPERTY(QString selectedDate READ selectedDate NOTIFY changed)
+    // Feedback for the "check for updates" action: how many lookups are still
+    // out, and a one-line verdict once they all land.
+    Q_PROPERTY(bool checking READ checking NOTIFY changed)
+    Q_PROPERTY(QString checkSummary READ checkSummary NOTIFY changed)
+    // The channels of whatever firmware is running, so the update-channel
+    // control can describe the actual firmware instead of the official one.
+    Q_PROPERTY(QStringList installedChannels READ installedChannels NOTIFY changed)
+    // Same list shaped like the stock channel model ({name: ...}), so the
+    // existing ChannelDelegate renders it unchanged.
+    Q_PROPERTY(QVariantList installedChannelModel READ installedChannelModel NOTIFY changed)
+    Q_PROPERTY(QString installedChannel READ installedChannel NOTIFY changed)
+    // Which channel the running build was flashed from, when this app did it.
+    Q_PROPERTY(QString installedFromChannel READ installedFromChannel NOTIFY changed)
+    Q_PROPERTY(bool channelSwitchPending READ channelSwitchPending NOTIFY changed)
 
 public:
     explicit FirmwareStore(QObject *parent = nullptr);
@@ -250,8 +286,48 @@ public:
     void setOpen(bool value);
     QVariantList sources() const;
     bool busy() const { return m_busy; }
+    QString deviceVersion() const { return m_deviceVersion; }
+    void setDeviceVersion(const QString &v);
 
-    Q_INVOKABLE void refresh();               // (re)fetch the latest version of every source
+    // Which source the running firmware came from, by the shape of its version
+    // string ("mntm-012" -> Momentum). -1 when it can't be told.
+    int installedIndex() const;
+    QString installedName() const;
+    QString installedLatest() const;
+    bool installedReady() const;
+    bool updateAvailable() const;
+    QString installedDate() const;
+    bool checking() const { return m_pending > 0; }
+    QString checkSummary() const { return m_checkSummary; }
+    QStringList installedChannels() const;
+    QVariantList installedChannelModel() const;
+    QString installedChannel() const;
+    QString installedFromChannel() const;
+    bool channelSwitchPending() const;
+    Q_INVOKABLE void setInstalledChannel(const QString &id);
+    // Re-flash the firmware already on the device, from its own source.
+    Q_INVOKABLE void reinstallInstalled();
+
+    int selectedIndex() const { return m_selected; }
+    bool hasSelection() const { return m_selected >= 0 && m_selected < m_sources.size(); }
+    QString selectedName() const;
+    QString selectedVersion() const;
+    QString selectedDate() const;
+
+    // Toggles: picking the row that is already staged clears it.
+    Q_INVOKABLE void select(int index);
+    Q_INVOKABLE void clearSelection();
+    Q_INVOKABLE void installSelected();
+
+    Q_INVOKABLE void refresh();               // force a re-fetch of every source
+    void refreshIfStale();                    // only go to the network if the cache aged out
+
+    // Derived results survive a restart; the raw payloads are too big to keep
+    // and don't need to be, since only these fields drive the UI and install.
+    void rememberFlashedChannel(int index);
+    void noteLookupDone(int index);   // tally a finished lookup; verdict on the last
+    void saveDerived(int index) const;
+    bool loadDerived(int index);
     Q_INVOKABLE void install(int index);      // download that source's latest .tgz
     Q_INVOKABLE void cycleChannel(int index); // switch a source's channel (release/dev/rc)
 
@@ -273,6 +349,7 @@ private:
         QStringList channels;     // available channel ids (discovered for DirJson, fixed for GitHub)
         QString     wantChannel;  // user-selected channel id (persisted); default "release"
         QString     latest;       // discovered version for the selected channel
+        QString     date;         // release date of that version, "yyyy-MM-dd"
         QString     tgzUrl;       // discovered download URL for the selected channel
         QString     status;       // "", "checking", "ready", "error"
         QByteArray  raw;          // cached payload, so channel switches need no re-fetch
@@ -281,12 +358,26 @@ private:
     void fetchOne(int index);
     void deriveFromCache(int index);                  // recompute latest/tgz for the chosen channel
     QString currentChannelId(const Source &s) const;  // wantChannel, clamped to what's available
+    // Declared here, after struct Source: taking one by reference above the
+    // struct's own declaration doesn't compile.
+    QString channelVersion(const Source &s, const QString &ch) const;
+    int distinctChannelCount(const Source &s) const;   // 1 when every channel is the same build
     void setBusy(bool value);
 
     QNetworkAccessManager m_net;
     QList<Source> m_sources;
     bool m_open = false;
     bool m_busy = false;
+    QString m_deviceVersion;
+    bool m_fetchedOnce = false;
+    int m_selected = -1;
+    int m_pending = 0;               // lookups still in flight
+    int m_foundUpdates = 0;          // sources that differ from what is running
+    QString m_checkSummary;
+    // The GitHub sources share an unauthenticated 60-requests-per-hour budget
+    // for the whole machine, and four of them are fetched per refresh. Opening
+    // the panel used to spend that budget every time.
+    QDateTime m_lastFetch;
 };
 
 class QSerialPort;

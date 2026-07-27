@@ -280,8 +280,29 @@ Item {
             opacity: Backend.backendState !== ApplicationBackend.ScreenStreaming &&
                      Backend.backendState !== ApplicationBackend.ErrorOccured ? 1 : 0
 
-            x: Backend.backendState === ApplicationBackend.Ready ? Math.round(mainContent.width / 2) : Math.round((mainContent.width - width) / 2) - 100
-            y: 94
+            // Ready parks it on the right, beside the install button. The
+            // WaitingForDevices screen wants it left of centre to make room for
+            // the "connect your Flipper" text. Everything in between -- the
+            // update run and the finish screen -- is a full-width overlay with
+            // the title, progress bar and status all centred, so the device has
+            // to be centred too; the -100 was leaving it visibly off-axis.
+            x: {
+                if(Backend.backendState === ApplicationBackend.Ready) {
+                    return Math.round(mainContent.width / 2);
+                }
+                const centred = Math.round((mainContent.width - width) / 2);
+                return Backend.backendState === ApplicationBackend.WaitingForDevices ? centred - 100 : centred;
+            }
+            // Ready parks it at the top of the home layout. The other screens
+            // are centred full-width overlays, so it moves down with the rest of
+            // their group. The finish screen shifts further than the update one
+            // because it has no status line under the button -- these mirror
+            // contentShift in UpdateOverlay.qml and FinishOverlay.qml.
+            y: {
+                if(Backend.backendState === ApplicationBackend.Ready)    { return 94; }
+                if(Backend.backendState === ApplicationBackend.Finished) { return 94 + 42; }
+                return 94 + 26;
+            }
 
             onScreenStreamRequested: Backend.startFullScreenStreaming()
         }
@@ -1188,6 +1209,29 @@ Item {
         }
     }
 
+    // Reinstall and Update run from the tools tab and the main screen, where
+    // the store panel is closed -- and its failed()/progress() handlers live
+    // inside that panel. A download that died there failed in total silence.
+    // Reopening the panel puts the error back in front of the user.
+    Connections {
+        target: Firmware
+        function onFailed(index, message) {
+            if(!Firmware.open) { Firmware.open = true; }
+        }
+    }
+
+    // Hand the running firmware version to the store so it can tell which row
+    // is the one already installed. Deliberately at root scope: this used to
+    // live inside the store overlay, which is only visible while the panel is
+    // open -- one refactor of that Item into a Loader and the version would
+    // quietly stop arriving, taking the update check with it.
+    Binding {
+        target: Firmware
+        property: "deviceVersion"
+        value: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.firmware)
+               ? Backend.deviceState.info.firmware.version : ""
+    }
+
     // ---- custom-firmware store (Official / Momentum / Unleashed / RogueMaster) ----
     Item {
         id: firmwareOverlay
@@ -1242,9 +1286,15 @@ Item {
 
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
+                    textFormat: Text.StyledText
                     color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 12
+                    // The version itself gets the same green it has on the main
+                    // screen, so the two places agree at a glance.
                     text: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.firmware)
-                          ? ("Your Flipper version:  " + Backend.deviceState.info.firmware.version)
+                          ? ("Flipper Version : <font color=\"" + Theme.color.lightgreen + "\">"
+                             + Backend.deviceState.info.firmware.version + "</font>"
+                             + (Firmware.installedFromChannel.length > 0
+                                ? "  (" + Firmware.installedFromChannel + " channel)" : ""))
                           : "Connect your Flipper to flash. Latest builds are shown below."
                 }
 
@@ -1273,37 +1323,65 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: fwRow.wInstall; height: 30
                                 radius: 6
-                                property bool canGo: modelData.ready && !Firmware.busy && Backend.deviceState
+                                // Staging only needs a fetched source; no device
+                                // has to be attached to pick one. The build
+                                // already running is the one thing to refuse.
+                                property bool canGo: modelData.ready && !modelData.upToDate
                                 enabled: canGo
                                 opacity: canGo ? 1.0 : 0.4
                                 color: instMouse.containsMouse && canGo ? Theme.color.mediumorange2 : "transparent"
-                                border.width: 1; border.color: Theme.color.mediumorange2
+                                border.width: 1
+                                border.color: Theme.color.mediumorange2
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "INSTALL"
-                                    color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                                    text: modelData.action
+                                    color: Theme.color.lightorange2
+                                    font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                                 }
                                 MouseArea {
                                     id: instMouse; anchors.fill: parent; hoverEnabled: true
                                     cursorShape: instBtn.canGo ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                    onClicked: if (instBtn.canGo) Firmware.install(index)
+                                    onClicked: {
+                                        if(!instBtn.canGo) return;
+                                        const wasStaged = modelData.selected;
+                                        Firmware.select(index);
+                                        // Staging is done -- send them where the
+                                        // install actually happens. Unstaging
+                                        // keeps the panel open to pick another.
+                                        if(!wasStaged) Firmware.open = false;
+                                    }
                                 }
                             }
 
-                            Text {
+                            Column {
                                 id: verLbl
                                 anchors.right: instBtn.left
                                 anchors.rightMargin: fwRow.colGap
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: fwRow.wVersion
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                                text: modelData.status === "checking" ? "checking…"
-                                    : modelData.status === "error"    ? "unavailable"
-                                    : modelData.latest
-                                color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
-                                font.family: "Share Tech Mono"; font.pixelSize: 12
+                                spacing: 1
+
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                    text: modelData.status === "checking" ? "checking…"
+                                        : modelData.status === "error"    ? "unavailable"
+                                        : modelData.latest
+                                    color: modelData.status === "error" ? Theme.color.mediumorange1 : Theme.color.lightgreen
+                                    font.family: "Share Tech Mono"; font.pixelSize: 12
+                                }
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                    // Empty when the feed didn't carry a date;
+                                    // the row just loses the second line.
+                                    visible: text.length > 0
+                                    text: modelData.status === "ready" ? (modelData.date || "") : ""
+                                    color: Theme.color.mediumorange4
+                                    font.family: "Share Tech Mono"; font.pixelSize: 10
+                                }
                             }
 
                             Rectangle {
@@ -1313,17 +1391,28 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: fwRow.wChannel; height: 26
                                 radius: 5
-                                opacity: (modelData.channelCount || 0) > 1 ? 1 : 0
-                                enabled: (modelData.channelCount || 0) > 1
-                                color: chMouse.containsMouse ? Theme.color.mediumorange2 : "transparent"
+                                // A source with a single channel still shows
+                                // which one it is -- it just isn't a dropdown.
+                                // Hiding the box entirely left the row looking
+                                // like the channel was missing rather than fixed.
+                                readonly property bool pickable: (modelData.channelCount || 0) > 1
+                                enabled: pickable
+                                color: (chMouse.containsMouse && pickable) ? Theme.color.mediumorange2 : "transparent"
                                 border.width: 1; border.color: Theme.color.mediumorange2
                                 Text {
                                     id: chLbl
                                     anchors.left: parent.left; anchors.leftMargin: 8
-                                    anchors.right: chArrow.left; anchors.rightMargin: 4
+                                    anchors.right: chBox.pickable ? chArrow.left : parent.right
+                                    anchors.rightMargin: chBox.pickable ? 4 : 8
                                     anchors.verticalCenter: parent.verticalCenter
+                                    horizontalAlignment: chBox.pickable ? Text.AlignLeft : Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideRight
+                                    // Always the source's own name for the
+                                    // stream, whether or not it can be changed:
+                                    // Xero publishes "release", ARF only ever
+                                    // tags "dev". Calling ARF's stream "release"
+                                    // would suggest a stability it never claims.
                                     text: modelData.channel
                                     color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 11
                                 }
@@ -1331,9 +1420,14 @@ Item {
                                     id: chArrow
                                     anchors.right: parent.right; anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
+                                    visible: chBox.pickable      // nothing to open when there is one channel
                                     text: "▾"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 9
                                 }
-                                MouseArea { id: chMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Firmware.cycleChannel(index) }
+                                MouseArea {
+                                    id: chMouse; anchors.fill: parent; hoverEnabled: chBox.pickable
+                                    cursorShape: chBox.pickable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: if (chBox.pickable) Firmware.cycleChannel(index)
+                                }
                             }
 
                             Column {
@@ -1370,15 +1464,64 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: Firmware.busy ? "downloading…" : "↻ check for updates"
-                        color: recheckFwMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
+                        id: recheckFwLabel
+                        // Reports what it is doing, then what it found, then
+                        // goes back to being a button. Silently returning to
+                        // idle gave no way to tell a finished check from one
+                        // that never ran.
+                        property bool showingResult: false
+                        text: Firmware.busy            ? "downloading…"
+                            : Firmware.checking        ? "checking for new updates…"
+                            : showingResult && Firmware.checkSummary.length > 0 ? Firmware.checkSummary
+                            : "↻ check for updates"
+                        // Result in the app's own colour: green here read as a
+                        // status light, competing with the green used for the
+                        // installed version elsewhere on screen.
+                        color: showingResult && Firmware.checkSummary.length > 0
+                               ? Theme.color.lightorange2
+                               : (recheckFwMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4)
                         font.family: "Share Tech Mono"; font.pixelSize: 12
-                        MouseArea { id: recheckFwMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!Firmware.busy) Firmware.refresh() }
+
+                        onTextChanged: if (Firmware.checking) { recheckFwLabel.showingResult = true; }
+                        Connections {
+                            target: Firmware
+                            function onChanged() {
+                                if (!Firmware.checking && recheckFwLabel.showingResult) { resultTimer.restart(); }
+                            }
+                        }
+                        Timer {
+                            id: resultTimer; interval: 4000
+                            onTriggered: recheckFwLabel.showingResult = false
+                        }
+
+                        MouseArea {
+                            id: recheckFwMouse; anchors.fill: parent; anchors.margins: -4
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: if (!Firmware.busy && !Firmware.checking) {
+                                           recheckFwLabel.showingResult = true;
+                                           Firmware.refresh();
+                                       }
+                        }
                     }
                     Item { Layout.fillWidth: true }
-                    Text {
-                        text: "⚠ flashing replaces your current firmware"
-                        color: Theme.color.mediumorange1; font.family: "Share Tech Mono"; font.pixelSize: 10
+                    Row {
+                        spacing: 5
+                        Text {
+                            text: "\u26a0"
+                            color: "#ffcc33"          // the warning mark carries the alarm
+                            font.family: "Share Tech Mono"; font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            // White rather than red: this line sits on screen the
+                            // whole time the panel is open, and red at that size
+                            // is tiring to read for a message that is a caution,
+                            // not an error.
+                            text: "flashing replaces your current firmware"
+                            color: "#ffffff"
+                            font.family: "Share Tech Mono"; font.pixelSize: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                 }
             }

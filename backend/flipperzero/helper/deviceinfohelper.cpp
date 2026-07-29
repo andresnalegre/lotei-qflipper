@@ -370,8 +370,46 @@ void VCPDeviceInfoHelper::stopRPCSession()
 void VCPDeviceInfoHelper::onSessionStatusChanged()
 {
     if(m_rpc->isError()) {
+        // "Resource busy" on start-up is almost always the previous instance of
+        // this app still holding the port -- rebuild, relaunch, and the old
+        // process has not finished letting go yet. The OS frees it a moment
+        // later, so failing here permanently forced a cable reconnect for
+        // something that fixes itself. Retry before giving up.
+        //
+        // Sized from a measured case: macOS took longer than a 6 x 800ms window
+        // to release the handle, and the run only recovered because a retry one
+        // layer up happened to land after it. 20 x 600ms gives ~12s, which
+        // covers that with room to spare; a port held by something other than a
+        // dying instance still surfaces the real error at the end.
+        if(state() == VCPDeviceInfoHelper::StartingRPCSession && m_rpcAttempts < 20) {
+            ++m_rpcAttempts;
+            // Only the first few are worth reading; after that it is the same
+            // line over and over while the OS catches up.
+            if(m_rpcAttempts <= 3) {
+                qCInfo(CATEGORY_DEBUG).noquote()
+                    << QStringLiteral("RPC session attempt %1 failed (%2) -- port may still be held, retrying")
+                       .arg(m_rpcAttempts).arg(m_rpc->errorString());
+            }
+
+            m_rpc->disconnect(this);      // no more signals from the dead session
+            m_rpc->deleteLater();
+            m_rpc = nullptr;
+
+            QTimer::singleShot(600, this, [=]() {
+                if(state() == VCPDeviceInfoHelper::StartingRPCSession) { startRPCSession(); }
+            });
+            return;
+        }
+
+        qCInfo(CATEGORY_DEBUG).noquote()
+            << QStringLiteral("RPC session gave up after %1 attempts: %2")
+               .arg(m_rpcAttempts).arg(m_rpc->errorString());
         finishWithError(m_rpc->error(), QStringLiteral("Protobuf session error: %1").arg(m_rpc->errorString()));
     } else if(state() == VCPDeviceInfoHelper::StartingRPCSession && m_rpc->isSessionUp()) {
+        if(m_rpcAttempts > 0) {
+            qCInfo(CATEGORY_DEBUG).noquote()
+                << QStringLiteral("RPC session came up on attempt %1").arg(m_rpcAttempts + 1);
+        }
         advanceState();
     } else if(state() == VCPDeviceInfoHelper::StoppingRPCSession && !m_rpc->isSessionUp()) {
         finish();

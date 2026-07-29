@@ -246,6 +246,9 @@ AbstractOverlay {
                     return qsTr("Install %1 %2 imported from the firmware store")
                            .arg(Firmware.selectedName).arg(Firmware.selectedVersion);
                 }
+                if(Lotei.sdFormatted) {
+                    return qsTr("The card was formatted. Import a firmware from Custom firmware to put it back, then Restore your files.");
+                }
                 if(overlay.onFork) {
                     if(!Firmware.installedReady) {
                         return qsTr("Couldn't reach the %1 release feed, so it isn't known whether a newer build exists. Press to try again.")
@@ -347,6 +350,8 @@ AbstractOverlay {
 
         enabled: Firmware.hasSelection
                  ? !Firmware.busy
+                 : Lotei.sdFormatted
+                 ? false
                  : overlay.onFork
                  ? ((Firmware.updateAvailable || !Firmware.installedReady) && !Firmware.busy)
                  : (Backend.firmwareUpdateState === ApplicationBackend.CanUpdate ||
@@ -358,6 +363,12 @@ AbstractOverlay {
             // A firmware imported from the store is an explicit choice, so it
             // outranks any automatic update offer.
             if(Firmware.hasSelection) return qsTr("Install");
+
+            // After a format the card has none of the resources the firmware
+            // expects, so what is on the device is not something to update or
+            // repair -- it needs a full install. Importing one from Custom
+            // firmware is the way back, and that is the branch just above.
+            if(Lotei.sdFormatted) return qsTr("No data");
 
             // On a fork the only honest offer is "update to a newer build of
             // the SAME firmware". Installing something else stays behind the
@@ -547,56 +558,87 @@ AbstractOverlay {
             confirmationDialog.openWithMessage(actionFunc, messageObj);
         });
 
-        const nameFilters = (deviceState.isRecoveryMode ? [] : ["Firmware bundle files (*.tgz)"]).concat(["Firmware files (*.dfu)", "All files (*.*)"]);
+        // Same list as before, minus "All files (*.*)" -- that entry let a
+        // backup .tgz through, which has no update.fuf inside and only fails
+        // after being uploaded to the card. Kept as two entries on purpose:
+        // with a single filter macOS hides the type selector entirely and the
+        // expected extension stops being visible.
+        const nameFilters = (deviceState.isRecoveryMode ? [] : ["Firmware bundle files (*.tgz)"]).concat(["Firmware files (*.dfu)"]);
         SystemFileDialog.beginOpenFile(SystemFileDialog.LastLocation, nameFilters);
     }
 
+    // Backs up the SD card -- the captures, scripts, dumps and folders the user
+    // made. The stock action saved /int instead (pairing keys, dolphin state,
+    // region), which is settings: useful, but not what is lost when a card dies
+    // and not what anyone means by "my files".
     function backupDevice() {
-        SystemFileDialog.accepted.connect(function() {
-            const messageObj = {
-                title : qsTr("Backup device?"),
-                customText: qsTr("Backup"),
-                message: qsTr("Device settings will be backed up")
-            };
-
-            const actionFunc = function() {
-                Backend.createBackup(SystemFileDialog.fileUrl);
-            }
-
-            confirmationDialog.openWithMessage(actionFunc, messageObj);
-        });
-
-        const defaultName = "%1-backup-%2.tgz".arg(deviceInfo.name).arg(Qt.formatDateTime(new Date(), "yyyyMMdd-hhmmss"));
-        SystemFileDialog.beginSaveFile(SystemFileDialog.LastLocation, ["Backup files (*.tgz)", "All files (*.*)"], defaultName);
-    }
-
-    function restoreDevice() {
-        SystemFileDialog.accepted.connect(function() {
-            const messageObj = {
-                title : qsTr("Restore backup?"),
-                customText: qsTr("Restore"),
-                message: qsTr("Device settings will be restored<br/>from selected backup")
-            };
-
-            const actionFunc = function() {
-                Backend.restoreBackup(SystemFileDialog.fileUrl);
-            }
-
-            confirmationDialog.openWithMessage(actionFunc, messageObj);
-        });
-
-        SystemFileDialog.beginOpenFile(SystemFileDialog.LastLocation, ["Backup files (*.tgz)", "All files (*.*)"]);
-    }
-
-    function eraseDevice() {
         const messageObj = {
-            title : qsTr("Erase device?"),
-            message: qsTr("Device settings will be fully erased"),
-            suggestedRole: ConfirmationDialog.RejectRole,
-            customText: qsTr("Erase")
+            title : qsTr("Back up your files?"),
+            customText: qsTr("Backup"),
+            message: qsTr("Everything you made on the SD card will be copied to<br/>"
+                        + "<font color=\"%1\">Desktop / Nikita-qflipper / bkp.tgz</font><br/><br/>"
+                        + "Firmware, installed apps and update bundles are skipped -- those come back from the store.")
+                     .arg(Theme.color.lightgreen)
         };
 
-        confirmationDialog.openWithMessage(Backend.factoryReset, messageObj);
+        confirmationDialog.openWithMessage(function() { Lotei.backupSdCard(); }, messageObj);
+    }
+
+    // No result dialogs here: the operation already asked for confirmation
+    // before starting, and it reports its outcome on the finish screen -- the
+    // same one a firmware install uses. A second popup was asking the user to
+    // approve something they had already approved.
+    Connections {
+        target: Lotei
+
+        function onFormatFinished() {
+            confirmationDialog.openWithMessage(function() { Backend.factoryReset(); }, {
+                title : qsTr("Card emptied"),
+                customText: qsTr("Reset settings"),
+                message: qsTr("The SD card is now empty.<br/><br/>Reset the device settings as well?")
+            });
+        }
+    }
+
+
+
+    // The mirror of backupDevice(): puts a backup folder back onto /ext. The
+    // stock action restored a /int tarball, which is settings -- it could never
+    // bring back a capture or a script.
+    function restoreDevice() {
+        SystemFileDialog.accepted.connect(function() {
+            const folder = SystemFileDialog.fileUrl;
+            const messageObj = {
+                title : qsTr("Restore your files?"),
+                customText: qsTr("Restore"),
+                message: qsTr("Contents of<br/><font color=\"%1\">%2</font><br/>will be written to the SD card.<br/><br/>"
+                            + "Anything with the same name is overwritten; nothing else on the card is touched.")
+                         .arg(Theme.color.lightgreen).arg(baseName(folder))
+            };
+
+            confirmationDialog.openWithMessage(function() { Lotei.restoreSdCard(folder); }, messageObj);
+        });
+
+        // Picks the archive. A folder from an older backup still restores --
+        // restoreSdCard() takes either -- but this matches what Backup makes now.
+        SystemFileDialog.beginOpenFile(SystemFileDialog.LastLocation,
+                                       ["Flipper backup (*.tgz)", "All files (*.*)"]);
+    }
+
+    // Empties the card first; the /int reset is offered afterwards, from
+    // onFormatFinished(). The two live in different storage and there is no
+    // single RPC that clears both.
+    function eraseDevice() {
+        const messageObj = {
+            title : qsTr("Format the Flipper?"),
+            message: qsTr("<font color=\"%1\">Everything on the SD card will be deleted</font> -- captures, "
+                        + "scripts, dumps, apps.<br/><br/>This cannot be undone. Back up first if you have not.")
+                     .arg(Theme.color.lightred1),
+            suggestedRole: ConfirmationDialog.RejectRole,
+            customText: qsTr("Format")
+        };
+
+        confirmationDialog.openWithMessage(function() { Lotei.formatSdCard(); }, messageObj);
     }
 
     function reinstallFirmware() {

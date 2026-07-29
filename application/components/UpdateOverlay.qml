@@ -12,6 +12,12 @@ AbstractOverlay {
     // in MainWindow, so the three keep their spacing while the group centres.
     readonly property int contentShift: 26
 
+    // Backup, restore and format run through this same screen. They are our own
+    // operations rather than qFlipper states, so the three fields below take
+    // their values from Lotei while one is running and fall back to the
+    // firmware flow otherwise.
+    readonly property bool transfer: Lotei.transferActive
+
     TextLabel {
         id: updateLabel
         capitalized: false
@@ -27,6 +33,8 @@ AbstractOverlay {
         font.pixelSize: 48
 
         text: {
+            if(overlay.transfer) { return Lotei.transferTitle; }
+
             switch(Backend.backendState) {
             case Backend.UpdatingDevice:
                 return qsTr("Updating your Flipper");
@@ -66,8 +74,12 @@ AbstractOverlay {
         anchors.horizontalCenter: parent.horizontalCenter
         y: 270 + overlay.contentShift
 
-        value: deviceState ? deviceState.progress : 0
-        indeterminate: !deviceState ? true : deviceState.progress < 0
+        value: overlay.transfer ? (Lotei.transferProgress < 0 ? 0 : Lotei.transferProgress * 100)
+                                : (deviceState ? deviceState.progress : 0)
+        // A negative fraction means "working, but the total isn't known yet" --
+        // walking the card, or packing the archive.
+        indeterminate: overlay.transfer ? Lotei.transferProgress < 0
+                                        : (!deviceState ? true : deviceState.progress < 0)
     }
 
     TextLabel {
@@ -78,7 +90,11 @@ AbstractOverlay {
         // tying them to the same reference means they cannot drift apart.
         anchors.horizontalCenter: progressBar.horizontalCenter
         horizontalAlignment: Text.AlignHCenter
-        text: !deviceState ? text : deviceState.isError ? deviceState.errorString : deviceState.statusString
+        width: parent.width - 80
+        elide: Text.ElideMiddle
+        text: overlay.transfer ? Lotei.transferNote
+            : !deviceState ? text
+            : deviceState.isError ? deviceState.errorString : deviceState.statusString
         color: Theme.color.lightorange2
     }
 
@@ -91,7 +107,8 @@ AbstractOverlay {
         width: layout.implicitWidth
         height: layout.implicitHeight
 
-        opacity: Backend.backendState === ApplicationBackend.UpdatingDevice ? !!deviceInfo && !deviceInfo.storage.isExternalPresent :
+        opacity: overlay.transfer ? 0 :
+                 Backend.backendState === ApplicationBackend.UpdatingDevice ? !!deviceInfo && !deviceInfo.storage.isExternalPresent :
                  Backend.backendState === ApplicationBackend.RepairingDevice ? !!deviceInfo && !deviceState.isRecoveryMode && !deviceInfo.storage.isExternalPresent : 0
 
         enabled: opacity > 0

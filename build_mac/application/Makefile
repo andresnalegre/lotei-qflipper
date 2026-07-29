@@ -2214,7 +2214,11 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		../../backend/flipperzero/rpc/storagemkdiroperation.h \
 		../../backend/flipperzero/rpc/storageremoveoperation.h \
 		../../backend/flipperzero/rpc/storagerenameoperation.h \
-		../../backend/flipperzero/rpc/storagestatoperation.h
+		../../backend/flipperzero/rpc/storagestatoperation.h \
+		../../backend/flipperzero/utilityinterface.h \
+		../../backend/abstractoperationrunner.h \
+		../../backend/flipperzero/utility/filesuploadoperation.h \
+		../../backend/flipperzero/utility/abstractutilityoperation.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o loteibackend.o ../../application/loteibackend.cpp
 
 main.o: ../../application/main.cpp ../../application/application.h \

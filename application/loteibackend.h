@@ -103,7 +103,49 @@ public:
     Q_INVOKABLE void reloadMemory();           // re-read memory.txt from the card
     Q_INVOKABLE void syncMemoryToFlipper();    // back up memory + self to the SD
 
+    // Copy the user's own files off the SD card. The stock Backup button saves
+    // /int -- pairing keys, dolphin state, region -- which is settings, not the
+    // captures, scripts and dumps people actually mean by "backup".
+    // Backup, restore and format are minutes of work with no visible sign that
+    // anything is happening -- the LOGS panel is not somewhere most people
+    // think to look. These drive the same kind of progress screen the firmware
+    // install uses.
+    Q_PROPERTY(bool transferActive READ transferActive NOTIFY transferChanged)
+    Q_PROPERTY(QString transferTitle READ transferTitle NOTIFY transferChanged)
+    Q_PROPERTY(QString transferNote READ transferNote NOTIFY transferChanged)
+    Q_PROPERTY(double transferProgress READ transferProgress NOTIFY transferChanged)
+    bool transferActive() const { return m_transferActive; }
+    QString transferTitle() const { return m_transferTitle; }
+    QString transferNote() const { return m_transferNote; }
+    double transferProgress() const { return m_transferProgress; }
+
+
+
+    Q_INVOKABLE void backupSdCard();
+    // Puts a backup folder back onto /ext. Takes the folder the picker returned.
+    Q_INVOKABLE void restoreSdCard(const QString &folderUrl);
+    // Empties the SD card. /int is reset separately, by the factory reset the
+    // QML chains after this one finishes.
+    Q_INVOKABLE void formatSdCard();
+    // True once the card has been emptied and before anything is installed onto
+    // it again: a reinstall repairs an existing install, and after a format
+    // there is nothing on the card left to repair.
+    Q_PROPERTY(bool sdFormatted READ sdFormatted NOTIFY sdFormattedChanged)
+    bool sdFormatted() const { return m_sdFormatted; }
+
 signals:
+    void backupProgress(const QString &note, double frac);
+    void backupFinished(const QString &path, int items);
+    void backupFailed(const QString &error);
+    void restoreProgress(const QString &note, double frac);
+    void restoreFinished(int items);
+    void restoreFailed(const QString &error);
+    void formatProgress(const QString &note, double frac);
+    void formatFinished();
+    void formatFailed(const QString &error);
+    void sdFormattedChanged();
+    void transferChanged();
+
     void replyReceived(const QString &text);
     void errorOccurred(const QString &text);
     void thinkingChanged();
@@ -181,6 +223,40 @@ private:
     QString     m_manualName;   // Flipper name from setup (fallback when no device)
     bool        m_agentEnabled = false;  // host-workspace self-edit tools opt-in
     QString     m_agentRoot;             // absolute workspace folder LOTEI may edit
+    // SD-card backup. Entries are copied one at a time so the device is never
+    // asked for two transfers at once.
+    // Walked by hand with storageList + storageRead rather than the utility's
+    // downloadDirectory(): that returned a tree of empty folders and skipped
+    // most entries outright, and without its source there was no way to tell
+    // why. These two primitives are the ones already proven in this feature.
+    QString     m_backupRoot;
+    QStringList m_backupDirs;     // remote directories still to enumerate
+    QList<QPair<QString,qint64>> m_backupPending;  // <remote path, size>
+    int         m_backupSkipped = 0;
+    int         m_backupTotal = 0;
+    int         m_backupFiles = 0;
+    qint64      m_backupBytes = 0;
+    void backupEnumerateNext();
+    void backupCopyNext();
+    // Files land in a working folder first, then get packed into bkp.tgz and
+    // the folder is dropped -- so a half-finished run never leaves a partial
+    // archive sitting where a good one should be.
+    void backupPackArchive();
+    QString m_backupArchive;
+
+    bool    m_transferActive = false;
+    QString m_transferTitle;
+    QString m_transferNote;
+    double  m_transferProgress = -1.0;      // negative means indeterminate
+    void    setTransfer(const QString &title, const QString &note, double frac);
+    void    endTransfer();
+    void    finishTransfer(bool ok, const QString &text);
+
+    QStringList m_formatQueue;
+    int         m_formatTotal = 0;
+    bool        m_sdFormatted = false;
+    void        runFormatQueue();
+
     QString     m_memory;                // durable facts to remember across sessions
     bool        m_portableLoaded = false; // loaded memory from the Flipper this session
 #ifdef HZUI_VOICE

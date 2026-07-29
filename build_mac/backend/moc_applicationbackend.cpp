@@ -73,6 +73,9 @@ template <> constexpr inline auto ApplicationBackend::qt_create_metaobjectdata<q
         "refreshStorageInfo",
         "checkFirmwareUpdates",
         "finalizeOperation",
+        "reportExternalResult",
+        "ok",
+        "errorType",
         "releasePort",
         "reacquirePort",
         "backendState",
@@ -91,7 +94,6 @@ template <> constexpr inline auto ApplicationBackend::qt_create_metaobjectdata<q
         "QAbstractListModel*",
         "latestFirmwareVersion",
         "Flipper::Updates::VersionInfo",
-        "errorType",
         "BackendError::ErrorType",
         "isQueryInProgress",
         "portReleased",
@@ -175,61 +177,65 @@ template <> constexpr inline auto ApplicationBackend::qt_create_metaobjectdata<q
         QtMocHelpers::MethodData<void()>(29, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'finalizeOperation'
         QtMocHelpers::MethodData<void()>(30, 2, QMC::AccessPublic, QMetaType::Void),
+        // Method 'reportExternalResult'
+        QtMocHelpers::MethodData<void(bool, int)>(31, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Bool, 32 }, { QMetaType::Int, 33 },
+        }}),
         // Method 'releasePort'
-        QtMocHelpers::MethodData<void()>(31, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(34, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'reacquirePort'
-        QtMocHelpers::MethodData<void()>(32, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(35, 2, QMC::AccessPublic, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'backendState'
-        QtMocHelpers::PropertyData<enum BackendState>(33, 0x80000000 | 34, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 2),
+        QtMocHelpers::PropertyData<enum BackendState>(36, 0x80000000 | 37, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 2),
         // property 'deviceState'
-        QtMocHelpers::PropertyData<Flipper::Zero::DeviceState*>(35, 0x80000000 | 36, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
+        QtMocHelpers::PropertyData<Flipper::Zero::DeviceState*>(38, 0x80000000 | 39, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
         // property 'screenStreamer'
-        QtMocHelpers::PropertyData<Flipper::Zero::ScreenStreamer*>(37, 0x80000000 | 38, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
+        QtMocHelpers::PropertyData<Flipper::Zero::ScreenStreamer*>(40, 0x80000000 | 41, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
         // property 'virtualDisplay'
-        QtMocHelpers::PropertyData<Flipper::Zero::VirtualDisplay*>(39, 0x80000000 | 40, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
+        QtMocHelpers::PropertyData<Flipper::Zero::VirtualDisplay*>(42, 0x80000000 | 43, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
         // property 'fileManager'
-        QtMocHelpers::PropertyData<Flipper::Zero::FileManager*>(41, 0x80000000 | 42, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
+        QtMocHelpers::PropertyData<Flipper::Zero::FileManager*>(44, 0x80000000 | 45, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
         // property 'firmwareUpdateState'
-        QtMocHelpers::PropertyData<enum FirmwareUpdateState>(43, 0x80000000 | 44, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 3),
+        QtMocHelpers::PropertyData<enum FirmwareUpdateState>(46, 0x80000000 | 47, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 3),
         // property 'firmwareUpdateModel'
-        QtMocHelpers::PropertyData<QAbstractListModel*>(45, 0x80000000 | 46, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
+        QtMocHelpers::PropertyData<QAbstractListModel*>(48, 0x80000000 | 49, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
         // property 'latestFirmwareVersion'
-        QtMocHelpers::PropertyData<Flipper::Updates::VersionInfo>(47, 0x80000000 | 48, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 3),
+        QtMocHelpers::PropertyData<Flipper::Updates::VersionInfo>(50, 0x80000000 | 51, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 3),
         // property 'errorType'
-        QtMocHelpers::PropertyData<BackendError::ErrorType>(49, 0x80000000 | 50, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
+        QtMocHelpers::PropertyData<BackendError::ErrorType>(33, 0x80000000 | 52, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
         // property 'isQueryInProgress'
-        QtMocHelpers::PropertyData<bool>(51, QMetaType::Bool, QMC::DefaultPropertyFlags, 4),
+        QtMocHelpers::PropertyData<bool>(53, QMetaType::Bool, QMC::DefaultPropertyFlags, 4),
         // property 'portReleased'
-        QtMocHelpers::PropertyData<bool>(52, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
+        QtMocHelpers::PropertyData<bool>(54, QMetaType::Bool, QMC::DefaultPropertyFlags, 5),
     };
     QtMocHelpers::UintData qt_enums {
         // enum 'BackendState'
-        QtMocHelpers::EnumData<enum BackendState>(34, 34, QMC::EnumIsScoped).add({
-            {   53, BackendState::WaitingForDevices },
-            {   54, BackendState::Ready },
-            {   55, BackendState::ScreenStreaming },
-            {   56, BackendState::UpdatingDevice },
-            {   57, BackendState::RepairingDevice },
-            {   58, BackendState::CreatingBackup },
-            {   59, BackendState::RestoringBackup },
-            {   60, BackendState::FactoryResetting },
-            {   61, BackendState::InstallingFirmware },
-            {   62, BackendState::InstallingWirelessStack },
-            {   63, BackendState::InstallingFUS },
-            {   64, BackendState::Finished },
-            {   65, BackendState::ErrorOccured },
+        QtMocHelpers::EnumData<enum BackendState>(37, 37, QMC::EnumIsScoped).add({
+            {   55, BackendState::WaitingForDevices },
+            {   56, BackendState::Ready },
+            {   57, BackendState::ScreenStreaming },
+            {   58, BackendState::UpdatingDevice },
+            {   59, BackendState::RepairingDevice },
+            {   60, BackendState::CreatingBackup },
+            {   61, BackendState::RestoringBackup },
+            {   62, BackendState::FactoryResetting },
+            {   63, BackendState::InstallingFirmware },
+            {   64, BackendState::InstallingWirelessStack },
+            {   65, BackendState::InstallingFUS },
+            {   66, BackendState::Finished },
+            {   67, BackendState::ErrorOccured },
         }),
         // enum 'FirmwareUpdateState'
-        QtMocHelpers::EnumData<enum FirmwareUpdateState>(44, 44, QMC::EnumIsScoped).add({
-            {   66, FirmwareUpdateState::Unknown },
-            {   67, FirmwareUpdateState::Checking },
-            {   68, FirmwareUpdateState::CanUpdate },
-            {   69, FirmwareUpdateState::CanInstall },
-            {   70, FirmwareUpdateState::CanRepair },
-            {   71, FirmwareUpdateState::NoUpdates },
-            {   65, FirmwareUpdateState::ErrorOccured },
+        QtMocHelpers::EnumData<enum FirmwareUpdateState>(47, 47, QMC::EnumIsScoped).add({
+            {   68, FirmwareUpdateState::Unknown },
+            {   69, FirmwareUpdateState::Checking },
+            {   70, FirmwareUpdateState::CanUpdate },
+            {   71, FirmwareUpdateState::CanInstall },
+            {   72, FirmwareUpdateState::CanRepair },
+            {   73, FirmwareUpdateState::NoUpdates },
+            {   67, FirmwareUpdateState::ErrorOccured },
         }),
     };
     return QtMocHelpers::metaObjectData<ApplicationBackend, qt_meta_tag_ZN18ApplicationBackendE_t>(QMC::MetaObjectFlag{}, qt_stringData,
@@ -279,8 +285,9 @@ void ApplicationBackend::qt_static_metacall(QObject *_o, QMetaObject::Call _c, i
         case 21: _t->refreshStorageInfo(); break;
         case 22: _t->checkFirmwareUpdates(); break;
         case 23: _t->finalizeOperation(); break;
-        case 24: _t->releasePort(); break;
-        case 25: _t->reacquirePort(); break;
+        case 24: _t->reportExternalResult((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2]))); break;
+        case 25: _t->releasePort(); break;
+        case 26: _t->reacquirePort(); break;
         default: ;
         }
     }
@@ -345,14 +352,14 @@ int ApplicationBackend::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 26)
+        if (_id < 27)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 26;
+        _id -= 27;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 26)
+        if (_id < 27)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 26;
+        _id -= 27;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty

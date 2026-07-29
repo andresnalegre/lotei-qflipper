@@ -114,6 +114,13 @@ public:
     Q_INVOKABLE void checkFirmwareUpdates();
     Q_INVOKABLE void finalizeOperation();
 
+    // Lets an operation that lives outside this class -- the SD-card backup,
+    // restore and format -- end on the same Finished / ErrorOccured screens a
+    // firmware install does. setBackendState() is private and there was no
+    // other way in, so those operations previously had to carry a parallel
+    // result mechanism of their own just to reach the finish screen.
+    Q_INVOKABLE void reportExternalResult(bool ok, int errorType);
+
     // Clean serial-port handoff: release the COM port so another app/CLI tool can
     // use it, then grab it back. No app restart needed.
     Q_INVOKABLE void releasePort();

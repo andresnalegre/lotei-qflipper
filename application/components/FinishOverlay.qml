@@ -15,6 +15,9 @@ AbstractOverlay {
     // widget in MainWindow.
     readonly property int contentShift: 42
 
+    // Backup, restore and format finish here too, through the real backend
+    // state -- so nothing below needs to know which kind of operation ran.
+
     TextLabel {
         id: successLabel
 

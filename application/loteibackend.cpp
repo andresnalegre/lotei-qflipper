@@ -17,6 +17,7 @@
 #include <QStandardPaths>
 #include <QSettings>
 #include <QProcess>
+#include <zlib.h>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -33,6 +34,7 @@
 #include <QTimer>
 
 #include "applicationbackend.h"
+#include "backenderror.h"   // BackendError::OperationError
 #include "deviceregistry.h"
 #include "abstractoperation.h"
 #include "fileinfo.h"
@@ -48,6 +50,11 @@
 #include "flipperzero/rpc/storageremoveoperation.h"
 #include "flipperzero/rpc/storagerenameoperation.h"
 #include "flipperzero/rpc/storagestatoperation.h"
+#include "flipperzero/utilityinterface.h"
+// utilityinterface.h only forward-declares these, so without them the compiler
+// can't see that they derive from AbstractOperation -- connect() and every
+// member access on the returned pointer fail.
+#include "flipperzero/utility/filesuploadoperation.h"
 
 // ---- Configuration -------------------------------------------------------
 static const char *LOTEI_MODEL = "phi3.5";
@@ -184,7 +191,10 @@ STYLE
 // shows RPC traffic as "[RPC] ...", so the app's logger is category-based, and
 // a default-category message is the kind of thing that gets filtered or
 // compiled out of a release build.
-Q_LOGGING_CATEGORY(LOG_LOTEI, "LOTEI")
+// The category string is what shows up in the LOGS panel. The assistant
+// introduces itself as Nikita and the device carries that name, so having the
+// log say LOTEI made the app speak with two voices about the same thing.
+Q_LOGGING_CATEGORY(LOG_LOTEI, "NIKITA")
 
 // The CLI panel is the third way to change the device, next to the file manager
 // and the assistant's tools -- and the only one that bypasses RPC entirely, so
@@ -245,6 +255,7 @@ static bool cliCommandMutates(const QString &verb)
         QStringLiteral("cat"), QStringLiteral("stat"), QStringLiteral("df"),
         QStringLiteral("tree"), QStringLiteral("md5"), QStringLiteral("find"),
         QStringLiteral("help"), QStringLiteral("clear"), QStringLiteral("verbose"),
+        QStringLiteral("tgz"),
         QStringLiteral("colors"), QStringLiteral("device_info"), QStringLiteral("uptime"),
         QStringLiteral("free"), QStringLiteral("log"), QStringLiteral("top"),
         QStringLiteral("ps"), QStringLiteral("date"), QStringLiteral("history")
@@ -2430,6 +2441,644 @@ void LoteiBackend::applyMemoryText(const QString &text, const QString &source)
 
 // Force a re-read of the card's copy. The chat calls this when it opens so a
 // file edited in another tab is picked up without reconnecting.
+// Things on the card that belong to the firmware or to the host OS, not to the
+// user. Restoring these onto a different firmware gives apps that won't open
+// (they're built against one ABI) and update bundles that are already stale --
+// and the firmware itself is two clicks away in the store, so it is not what a
+// backup is for.
+// Reading a very large file over RPC crashes the Flipper: a 3 GB mass-storage
+// image took the firmware down with "furi_check failed" every time, which is
+// why the backup never reached the point of writing an archive. The cap is
+// generous next to captures and dumps, and anything above it is reported by
+// name rather than dropped quietly.
+static const qint64 kMaxBackupFileBytes = 64LL * 1024 * 1024;
+
+// Read by FlipperCli::setOpen(). A plain flag rather than walking the object
+// tree: LoteiBackend is not a child of ApplicationBackend, so findChild() would
+// have returned null and the guard would have done nothing at all.
+static bool g_transferRunning = false;
+
+static bool loteiSkipInBackup(const QString &name)
+{
+    static const QStringList skip = {
+        QStringLiteral("update"),          // firmware bundles waiting to be applied
+        QStringLiteral("Manifest"),        // firmware resource manifest
+        QStringLiteral("apps"),            // FAPs, compiled against one firmware ABI
+        QStringLiteral("apps_assets"),
+        QStringLiteral("apps_manifests"),
+        QStringLiteral(".int"),            // internal storage mirror
+    };
+    if (skip.contains(name, Qt::CaseInsensitive)) { return true; }
+    // macOS and Windows litter removable media with these.
+    return name.startsWith(QLatin1String(".Spotlight"))
+        || name.startsWith(QLatin1String(".Trash"))
+        || name.startsWith(QLatin1String(".fseventsd"))
+        || name.startsWith(QLatin1String(".tmp"))
+        || name == QLatin1String("System Volume Information");
+}
+
+void LoteiBackend::setTransfer(const QString &title, const QString &note, double frac)
+{
+    m_transferActive = true;
+    m_transferTitle = title;
+    m_transferNote = note;
+    m_transferProgress = frac;
+    emit transferChanged();
+}
+
+void LoteiBackend::finishTransfer(bool ok, const QString &text)
+{
+    m_transferActive = false;
+    m_transferNote.clear();
+    m_transferProgress = -1.0;
+    loteiLog(QStringLiteral("transfer: %1 -- %2")
+             .arg(ok ? QStringLiteral("finished") : QStringLiteral("failed"), text));
+    emit transferChanged();
+
+    // Hand the outcome to the backend so it lands on the very same Finished /
+    // ErrorOccured screens a firmware install uses. Reusing the real state is
+    // what removed the parallel set of visibility conditions this used to need
+    // -- and with it the risk of the two drifting apart.
+    if (m_appBackend) {
+        m_appBackend->reportExternalResult(ok, int(BackendError::OperationError));
+    }
+}
+
+void LoteiBackend::endTransfer()
+{
+    if (!m_transferActive) { return; }
+    m_transferActive = false;
+    m_transferNote.clear();
+    m_transferProgress = -1.0;
+    emit transferChanged();
+}
+
+void LoteiBackend::backupSdCard()
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { emit backupFailed(QStringLiteral("No Flipper connected.")); return; }
+    if (m_transferActive) {
+        emit backupFailed(QStringLiteral("An operation is already running."));
+        return;
+    }
+    // A run that died between phases used to leave these populated forever,
+    // and every later attempt was refused as "already running".
+    m_backupDirs.clear();
+    m_backupPending.clear();
+
+    const QString base = QDir::homePath() + QStringLiteral("/Desktop/Nikita-qflipper");
+    m_backupArchive = base + QStringLiteral("/bkp.tgz");
+
+    // The staging folder lives in the system temp directory, not next to the
+    // archive: files have to land somewhere before they can be packed, but that
+    // is plumbing. Only bkp.tgz belongs in the folder the user opens.
+    m_backupRoot = QDir::tempPath() + QStringLiteral("/lotei-backup");
+
+    if (!QDir().mkpath(base)) {
+        emit backupFailed(QStringLiteral("Couldn't create %1").arg(base));
+        return;
+    }
+
+    // A leftover working folder from an interrupted run would get packed along
+    // with the new one.
+    // A leftover staging folder from an interrupted run would get packed along
+    // with the new one.
+    QDir(m_backupRoot).removeRecursively();
+    if (!QDir().mkpath(m_backupRoot)) {
+        emit backupFailed(QStringLiteral("Couldn't create %1").arg(m_backupRoot));
+        return;
+    }
+
+    m_backupDirs = QStringList{ QStringLiteral("/ext") };
+    m_backupPending.clear();
+    m_backupTotal = 0;
+    m_backupFiles = 0;
+    m_backupBytes = 0;
+    m_backupSkipped = 0;   // counted during the walk as well as the copy
+
+    g_transferRunning = true;
+    loteiLog(QStringLiteral("backup: walking /ext into %1").arg(m_backupRoot));
+    setTransfer(QStringLiteral("Backing Up"), QStringLiteral("Reading the card…"), -1.0);
+    emit backupProgress(QStringLiteral("Reading the card…"), 0.0);
+    backupEnumerateNext();
+}
+
+// Depth-first walk of the card, one storageList at a time. Directories found
+// go back on the queue; files are collected for the copy pass that follows.
+void LoteiBackend::backupEnumerateNext()
+{
+    if (m_backupDirs.isEmpty()) {
+        m_backupTotal = m_backupPending.size();
+        qint64 want = 0;
+        for (const auto &e : m_backupPending) { want += e.second; }
+        loteiLog(QStringLiteral("backup: %1 file(s) found, %2 KB to copy%3")
+                 .arg(m_backupTotal).arg(want / 1024)
+                 .arg(m_backupSkipped ? QStringLiteral(", %1 too large to read")
+                                        .arg(m_backupSkipped) : QString()));
+        if (m_backupTotal == 0) {
+            // Nothing to pack. Say so rather than reporting a success that
+            // leaves an empty folder behind and no explanation.
+            QDir(m_backupRoot).removeRecursively();
+            g_transferRunning = false;
+            finishTransfer(false, QStringLiteral("Nothing was found on the card to back up."));
+            emit backupFailed(QStringLiteral("Nothing was found on the card to back up."));
+            return;
+        }
+        backupCopyNext();
+        return;
+    }
+
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    if (!dev) {
+        m_backupDirs.clear(); m_backupPending.clear();
+        g_transferRunning = false;
+        finishTransfer(false, QStringLiteral("The Flipper went away mid-backup."));
+        emit backupFailed(QStringLiteral("The Flipper went away mid-backup."));
+        return;
+    }
+
+    const QString dir = m_backupDirs.takeFirst();
+    auto *op = dev->rpc()->storageList(dir.toUtf8());
+
+    connect(op, &AbstractOperation::finished, this, [this, op, dir]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("backup: can't list %1 -- %2").arg(dir, op->errorString()));
+            backupEnumerateNext();      // one unreadable folder must not stop the walk
+            return;
+        }
+
+        for (const FileInfo &f : op->files()) {
+            const QString name = QString::fromUtf8(f.name);
+            const QString full = dir + QLatin1Char('/') + name;
+            // The skip list is about the top level only: "apps" under /ext is
+            // firmware territory, but a folder called "apps" nested inside
+            // someone's own directory is their data.
+            if (dir == QLatin1String("/ext") && loteiSkipInBackup(name)) { continue; }
+
+            if (f.type == FileType::Directory) { m_backupDirs.append(full); }
+            else if (qint64(f.size) > kMaxBackupFileBytes) {
+                ++m_backupSkipped;
+                loteiLog(QStringLiteral("backup: %1 SKIPPED -- %2 MB is past the %3 MB limit "
+                                        "(reading it over RPC crashes the Flipper)")
+                         .arg(full).arg(qint64(f.size) / 1024 / 1024)
+                         .arg(kMaxBackupFileBytes / 1024 / 1024));
+            }
+            // The size comes free with the listing and decides the read
+            // deadline below -- without it a large file dies on the generic 30s.
+            else { m_backupPending.append(qMakePair(full, qint64(f.size))); }
+        }
+        backupEnumerateNext();
+    });
+}
+
+void LoteiBackend::backupCopyNext()
+{
+    if (m_backupPending.isEmpty()) {
+        loteiLog(QStringLiteral("backup: copied %1 file(s), %2 KB, %3 skipped -- packing")
+                 .arg(m_backupFiles).arg(m_backupBytes / 1024).arg(m_backupSkipped));
+        backupPackArchive();
+        return;
+    }
+
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    if (!dev) {
+        m_backupPending.clear();
+        g_transferRunning = false;
+        finishTransfer(false, QStringLiteral("The Flipper went away mid-backup."));
+        emit backupFailed(QStringLiteral("The Flipper went away mid-backup."));
+        return;
+    }
+
+    const auto entry = m_backupPending.takeFirst();
+    const QString remote = entry.first;
+    const qint64 size = entry.second;
+    const QString rel = remote.mid(QStringLiteral("/ext").size());   // keeps the leading slash
+    const QString local = m_backupRoot + rel;
+
+    // The folder has to exist before the operation opens the file in it.
+    QDir().mkpath(QFileInfo(local).absolutePath());
+
+    const double frac = m_backupTotal > 0
+                        ? double(m_backupTotal - m_backupPending.size() - 1) / double(m_backupTotal)
+                        : 0.0;
+    setTransfer(QStringLiteral("Backing Up"), rel, frac);
+    emit backupProgress(rel, frac);
+
+    // Handed over unopened: storageRead opens it itself, and pre-opening made
+    // every file land on disk at zero bytes.
+    auto *file = new QFile(local, this);
+    auto *op = dev->rpc()->storageRead(remote.toUtf8(), file);
+
+    // Reads run at a few hundred KB/s over RPC, so a mass-storage image or a
+    // big capture needs far more than the generic 30s. Budget 20 KB/s -- well
+    // under the real rate, so slow is still survivable -- with a 30s floor.
+    // Plain arithmetic rather than qBound: mixing int literals with a qint64
+    // expression made the overload ambiguous, and the lower bound is redundant
+    // anyway -- the sum already starts at 30s.
+    const qint64 budget = qint64(30000) + size / 20;
+    op->setTimeout(int(budget < 3600000 ? budget : 3600000));
+
+    connect(op, &AbstractOperation::finished, this, [this, op, file, remote, local]() {
+        if (op->isError()) {
+            // Skipped, not fatal: one unreadable file must not cost the other
+            // 1464. The count is reported at the end so nothing goes unnoticed.
+            ++m_backupSkipped;
+            loteiLog(QStringLiteral("backup: %1 SKIPPED -- %2").arg(remote, op->errorString()));
+            QFile::remove(local);   // don't leave a truncated stub in the archive
+        } else {
+            const qint64 sz = QFileInfo(local).size();
+            ++m_backupFiles;
+            m_backupBytes += sz;
+            if (m_backupFiles <= 5 || (m_backupFiles % 50) == 0) {
+                loteiLog(QStringLiteral("backup: %1 -> %2 bytes").arg(remote).arg(sz));
+            }
+        }
+        file->deleteLater();
+        backupCopyNext();
+    });
+}
+
+// Writes one 512-byte ustar header. The format is simple enough to emit
+// directly, which is why this no longer shells out to /usr/bin/tar: on macOS
+// the Desktop is TCC-protected and a spawned child does not inherit the app's
+// permission for it, so the archive step failed for a reason that had nothing
+// to do with the data.
+static QByteArray loteiTarHeader(const QString &path, qint64 size, bool isDir)
+{
+    QByteArray h(512, '\0');
+
+    QByteArray name = path.toUtf8();
+    if (isDir && !name.endsWith('/')) { name.append('/'); }
+    if (name.size() > 100) { return QByteArray(); }   // caller skips these
+    memcpy(h.data(), name.constData(), size_t(name.size()));
+
+    auto octal = [&h](int off, int len, qint64 v) {
+        const QByteArray s = QByteArray::number(v, 8).rightJustified(len - 1, '0');
+        memcpy(h.data() + off, s.constData(), size_t(len - 1));
+    };
+
+    octal(100, 8, isDir ? 0755 : 0644);               // mode
+    octal(108, 8, 0);                                 // uid
+    octal(116, 8, 0);                                 // gid
+    octal(124, 12, isDir ? 0 : size);                 // size
+    octal(136, 12, QDateTime::currentSecsSinceEpoch());
+    h[156] = isDir ? '5' : '0';                       // typeflag
+    memcpy(h.data() + 257, "ustar\0" "00", 8);         // magic + version
+
+    // Checksum is computed with the checksum field itself read as spaces.
+    memset(h.data() + 148, ' ', 8);
+    unsigned sum = 0;
+    for (int k = 0; k < 512; ++k) { sum += unsigned(uchar(h.at(k))); }
+    const QByteArray cs = QByteArray::number(sum, 8).rightJustified(6, '0');
+    memcpy(h.data() + 148, cs.constData(), 6);
+    h[154] = '\0';
+    h[155] = ' ';
+    return h;
+}
+
+// The mirror of loteiTarHeader: walks the gzipped tar and writes it back out.
+// In-process for the same reason the writer is -- a spawned tar cannot reach a
+// TCC-protected folder on the app's behalf.
+static bool loteiUntar(const QString &archive, const QString &destDir, QString *error)
+{
+    gzFile gz = gzopen(QFile::encodeName(archive).constData(), "rb");
+    if (!gz) { *error = QStringLiteral("Couldn't open the archive."); return false; }
+
+    QByteArray hdr(512, '\0');
+    while (true) {
+        const int got = gzread(gz, hdr.data(), 512);
+        if (got == 0) { break; }                       // clean end of stream
+        if (got != 512) { *error = QStringLiteral("The archive is truncated."); gzclose(gz); return false; }
+        if (hdr.at(0) == '\0') { break; }               // the empty end-of-archive block
+
+        const QString name = QString::fromUtf8(hdr.constData());   // NUL-terminated
+        const qint64 size = QByteArray(hdr.constData() + 124, 11).trimmed().toLongLong(nullptr, 8);
+        const char type = hdr.at(156);
+
+        // Never let an archive write outside the destination.
+        const QString clean = QDir::cleanPath(name);
+        if (clean.startsWith(QLatin1String("..")) || clean.startsWith(QLatin1Char('/'))) {
+            *error = QStringLiteral("The archive contains an unsafe path: %1").arg(name);
+            gzclose(gz);
+            return false;
+        }
+        const QString out = destDir + QLatin1Char('/') + clean;
+
+        if (type == '5') { QDir().mkpath(out); continue; }
+
+        QDir().mkpath(QFileInfo(out).absolutePath());
+        QFile f(out);
+        if (!f.open(QIODevice::WriteOnly)) {
+            *error = QStringLiteral("Couldn't write %1").arg(out);
+            gzclose(gz);
+            return false;
+        }
+        qint64 left = size;
+        QByteArray buf(64 * 1024, '\0');
+        while (left > 0) {
+            const int want = int(qMin<qint64>(left, buf.size()));
+            const int r = gzread(gz, buf.data(), unsigned(want));
+            if (r <= 0) { *error = QStringLiteral("The archive ended early."); f.close(); gzclose(gz); return false; }
+            f.write(buf.constData(), r);
+            left -= r;
+        }
+        f.close();
+
+        // Entries are padded to a 512-byte boundary; step over it.
+        const int pad = int((512 - (size % 512)) % 512);
+        if (pad) { gzread(gz, buf.data(), unsigned(pad)); }
+    }
+
+    gzclose(gz);
+    return true;
+}
+
+bool loteiWriteTgz(const QString &srcDir, const QString &archive,
+                   int *packedOut, int *skippedOut, QString *error);
+
+// The archive writer, deliberately free-standing: LoteiBackend::backupPackArchive()
+// and the CLI's "tgz" command both call it, so what the command exercises is
+// exactly what a backup runs -- no second implementation to drift.
+bool loteiWriteTgz(const QString &srcDir, const QString &archive,
+                   int *packedOut, int *skippedOut, QString *error)
+{
+    if (!QDir(srcDir).exists()) { *error = QStringLiteral("no such folder: %1").arg(srcDir); return false; }
+
+    QFile::remove(archive);
+    gzFile gz = gzopen(QFile::encodeName(archive).constData(), "wb");
+    if (!gz) { *error = QStringLiteral("couldn't open %1 for writing").arg(archive); return false; }
+
+    auto put = [gz](const QByteArray &b) {
+        return b.isEmpty() || gzwrite(gz, b.constData(), unsigned(b.size())) == b.size();
+    };
+
+    int packed = 0, skipped = 0;
+    bool ok = true;
+
+    // QDir::Hidden matters here: the card is full of dotfiles
+    // (.badusb.settings, .eink.settings, .nested.log) which are copied but
+    // would otherwise be left out of the archive.
+    QDirIterator it(srcDir, QDir::Files | QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext() && ok) {
+        it.next();
+        const QFileInfo fi = it.fileInfo();
+        const QString rel = QDir(srcDir).relativeFilePath(fi.absoluteFilePath());
+
+        const QByteArray hdr = loteiTarHeader(rel, fi.size(), fi.isDir());
+        if (hdr.isEmpty()) { ++skipped; continue; }     // path past ustar's 100 chars
+        if (!put(hdr)) { ok = false; break; }
+        if (fi.isDir()) { ++packed; continue; }
+
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly)) { ++skipped; continue; }
+        qint64 written = 0;
+        while (!f.atEnd()) {
+            const QByteArray chunk = f.read(64 * 1024);
+            if (chunk.isEmpty() || !put(chunk)) { ok = false; break; }
+            written += chunk.size();
+        }
+        f.close();
+        if (!ok) { break; }
+
+        const int pad = int((512 - (written % 512)) % 512);
+        if (pad && !put(QByteArray(pad, '\0'))) { ok = false; break; }
+        ++packed;
+    }
+
+    if (ok) { ok = put(QByteArray(1024, '\0')); }       // two empty blocks end it
+    const int gzErr = gzclose(gz);
+    if (gzErr != Z_OK) { ok = false; *error = QStringLiteral("gzclose returned %1").arg(gzErr); }
+
+    if (packedOut)  { *packedOut = packed; }
+    if (skippedOut) { *skippedOut = skipped; }
+
+    if (!ok) {
+        if (error->isEmpty()) { *error = QStringLiteral("write failed"); }
+        QFile::remove(archive);
+        return false;
+    }
+    if (QFileInfo(archive).size() <= 0) { *error = QStringLiteral("the archive came out empty"); return false; }
+    return true;
+}
+
+void LoteiBackend::backupPackArchive()
+{
+    setTransfer(QStringLiteral("Backing Up"), QStringLiteral("Packing bkp.tgz…"), -1.0);
+    emit backupProgress(QStringLiteral("Packing bkp.tgz…"), 1.0);
+    loteiLog(QStringLiteral("backup: packing %1 -> %2").arg(m_backupRoot, m_backupArchive));
+
+    int packed = 0, skipped = 0;
+    QString err;
+    if (!loteiWriteTgz(m_backupRoot, m_backupArchive, &packed, &skipped, &err)) {
+        // The copied files stay put: they are the user's data, and a packing
+        // failure is no reason to throw them away.
+        g_transferRunning = false;
+        finishTransfer(false, QStringLiteral("Couldn't write bkp.tgz (%1).").arg(err));
+        loteiLog(QStringLiteral("backup: packing FAILED -- %1").arg(err));
+        // The staging folder is out of sight, so name it: the copied files are
+        // still there and still the user's data.
+        emit backupFailed(QStringLiteral("Couldn't write bkp.tgz (%1). The copied files are still in %2")
+                          .arg(err, m_backupRoot));
+        return;
+    }
+
+    const qint64 bytes = QFileInfo(m_backupArchive).size();
+    loteiLog(QStringLiteral("backup: archived %1 entr(y/ies)%2 -> %3 KB")
+             .arg(packed)
+             .arg(skipped ? QStringLiteral(", %1 skipped").arg(skipped) : QString())
+             .arg(bytes / 1024));
+
+    g_transferRunning = false;
+    finishTransfer(true, QStringLiteral("%1 file(s) saved to %2")
+                   .arg(m_backupFiles).arg(m_backupArchive));
+    QDir(m_backupRoot).removeRecursively();
+    loteiLog(QStringLiteral("backup: done -- %1 file(s)%2 in %3 (%4 KB)")
+             .arg(m_backupFiles)
+             .arg(m_backupSkipped ? QStringLiteral(", %1 skipped").arg(m_backupSkipped) : QString())
+             .arg(m_backupArchive).arg(bytes / 1024));
+    emit backupFinished(m_backupArchive, m_backupFiles);
+}
+
+void LoteiBackend::formatSdCard()
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { finishTransfer(false, QStringLiteral("No Flipper connected."));
+ emit formatFailed(QStringLiteral("No Flipper connected.")); return; }
+    // m_transferActive is set synchronously by setTransfer() below, so it is
+    // already true by the time a second click can arrive. The old guard tested
+    // m_formatQueue, which stays empty until the storageList reply lands --
+    // two quick presses started two listings, and the two queues then chewed
+    // through the same entries at once. That is what took the app down.
+    if (m_transferActive) { emit formatFailed(QStringLiteral("An operation is already running.")); return; }
+
+    g_transferRunning = true;
+    loteiLog(QStringLiteral("format: listing /ext"));
+    setTransfer(QStringLiteral("Formatting"), QStringLiteral("Reading the card…"), -1.0);
+    emit formatProgress(QStringLiteral("Reading the card…"), 0.0);
+
+    auto *op = dev->rpc()->storageList(QByteArrayLiteral("/ext"));
+    connect(op, &AbstractOperation::finished, this, [this, op]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("format: FAILED to list /ext -- %1").arg(op->errorString()));
+            finishTransfer(false, op->errorString());
+            emit formatFailed(op->errorString());
+            return;
+        }
+        m_formatQueue.clear();
+        for (const FileInfo &f : op->files()) {
+            m_formatQueue.append(QString::fromUtf8(f.name));
+        }
+        m_formatTotal = m_formatQueue.size();
+        loteiLog(QStringLiteral("format: removing %1 entries from /ext").arg(m_formatTotal));
+
+        if (m_formatQueue.isEmpty()) {
+            m_sdFormatted = true;
+            emit sdFormattedChanged();
+            finishTransfer(true, QStringLiteral("The card is empty."));
+            emit formatFinished();
+            return;
+        }
+        runFormatQueue();
+    });
+}
+
+void LoteiBackend::runFormatQueue()
+{
+    if (m_formatQueue.isEmpty()) {
+        // The card is empty. Everything the firmware needs on it -- resources,
+        // Manifest, apps -- is gone, so a plain reinstall has nothing to repair;
+        // a full install is what puts the card back together.
+        m_sdFormatted = true;
+        emit sdFormattedChanged();
+        loteiLog(QStringLiteral("format: /ext is empty"));
+        finishTransfer(true, QStringLiteral("The card is empty."));
+        emit formatFinished();
+        return;
+    }
+
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    if (!dev) {
+        m_formatQueue.clear();
+        finishTransfer(false, QStringLiteral("The Flipper went away mid-format."));
+        emit formatFailed(QStringLiteral("The Flipper went away mid-format."));
+        return;
+    }
+
+    const QString name = m_formatQueue.takeFirst();
+    const double frac = m_formatTotal > 0
+                        ? double(m_formatTotal - m_formatQueue.size() - 1) / double(m_formatTotal)
+                        : 0.0;
+    setTransfer(QStringLiteral("Formatting"), name, frac);
+    emit formatProgress(name, frac);
+
+    auto *op = dev->rpc()->storageRemove((QStringLiteral("/ext/") + name).toUtf8(), true);
+    connect(op, &AbstractOperation::finished, this, [this, op, name]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("format: %1 FAILED -- %2").arg(name, op->errorString()));
+        } else {
+            loteiLog(QStringLiteral("format: %1 removed").arg(name));
+        }
+        runFormatQueue();     // one stubborn entry must not stop the rest
+    });
+}
+
+void LoteiBackend::restoreSdCard(const QString &folderUrl)
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { finishTransfer(false, QStringLiteral("No Flipper connected."));
+ emit restoreFailed(QStringLiteral("No Flipper connected.")); return; }
+    if (m_transferActive) {
+        emit restoreFailed(QStringLiteral("An operation is already running."));
+        return;
+    }
+
+    const QString picked = QUrl(folderUrl).isLocalFile() ? QUrl(folderUrl).toLocalFile() : folderUrl;
+
+    // Backups are archives now, but a folder from an older run still works.
+    QString local = picked;
+    if (QFileInfo(picked).isFile()) {
+        const QString tmp = QDir::homePath() + QStringLiteral("/Desktop/Nikita-qflipper/.restore-working");
+        QDir(tmp).removeRecursively();
+        if (!QDir().mkpath(tmp)) {
+            finishTransfer(false, QStringLiteral("Couldn't create %1").arg(tmp));
+            emit restoreFailed(QStringLiteral("Couldn't create %1").arg(tmp));
+            return;
+        }
+
+        loteiLog(QStringLiteral("restore: unpacking %1").arg(picked));
+        QString err;
+        if (!loteiUntar(picked, tmp, &err)) {
+            loteiLog(QStringLiteral("restore: unpacking FAILED -- %1").arg(err));
+            finishTransfer(false, QStringLiteral("Couldn't unpack the archive: %1").arg(err));
+            emit restoreFailed(QStringLiteral("Couldn't unpack %1: %2")
+                               .arg(QFileInfo(picked).fileName(), err));
+            return;
+        }
+        local = tmp;
+    }
+
+    QDir dir(local);
+    if (!dir.exists()) {
+        finishTransfer(false, QStringLiteral("No such folder: %1").arg(local));
+        emit restoreFailed(QStringLiteral("No such folder: %1").arg(local));
+        return;
+    }
+
+    // One operation for the whole set: uploadFiles() walks directories itself,
+    // so handing it the top-level entries restores the tree in a single pass
+    // instead of a queue that could half-finish.
+    QList<QUrl> urls;
+    int skipped = 0;
+    const QFileInfoList entries = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo &fi : entries) {
+        // The same exclusions as the backup, in case the folder was hand-edited
+        // or came from somewhere else -- restoring apps or an update bundle
+        // onto a different firmware is how a working Flipper stops working.
+        if (loteiSkipInBackup(fi.fileName())) { ++skipped; continue; }
+        urls.append(QUrl::fromLocalFile(fi.absoluteFilePath()));
+    }
+
+    if (urls.isEmpty()) {
+        finishTransfer(false, QStringLiteral("Nothing to restore in %1").arg(local));
+        emit restoreFailed(QStringLiteral("Nothing to restore in %1").arg(local));
+        return;
+    }
+
+    g_transferRunning = true;
+    loteiLog(QStringLiteral("restore: sending %1 entries from %2 to /ext (%3 skipped)")
+             .arg(urls.size()).arg(local).arg(skipped));
+    setTransfer(QStringLiteral("Restoring"), QStringLiteral("Uploading %1 item(s)…").arg(urls.size()), -1.0);
+    emit restoreProgress(QStringLiteral("Uploading %1 item(s)…").arg(urls.size()), 0.0);
+
+    auto *op = dev->utility()->uploadFiles(urls, QByteArrayLiteral("/ext"));
+    const int count = urls.size();
+
+    connect(op, &AbstractOperation::progressChanged, this, [this, op, count]() {
+        setTransfer(QStringLiteral("Restoring"), QStringLiteral("Uploading %1 item(s)…").arg(count),
+                    op->progress() / 100.0);
+        emit restoreProgress(QStringLiteral("Uploading %1 item(s)…").arg(count), op->progress() / 100.0);
+    });
+
+    connect(op, &AbstractOperation::finished, this, [this, op, count]() {
+        if (op->isError()) {
+            loteiLog(QStringLiteral("restore: FAILED -- %1").arg(op->errorString()));
+            finishTransfer(false, op->errorString());
+            emit restoreFailed(op->errorString());
+            return;
+        }
+        loteiLog(QStringLiteral("restore: %1 entries written to /ext").arg(count));
+        finishTransfer(true, QStringLiteral("Restore complete."));
+        emit restoreFinished(count);
+    });
+}
+
 void LoteiBackend::reloadMemory()
 {
     loadPortableMemory();
@@ -2811,26 +3460,26 @@ FirmwareStore::FirmwareStore(QObject *parent)
     m_sources = {
         { QStringLiteral("Official"),    Kind::DirJson,
           QStringLiteral("https://update.flipperzero.one/firmware/directory.json"),
-          QStringLiteral("Stock Flipper Devices firmware."),      {},  rel, {}, {}, {}, {} },
+          QStringLiteral("Stock Flipper Devices firmware."),      {},  rel, {}, {}, {}, {}, {} },
         { QStringLiteral("Momentum"),    Kind::DirJson,
           QStringLiteral("https://up.momentum-fw.dev/firmware/directory.json"),
-          QStringLiteral("Feature-rich community firmware."),     {},  rel, {}, {}, {}, {} },
+          QStringLiteral("Feature-rich community firmware."),     {},  rel, {}, {}, {}, {}, {} },
         { QStringLiteral("Unleashed"),   Kind::GitHub,
           QStringLiteral("DarkFlippers/unleashed-firmware"),
-          QStringLiteral("Popular unlocked community firmware."), git, rel, {}, {}, {}, {} },
+          QStringLiteral("Popular unlocked community firmware."), git, rel, {}, {}, {}, {}, {} },
         { QStringLiteral("RogueMaster"), Kind::GitHub,
           QStringLiteral("RogueMaster/flipperzero-firmware-wPlugins"),
-          QStringLiteral("Everything, plus the kitchen sink."),   git, rel, {}, {}, {}, {} },
+          QStringLiteral("Everything, plus the kitchen sink."),   git, rel, {}, {}, {}, {}, {} },
         // ARF ships only dev-tagged releases, so give it a single "dev" channel.
         { QStringLiteral("ARF"),         Kind::GitHub,
           QStringLiteral("D4C1-Labs/Flipper-ARF"),
           QStringLiteral("Automotive research: car keyfobs / Sub-GHz. Niche."),
-          { QStringLiteral("dev") }, QStringLiteral("dev"), {}, {}, {}, {} },
+          { QStringLiteral("dev") }, QStringLiteral("dev"), {}, {}, {}, {}, {} },
         // Xero publishes versioned releases (flipper-z-f7-update-local.tgz).
         { QStringLiteral("Xero"),        Kind::GitHub,
           QStringLiteral("noproto/xero-firmware"),
           QStringLiteral("Lean official-based community firmware."),
-          { QStringLiteral("release") }, QStringLiteral("release"), {}, {}, {}, {} },
+          { QStringLiteral("release") }, QStringLiteral("release"), {}, {}, {}, {}, {} },
     };
 
     // Restore each firmware's remembered channel choice.
@@ -3570,6 +4219,7 @@ const CliCmd kCliCommands[] = {
     { "shutdown", "Powers the Flipper off." },
     { "stat",     "Shows the size and type of a file or folder." },
     { "tree",     "Lists everything under a folder, recursively." },
+    { "tgz",      "Packs a local folder into a .tgz, the same way Backup does: tgz <folder> [archive.tgz]." },
     { "verbose",  "Shows or hides the wire-level log of everything a command runs: verbose on | off." },
 };
 
@@ -4067,6 +4717,17 @@ FlipperCli::FlipperCli(QObject *parent)
 void FlipperCli::setOpen(bool value)
 {
     if (m_open == value) { return; }
+
+    // The CLI and the RPC session share one serial port, so connecting here
+    // tears down whatever RPC work is in flight. A backup is minutes of
+    // transfers; letting a click destroy it -- and only finding out from a
+    // "session was stopped" line in the log -- is not a fair trade.
+    if (value && g_transferRunning) {
+        setStatus(QStringLiteral("A backup is running -- the CLI would cut its connection."));
+        emit openChanged();      // let the UI snap the toggle back
+        return;
+    }
+
     m_open = value;
     emit openChanged();
 
@@ -4287,6 +4948,44 @@ void FlipperCli::send(const QString &cmd)
                          + (m_verbose ? QStringLiteral("\n[ verbose on -- logging every step ]\n")
                                       : QStringLiteral("\n[ verbose off -- results only ]\n"))
                          + prompt());
+            return;
+        }
+    }
+
+    // "tgz <folder> [archive]" runs the backup's packing step on its own. It
+    // exists because testing that step used to mean waiting for 1400+ files to
+    // copy first -- now the two can be exercised separately.
+    {
+        const QStringList tp = cmd.trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (!tp.isEmpty() && tp.first().toLower() == QLatin1String("tgz")) {
+            if (tp.size() < 2) {
+                appendOutput(cmd.trimmed()
+                             + QStringLiteral("\n[ usage: tgz <folder> [archive.tgz] ]\n")
+                             + prompt());
+                return;
+            }
+            auto expand = [](QString p) {
+                if (p.startsWith(QLatin1Char('~'))) { p.replace(0, 1, QDir::homePath()); }
+                return QDir::cleanPath(p);
+            };
+            const QString src = expand(tp.at(1));
+            const QString out = tp.size() > 2 ? expand(tp.at(2))
+                                              : QFileInfo(src).absolutePath() + QStringLiteral("/bkp.tgz");
+
+            int packed = 0, skipped = 0;
+            QString err;
+            const bool ok = loteiWriteTgz(src, out, &packed, &skipped, &err);
+
+            QString msg = cmd.trimmed() + QLatin1Char('\n');
+            if (ok) {
+                msg += QStringLiteral("[ %1 -> %2 ]\n[ %3 entr(y/ies)%4, %5 KB ]\n")
+                       .arg(src, out).arg(packed)
+                       .arg(skipped ? QStringLiteral(", %1 skipped").arg(skipped) : QString())
+                       .arg(QFileInfo(out).size() / 1024);
+            } else {
+                msg += QStringLiteral("Storage error: %1\n").arg(err);
+            }
+            appendOutput(msg + prompt());
             return;
         }
     }

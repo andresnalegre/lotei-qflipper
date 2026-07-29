@@ -204,7 +204,7 @@ Item {
 
         Action {
             id: eraseAction
-            text: qsTr("Erase")
+            text: qsTr("Format")
             enabled: Backend.deviceState && !Backend.deviceState.isRecoveryMode
         }
 
@@ -214,7 +214,10 @@ Item {
             // Was gated on the OFFICIAL channel reporting "no updates", which on
             // a fork almost never happens -- so the button sat disabled. What it
             // really needs is a known source for the build already installed.
-            enabled: Firmware.installedReady || Backend.firmwareUpdateState === Backend.NoUpdates
+            // After a format there is nothing left on the card to repair, so a
+            // full install is the only route that rebuilds it.
+            enabled: !Lotei.sdFormatted &&
+                     (Firmware.installedReady || Backend.firmwareUpdateState === Backend.NoUpdates)
         }
 
         Action {

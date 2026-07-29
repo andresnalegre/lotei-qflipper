@@ -235,6 +235,19 @@ void ApplicationBackend::finalizeOperation()
     }
 }
 
+void ApplicationBackend::reportExternalResult(bool ok, int errorType)
+{
+    // Deliberately mirrors onDeviceOperationFinished(): an operation that runs
+    // outside this class still ends on the states the UI already knows how to
+    // present, so no screen needs a second way of being told about it.
+    if(ok) {
+        setBackendState(BackendState::Finished);
+    } else {
+        setErrorType(static_cast<BackendError::ErrorType>(errorType));
+        setBackendState(BackendState::ErrorOccured);
+    }
+}
+
 bool ApplicationBackend::portReleased() const
 {
     return m_portReleased;

@@ -146,6 +146,16 @@ Item {
         anchors.topMargin: bg.border.width
     }
 
+    // The top-bar controls belong to the home screen, so they follow it rather
+    // than each repeating the reasoning. Every screen added since -- the update
+    // run, the finish screen, our own transfers -- meant another clause to
+    // remember in four places; this is the one place it lives now.
+    // A transfer keeps the backend in Ready while it runs, so that alone is not
+    // enough; once it ends the backend moves to Finished or ErrorOccured and
+    // takes care of the rest.
+    readonly property bool homeVisible: Backend.backendState === ApplicationBackend.Ready &&
+                                        !Lotei.transferActive
+
     GridBackground {
         id: mainContent
 
@@ -207,7 +217,7 @@ Item {
             anchors.leftMargin: 195
             anchors.topMargin: 36
 
-            visible: Backend.backendState === ApplicationBackend.Ready
+            visible: mainWindow.homeVisible
             color: Backend.portReleased ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: portMouse.containsMouse ? 1.0 : (Backend.portReleased ? 1.0 : 0.5)
 
@@ -232,7 +242,7 @@ Item {
             anchors.left: portToggle.right
             anchors.leftMargin: 20
 
-            visible: Backend.backendState === ApplicationBackend.Ready
+            visible: mainWindow.homeVisible
             color: (Ble.sessionActive || Ble.connected) ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (bleMouse.containsMouse || Ble.sessionActive) ? 1.0 : 0.5
 
@@ -257,7 +267,7 @@ Item {
             anchors.left: bleButton.right
             anchors.leftMargin: 20
 
-            visible: Backend.backendState === ApplicationBackend.Ready
+            visible: mainWindow.homeVisible
             color: Cli.active ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (cliMouse.containsMouse || Cli.active) ? 1.0 : 0.5
 
@@ -287,7 +297,7 @@ Item {
             // the title, progress bar and status all centred, so the device has
             // to be centred too; the -100 was leaving it visibly off-axis.
             x: {
-                if(Backend.backendState === ApplicationBackend.Ready) {
+                if(Backend.backendState === ApplicationBackend.Ready && !Lotei.transferActive) {
                     return Math.round(mainContent.width / 2);
                 }
                 const centred = Math.round((mainContent.width - width) / 2);
@@ -299,6 +309,9 @@ Item {
             // because it has no status line under the button -- these mirror
             // contentShift in UpdateOverlay.qml and FinishOverlay.qml.
             y: {
+                // A transfer borrows the update screen, so the widget sits
+                // where that screen expects it.
+                if(Lotei.transferActive)                                 { return 94 + 26; }
                 if(Backend.backendState === ApplicationBackend.Ready)    { return 94; }
                 if(Backend.backendState === ApplicationBackend.Finished) { return 94 + 42; }
                 return 94 + 26;
@@ -317,15 +330,22 @@ Item {
             id: homeOverlay
             backgroundRect: bg
             anchors.fill: parent
-            opacity: Backend.backendState === ApplicationBackend.Ready ? 1 : 0
+            // Hidden during a transfer: the backend stays Ready throughout
+            // (these are our own operations, not a qFlipper state change), so
+            // without this the home screen shows through the update overlay.
+            opacity: mainWindow.homeVisible ? 1 : 0
         }
 
         UpdateOverlay {
             id: updateOverlay
             backgroundRect: bg
             anchors.fill: parent
-            opacity: Backend.backendState > ApplicationBackend.ScreenStreaming &&
-                     Backend.backendState < ApplicationBackend.Finished ? 1 : 0
+            // Backup, restore and format reuse this screen rather than getting
+            // one of their own -- same layout, same device widget, only the
+            // title and the status line differ.
+            opacity: (Backend.backendState > ApplicationBackend.ScreenStreaming &&
+                      Backend.backendState < ApplicationBackend.Finished) ||
+                     Lotei.transferActive ? 1 : 0
         }
 
         FinishOverlay {
@@ -1292,9 +1312,7 @@ Item {
                     // screen, so the two places agree at a glance.
                     text: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.firmware)
                           ? ("Flipper Version : <font color=\"" + Theme.color.lightgreen + "\">"
-                             + Backend.deviceState.info.firmware.version + "</font>"
-                             + (Firmware.installedFromChannel.length > 0
-                                ? "  (" + Firmware.installedFromChannel + " channel)" : ""))
+                             + Backend.deviceState.info.firmware.version + "</font>")
                           : "Connect your Flipper to flash. Latest builds are shown below."
                 }
 
@@ -1402,10 +1420,15 @@ Item {
                                 Text {
                                     id: chLbl
                                     anchors.left: parent.left; anchors.leftMargin: 8
-                                    anchors.right: chBox.pickable ? chArrow.left : parent.right
-                                    anchors.rightMargin: chBox.pickable ? 4 : 8
+                                    // Centred in the box whether or not it can
+                                    // be opened; the arrow floats over the right
+                                    // edge instead of pushing the text off to
+                                    // the left, so pickable and fixed rows read
+                                    // the same.
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    horizontalAlignment: chBox.pickable ? Text.AlignLeft : Text.AlignHCenter
+                                    horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideRight
                                     // Always the source's own name for the

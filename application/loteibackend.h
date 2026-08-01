@@ -215,7 +215,6 @@ private:
     void refreshModels();   // query Ollama /api/tags for installed models
 
     // Model manager internals.
-    bool detectOllamaBinary() const;                 // `ollama --version` on PATH?
     void runModelOp(const QString &kind, const QString &name, const QStringList &args);
     void appendModelOpOutput(const QByteArray &chunk); // parse a QProcess output chunk
     void finishModelOp(bool ok, const QString &message);
@@ -323,6 +322,9 @@ private:
     // ---- Model manager --------------------------------------------------
     bool m_ollamaInstalled = false;
     bool m_ollamaChecked = false;
+    // Absolute path to the CLI, resolved by detectOllama(). Empty == not found.
+    // Used to launch pull/rm so they don't rely on the inherited PATH either.
+    QString m_ollamaPath;
 
     QProcess   *m_modelOpProc = nullptr;   // pull / rm / install-ollama, one at a time
     QString     m_modelOpKind;             // "install" | "uninstall" | "ollama" | ""
@@ -330,6 +332,7 @@ private:
     QString     m_modelOpStatus;
     double      m_modelOpProgress = -1.0;
     QByteArray  m_modelOpBuf;              // partial line buffer (pull output uses \r a lot)
+    QByteArray  m_modelOpLine;             // bytes since the last line break, carried between reads
     bool        m_modelOpCancelled = false;  // user hit cancel -- report "cancelled", not exit code noise
 };
 
@@ -629,7 +632,9 @@ private:
     // Host <-> Flipper file copy, driven over the plain CLI (RPC is paused while
     // the panel owns the port). Every transfer is verified with "storage md5"
     // against a local QCryptographicHash before it's called done.
-    void uploadToFlipper(const QString &hostPath, const QString &devPath);
+    // exactDest: use devPath verbatim instead of treating a dot-less last
+    // segment as a folder to drop the source's filename into.
+    void uploadToFlipper(const QString &hostPath, const QString &devPath, bool exactDest = false);
     void downloadFromFlipper(const QString &devPath, const QString &hostPath);
     void finishXfer(bool ok, const QString &message);   // print (or chain to a batch)
 
@@ -653,6 +658,19 @@ private:
     void startFind(const QString &root, const QString &pattern);                   // find
     void startEdit(const QString &path);                                           // edit
 
+    // Text utilities. The Flipper's firmware has no grep/head/tail/wc -- and no
+    // room to grow one: it is an STM32WB55 with 256 KB of RAM. So the file is
+    // read once with "storage read" and the filtering happens on this computer,
+    // which is also why they are all built on the one helper below.
+    void readDeviceText(const QString &path, std::function<void(bool, const QString &)> done);
+    void startGrep(const QString &pattern, const QString &path);
+    void startHeadTail(const QString &path, int n, bool head);
+    void startWc(const QString &path);
+    void startDu(const QString &path);                                             // du
+    // Writing: both go out as a normal upload, so they inherit its MD5 check.
+    void writeTextToDevice(const QString &text, const QString &devPath, bool append);
+    void startWget(const QString &url, const QString &devPath, bool exactDest);    // wget
+
     ApplicationBackend *m_appBackend = nullptr;
     QSerialPort *m_port = nullptr;
     QString m_output;
@@ -662,6 +680,13 @@ private:
     bool m_verbose = true;   // log everything by default
     bool m_colored = true;   // ls --color style output
     bool m_quiet = false;    // suppresses the log for Tab's own lookup
+    // Whether the device has said anything since the port was opened. The
+    // firmware announces itself on connect; this stops us asking for a second
+    // prompt it already sent.
+    bool m_sawDeviceBytes = false;
+    // Host-side downloads for "wget".
+    QNetworkAccessManager m_dl;
+    QStringList m_history;   // commands typed this session, for "history"
 
     // Shell state: "cd" keeps a current folder that relative paths resolve against.
     QString prompt() const;                      // "Name@qflipper ~/nfc % "
@@ -676,6 +701,10 @@ private:
     Capture m_capture = Capture::None;
     QString m_captureBuf;
     QTimer *m_captureFlush = nullptr;
+
+    // An ANSI escape sequence cut in half by a read boundary, held back until
+    // the rest of it arrives so it can be stripped as one piece.
+    QString m_escTail;
 
     // Echo of a translated command still to be swallowed ("storage list /ext"
     // when the user typed "ls").

@@ -4,6 +4,9 @@
 #include <algorithm>
 
 #include <QUrl>
+#include <QStringView>
+#include <QTemporaryFile>
+#include <QMap>
 #include <QBuffer>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -25,6 +28,7 @@
 #include <QLoggingCategory>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QDesktopServices>
 #ifdef HZUI_VOICE
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -283,7 +287,9 @@ static bool cliCommandMutates(const QString &verb)
         QStringLiteral("tgz"),
         QStringLiteral("colors"), QStringLiteral("device_info"), QStringLiteral("uptime"),
         QStringLiteral("free"), QStringLiteral("log"), QStringLiteral("top"),
-        QStringLiteral("ps"), QStringLiteral("date"), QStringLiteral("history")
+        QStringLiteral("ps"), QStringLiteral("date"), QStringLiteral("history"),
+        QStringLiteral("grep"), QStringLiteral("head"), QStringLiteral("tail"),
+        QStringLiteral("wc"), QStringLiteral("du")
     };
     return !verb.isEmpty() && !readOnly.contains(verb);
 }
@@ -1037,9 +1043,9 @@ LoteiBackend::LoteiBackend(QObject *parent)
     QDir().mkpath(m_voiceTmpDir);
     discoverPiper();
     refreshModels();   // discover installed Ollama models (async; harmless if Ollama's down)
-    // Deferred rather than called inline: detectOllamaBinary() spawns a small
-    // process and briefly blocks the calling thread, and this way it happens
-    // once the event loop is already pumping instead of stretching startup.
+    // Deferred so the ollamaInstalledChanged() it may emit lands after QML has
+    // finished binding to the property. Cheap now that detection is a PATH
+    // lookup rather than a subprocess, but there's no reason to run it inline.
     QTimer::singleShot(0, this, &LoteiBackend::detectOllama);
 #ifdef HZUI_VOICE
     // Restore the saved voice once the TTS engine has enumerated its voices.
@@ -1475,7 +1481,16 @@ QVariantList LoteiBackend::modelCatalog() const
             {"installed", installed},
             {"active",    installed && tag == m_model},
             // Busy state for THIS row, so the list can disable just the one button.
-            {"busy",      m_modelOpProc && m_modelOpName == tag}
+            //
+            // Keyed off the op state, NOT off m_modelOpProc. runModelOp() calls
+            // setModelOp() -- which emits modelOpChanged -- before it constructs
+            // the QProcess, so at the moment QML reacted to the click the pointer
+            // was still null and every row came back busy=false. The list only
+            // rebuilds when the op *kind* changes, so nothing rebuilt it again for
+            // the rest of the download: the row sat there still saying "install"
+            // while the pull ran happily in the background, and only closing and
+            // reopening the manager (which refreshes unconditionally) revealed it.
+            {"busy",      !m_modelOpKind.isEmpty() && !m_modelOpName.isEmpty() && m_modelOpName == tag}
         });
     }
     return out;
@@ -1494,22 +1509,96 @@ void LoteiBackend::setModelOp(const QString &kind, const QString &name,
     emit modelOpChanged();
 }
 
-// `ollama pull` lines look like "pulling 8934d996d8:  63% ▕████████▏ 2.9 GB/4.7 GB".
-// The ▕...▏ segment is ollama's own ASCII-art bar, drawn with Unicode block
-// characters. We already render a native ProgressBar from the parsed
-// percentage (see appendModelOpOutput below), so that segment is redundant --
-// and displaying it caused a visible glitch: the UI font doesn't have glyphs
-// for those block-drawing characters, so Qt substitutes a fallback font just
-// for that run, which renders at a mismatched size and baseline (a stray
-// glyph floating above the rest of the line). This cuts it out before display.
-static QString stripOllamaBar(const QString &line)
+// `ollama pull` does not write plain text. It writes a live terminal redraw:
+// ANSI escape sequences to hide/show the cursor and erase lines
+// (ESC[?25l, ESC[?25h, ESC[K, ESC[<n>A), plus its own progress bar drawn with
+// Unicode block characters -- "pulling 8934d996d8:  63% ▕████████▏ 2.9 GB/4.7 GB".
+//
+// None of that survives being dropped into a Text item. Share Tech Mono has no
+// glyph for ESC or for the block-drawing range, so Qt swaps in a fallback font
+// for exactly those characters and renders them at a different size and
+// baseline -- the pixelated blob sitting above the line in the screenshot -- and
+// the escape sequences leak through as visible "[K[?25h" garbage.
+//
+// The previous version cut out the span between ▕ and ▏, which only works when
+// both caps land in the same read chunk and doesn't touch the escapes at all.
+// This drops the whole class instead: CSI/OSC sequences, every C0 control, and
+// U+2500-U+259F (box and block drawing). We render progress with a real
+// ProgressBar from the parsed percentage, so none of it is information we lose.
+static QString sanitizeStatusLine(const QString &in)
 {
-    const int lo = line.indexOf(QChar(0x2595));   // ▕ -- bar's left cap
-    const int hi = line.indexOf(QChar(0x258F));   // ▏ -- bar's right cap
-    if (lo >= 0 && hi > lo) {
-        return (line.left(lo) + QLatin1Char(' ') + line.mid(hi + 1)).simplified();
+    QString out;
+    out.reserve(in.size());
+
+    for (int i = 0; i < in.size(); ++i) {
+        const QChar c = in.at(i);
+
+        if (c == QChar(0x1B)) {                       // ESC
+            if (i + 1 < in.size() && in.at(i + 1) == QLatin1Char('[')) {
+                // CSI: parameter/intermediate bytes (0x20-0x3F), then a final
+                // byte in 0x40-0x7E.
+                int j = i + 2;
+                while (j < in.size() && in.at(j).unicode() >= 0x20 && in.at(j).unicode() <= 0x3F) { ++j; }
+                if (j < in.size()) { ++j; }           // final byte
+                i = j - 1;
+            } else if (i + 1 < in.size() && in.at(i + 1) == QLatin1Char(']')) {
+                // OSC: runs until BEL, or until ST (ESC backslash).
+                int j = i + 2;
+                while (j < in.size() && in.at(j) != QChar(0x07) && in.at(j) != QChar(0x1B)) { ++j; }
+                if (j < in.size() && in.at(j) == QChar(0x1B)) { ++j; }   // the backslash of ST
+                i = j;
+            } else {
+                // Bare ESC + one byte (or a truncated sequence at a chunk edge).
+                if (i + 1 < in.size()) { ++i; }
+            }
+            continue;
+        }
+
+        const ushort u = c.unicode();
+        if (u < 0x20 || u == 0x7F) { out.append(QLatin1Char(' ')); continue; }  // other C0
+        if (u >= 0x2500 && u <= 0x259F) { continue; }                          // box/block drawing
+        out.append(c);
     }
-    return line;
+
+    return out.simplified();
+}
+
+// Pulls the completion percentage out of a progress line, or -1 if there isn't
+// one (-> indeterminate bar).
+//
+// The previous version walked back from the '%' collecting digits only, which
+// works for `ollama pull` ("  63%") but silently mangles every other producer
+// we feed through here. The Ollama *installer* script pipes curl --progress-bar,
+// whose meter is one decimal place: " 9.1%" stopped at the '.' and reported the
+// decimal digit alone, so the bar sat at 1%, then 3%, then 1% again while the
+// download actually ran to completion. That is the "stuck at 1%" bar.
+//
+// So: accept an optional fractional part, and scan from the end of the line --
+// the percentage is the last thing on a progress line, whereas the text before
+// it (a model tag, a mirror URL) may well contain a stray '%'.
+static double parsePercent(const QString &line)
+{
+    for (int i = line.size() - 1; i >= 0; --i) {
+        if (line.at(i) != QLatin1Char('%')) { continue; }
+        int j = i - 1;
+        bool digit = false, dot = false;
+        while (j >= 0) {
+            const QChar c = line.at(j);
+            if (c.isDigit()) { digit = true; --j; continue; }
+            // One separator, and only once we've already seen the fraction.
+            if ((c == QLatin1Char('.') || c == QLatin1Char(',')) && digit && !dot) {
+                dot = true; --j; continue;
+            }
+            break;
+        }
+        if (!digit) { continue; }
+        QString num = line.mid(j + 1, i - j - 1);
+        num.replace(QLatin1Char(','), QLatin1Char('.'));
+        bool ok = false;
+        const double v = num.toDouble(&ok);
+        if (ok) { return qBound(0.0, v / 100.0, 1.0); }
+    }
+    return -1.0;
 }
 
 // `ollama pull` resumes from partial blobs on disk by design (handy on a
@@ -1579,13 +1668,17 @@ void LoteiBackend::runModelOp(const QString &kind, const QString &name, const QS
         return;
     }
 
-    setModelOp(kind, name, kind == QLatin1String("install") ? QStringLiteral("Starting download…")
-                                                              : QStringLiteral("Removing…"), -1.0);
-
     m_modelOpCancelled = false;
     m_modelOpBuf.clear();
+    m_modelOpLine.clear();
     m_modelOpProc = new QProcess(this);
     m_modelOpProc->setProcessChannelMode(QProcess::MergedChannels);
+
+    // Announce only once the process object exists: setModelOp() emits
+    // modelOpChanged synchronously, QML handles it synchronously, and anything
+    // it reads about this op has to already be true by then.
+    setModelOp(kind, name, kind == QLatin1String("install") ? QStringLiteral("Starting download…")
+                                                              : QStringLiteral("Removing…"), -1.0);
 
     connect(m_modelOpProc, &QProcess::readyReadStandardOutput, this, [this]() {
         appendModelOpOutput(m_modelOpProc->readAllStandardOutput());
@@ -1596,7 +1689,7 @@ void LoteiBackend::runModelOp(const QString &kind, const QString &name, const QS
         const bool ok = (status == QProcess::NormalExit && code == 0);
         const bool cancelled = m_modelOpCancelled;
         if (cancelled && kind == QLatin1String("install")) { purgePartialBlobs(); }
-        const QString tail = stripOllamaBar(QString::fromUtf8(m_modelOpBuf.right(400)).trimmed());
+        const QString tail = sanitizeStatusLine(QString::fromUtf8(m_modelOpBuf.right(400)));
         const QString message = cancelled
             ? (kind == QLatin1String("install") ? QStringLiteral("Cancelled -- partial download removed.")
                                                  : QStringLiteral("Cancelled."))
@@ -1617,38 +1710,50 @@ void LoteiBackend::runModelOp(const QString &kind, const QString &name, const QS
         else                                    { emit modelUninstallFinished(name, false, message); }
     });
 
-    m_modelOpProc->start(QStringLiteral("ollama"), args);
+    // Absolute path when we have one: a bundled app's PATH doesn't necessarily
+    // contain /usr/local/bin, so a bare "ollama" here failed to start even
+    // though the binary is installed (see findOllamaBinary).
+    m_modelOpProc->start(m_ollamaPath.isEmpty() ? QStringLiteral("ollama") : m_ollamaPath, args);
 }
 
-// `ollama pull` redraws its progress bar with '\r', not '\n', so split on
-// either. Lines look like "pulling 8934d996d8:  63% ▕████████▏ 2.9 GB/4.7 GB"
-// -- pull the percentage out with a light-touch scan (no QRegularExpression
-// dependency here) rather than parse the whole bar.
+// `ollama pull` redraws its progress with '\r' (and cursor-up escapes) rather
+// than '\n', so both count as line terminators.
+//
+// Chunk boundaries matter here: a QProcess read hands over whatever bytes have
+// arrived, which regularly cuts a progress line -- along with its escape
+// sequences and its multi-byte UTF-8 -- in half. Parsing each chunk on its own
+// therefore parsed half-lines, which is how mangled fragments reached the label.
+// m_modelOpLine carries the unterminated remainder into the next chunk, so only
+// complete lines are ever decoded, sanitised or shown.
 void LoteiBackend::appendModelOpOutput(const QByteArray &chunk)
 {
     m_modelOpBuf += chunk;
     if (m_modelOpBuf.size() > 8000) { m_modelOpBuf.remove(0, m_modelOpBuf.size() - 8000); }
 
-    QByteArray tail = chunk;
-    tail.replace('\r', '\n');
-    const QList<QByteArray> lines = tail.split('\n');
+    m_modelOpLine += chunk;
+    m_modelOpLine.replace('\r', '\n');
+
+    const int lastBreak = m_modelOpLine.lastIndexOf('\n');
+    if (lastBreak < 0) {
+        // No complete line yet. Guard against a producer that never emits one.
+        if (m_modelOpLine.size() > 8000) { m_modelOpLine.clear(); }
+        return;
+    }
+
+    const QByteArray complete = m_modelOpLine.left(lastBreak);
+    m_modelOpLine.remove(0, lastBreak + 1);          // keep the partial tail
+
     QString lastLine;
+    const QList<QByteArray> lines = complete.split('\n');
     for (const QByteArray &l : lines) {
-        if (!l.trimmed().isEmpty()) { lastLine = QString::fromUtf8(l).trimmed(); }
+        const QString s = sanitizeStatusLine(QString::fromUtf8(l));
+        if (!s.isEmpty()) { lastLine = s; }
     }
     if (lastLine.isEmpty()) { return; }
 
-    double progress = -1.0;
-    const int pct = lastLine.indexOf(QLatin1Char('%'));
-    if (pct > 0) {
-        int start = pct - 1;
-        while (start >= 0 && (lastLine.at(start).isDigit())) { --start; }
-        bool ok = false;
-        const int v = lastLine.mid(start + 1, pct - start - 1).toInt(&ok);
-        if (ok) { progress = qBound(0.0, v / 100.0, 1.0); }
-    }
-    setModelOp(m_modelOpKind, m_modelOpName, stripOllamaBar(lastLine), progress);
+    setModelOp(m_modelOpKind, m_modelOpName, lastLine, parsePercent(lastLine));
 }
+
 
 void LoteiBackend::finishModelOp(bool /*ok*/, const QString &message)
 {
@@ -1668,29 +1773,59 @@ bool LoteiBackend::ollamaInstalled() const
     return m_ollamaInstalled;
 }
 
+// Locates the ollama CLI without spawning anything. Two reasons this is not a
+// `which`/`where` subprocess any more:
+//
+//   1. It ran on the GUI thread with waitForStarted/waitForFinished, i.e. up to
+//      six seconds of a frozen window -- and detectOllama() is called straight
+//      out of the gear button's openManager(), so every trip into the model
+//      manager could stall the whole UI.
+//   2. PATH inside a bundled app is not the PATH in a terminal. A .app launched
+//      from Finder/Dock inherits launchd's minimal PATH (/usr/bin:/bin:/usr/sbin
+//      :/sbin), which does not include /usr/local/bin -- where the Ollama app
+//      puts its CLI symlink -- nor /opt/homebrew/bin. So `which ollama` came back
+//      empty on a machine that has Ollama perfectly well installed, and the app
+//      then showed the red "Ollama isn't installed" banner and offered to
+//      install it again. Same story for the AppImage/Flatpak-ish launches on
+//      Linux and ~/.local/bin.
+//
+// The resolved absolute path is kept and used to launch pull/rm as well, so the
+// ops don't depend on the child process inheriting a usable PATH either.
+static QString findOllamaBinary()
+{
+    QStringList extra;
+#if defined(Q_OS_WIN)
+    extra << QDir::homePath() + QStringLiteral("/AppData/Local/Programs/Ollama");
+#else
+    extra << QStringLiteral("/usr/local/bin")
+          << QStringLiteral("/opt/homebrew/bin")
+          << QStringLiteral("/usr/bin")
+          << QStringLiteral("/bin")
+          << QDir::homePath() + QStringLiteral("/.local/bin");
+#endif
+    QString path = QStandardPaths::findExecutable(QStringLiteral("ollama"));
+    if (path.isEmpty()) {
+        path = QStandardPaths::findExecutable(QStringLiteral("ollama"), extra);
+    }
+#if defined(Q_OS_MAC)
+    // Ollama.app ships the CLI inside the bundle; the /usr/local/bin symlink is
+    // only created after the app has been run once and granted permission.
+    if (path.isEmpty()) {
+        const QString inApp = QStringLiteral("/Applications/Ollama.app/Contents/Resources/ollama");
+        if (QFileInfo(inApp).isExecutable()) { path = inApp; }
+    }
+#endif
+    return path;
+}
+
 void LoteiBackend::detectOllama()
 {
     const bool was = m_ollamaInstalled;
-    m_ollamaInstalled = detectOllamaBinary();
+    m_ollamaPath = findOllamaBinary();
+    m_ollamaInstalled = !m_ollamaPath.isEmpty();
     m_ollamaChecked = true;
     if (was != m_ollamaInstalled) { emit ollamaInstalledChanged(); }
     if (m_ollamaInstalled) { refreshModels(); }
-}
-
-bool LoteiBackend::detectOllamaBinary() const
-{
-    // `ollama --version` -- succeeds (exit 0) whether or not the server/tray
-    // app is currently running; we only care whether the CLI is on PATH.
-    QProcess p;
-    p.setProcessChannelMode(QProcess::MergedChannels);
-#if defined(Q_OS_WIN)
-    p.start(QStringLiteral("where"), {QStringLiteral("ollama")});
-#else
-    p.start(QStringLiteral("which"), {QStringLiteral("ollama")});
-#endif
-    if (!p.waitForStarted(3000)) { return false; }
-    p.waitForFinished(3000);
-    return p.exitCode() == 0;
 }
 
 // Installs the Ollama application itself via the platform's normal channel.
@@ -1709,11 +1844,50 @@ void LoteiBackend::installOllama()
         emit ollamaInstallFinished(false, QStringLiteral("An install/uninstall is already running -- wait for it first."));
         return;
     }
-    setModelOp(QStringLiteral("ollama"), QString(), QStringLiteral("Installing Ollama…"), -1.0);
+
+    // Work out what to run *before* creating the process, because on macOS
+    // there may be nothing to run at all.
+    QString program;
+    QStringList args;
+
+#if defined(Q_OS_WIN)
+    program = QStringLiteral("winget");
+    args = {QStringLiteral("install"), QStringLiteral("--id"), QStringLiteral("Ollama.Ollama"),
+            QStringLiteral("-e"), QStringLiteral("--accept-package-agreements"),
+            QStringLiteral("--accept-source-agreements")};
+#elif defined(Q_OS_MAC)
+    // The ollama.com/install.sh one-liner is Linux-only -- it opens with
+    // `[ "$(uname -s)" = "Linux" ] || error 'This script is intended to run on
+    // Linux only.'` and exits non-zero within milliseconds on a Mac. That is
+    // why the button looked like it did nothing: the op started and ended
+    // between two frames, and the only place the resulting message was shown
+    // was a Text bound to `modelOpKind === "ollama"`, which had already gone
+    // back to "" by then.
+    //
+    // Homebrew is the only genuinely unattended route on macOS. Without it,
+    // hand the user off to the download page rather than pretending.
+    program = QStandardPaths::findExecutable(QStringLiteral("brew"),
+                  {QStringLiteral("/opt/homebrew/bin"), QStringLiteral("/usr/local/bin")});
+    if (program.isEmpty()) {
+        const QString message = QStringLiteral("macOS: opening ollama.com/download -- install it, then hit recheck.");
+        setModelOp(QString(), QString(), message, -1.0);
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://ollama.com/download")));
+        emit ollamaInstallFinished(false, message);
+        return;
+    }
+    args = {QStringLiteral("install"), QStringLiteral("ollama")};
+#else
+    // sh -c so the pipe (curl | sh) actually pipes.
+    program = QStringLiteral("/bin/sh");
+    args = {QStringLiteral("-c"), QStringLiteral("curl -fsSL https://ollama.com/install.sh | sh")};
+#endif
+
     m_modelOpCancelled = false;
     m_modelOpBuf.clear();
+    m_modelOpLine.clear();
     m_modelOpProc = new QProcess(this);
     m_modelOpProc->setProcessChannelMode(QProcess::MergedChannels);
+    setModelOp(QStringLiteral("ollama"), QString(), QStringLiteral("Installing Ollama…"), -1.0);
 
     connect(m_modelOpProc, &QProcess::readyReadStandardOutput, this, [this]() {
         appendModelOpOutput(m_modelOpProc->readAllStandardOutput());
@@ -1722,12 +1896,12 @@ void LoteiBackend::installOllama()
             this, [this](int code, QProcess::ExitStatus status) {
         const bool ok = (status == QProcess::NormalExit && code == 0);
         const bool cancelled = m_modelOpCancelled;
-        const QString tail = stripOllamaBar(QString::fromUtf8(m_modelOpBuf.right(400)).trimmed());
+        const QString tail = sanitizeStatusLine(QString::fromUtf8(m_modelOpBuf.right(400)));
         const QString message = cancelled ? QStringLiteral("Cancelled.")
             : (ok ? QStringLiteral("Ollama installed.")
                   : (tail.isEmpty() ? QStringLiteral("installer exited with code %1.").arg(code) : tail));
         finishModelOp(ok, message);
-        m_ollamaChecked = false;   // force a fresh `where`/`which` check
+        m_ollamaChecked = false;   // force a fresh lookup rather than trusting the cache
         if (ok && !cancelled) { detectOllama(); }
         emit ollamaInstallFinished(ok && !cancelled, message);
     });
@@ -1738,16 +1912,14 @@ void LoteiBackend::installOllama()
         emit ollamaInstallFinished(false, message);
     });
 
-#if defined(Q_OS_WIN)
-    m_modelOpProc->start(QStringLiteral("winget"),
-                         {QStringLiteral("install"), QStringLiteral("--id"), QStringLiteral("Ollama.Ollama"),
-                          QStringLiteral("-e"), QStringLiteral("--accept-package-agreements"),
-                          QStringLiteral("--accept-source-agreements")});
-#else
-    // sh -c so the pipe (curl | sh) actually pipes.
-    m_modelOpProc->start(QStringLiteral("/bin/sh"),
-                         {QStringLiteral("-c"), QStringLiteral("curl -fsSL https://ollama.com/install.sh | sh")});
-#endif
+    m_modelOpProc->start(program, args);
+    // The Linux script needs root. There is no terminal behind this process, so
+    // sudo can't prompt -- with stdin left open it would sit there waiting for a
+    // password nobody can type, and the op would hang on "Installing Ollama…"
+    // forever. Closing the write channel makes sudo fail immediately instead,
+    // with a message we can actually show ("no tty present…"), and the user can
+    // run the one-liner in a terminal.
+    m_modelOpProc->closeWriteChannel();
 }
 
 bool LoteiBackend::setupComplete() const { return m_setupComplete; }
@@ -4543,8 +4715,13 @@ const CliCmd kCliCommands[] = {
     { "colors",   "Colours folders, prompt and log lines the way ls --color does: colors on | off." },
     { "cp",       "Copies a file or folder (-r), including between this computer and the Flipper. Wildcards (*.sub) work as a source. Every transfer is MD5-verified." },
     { "df",       "Shows free and used space on the storage." },
+    { "du",       "Adds up how much space a folder uses, broken down by what is inside it." },
+    { "echo",     "Echoes bytes back; with a redirect it writes to a file on the Flipper instead: echo hello > /ext/notes.txt (>> appends)." },
     { "edit",     "Opens a Flipper file for editing on this computer." },
     { "find",     "Finds files under a folder by name, e.g. find *.sub /ext/subghz." },
+    { "grep",     "Prints the lines of a file that contain some text: grep nonce /ext/nfc/card.nfc." },
+    { "head",     "Prints the first lines of a file: head [-n 20] <file>." },
+    { "history",  "Lists the commands typed this session." },
     { "ls",       "Lists the files and folders in a directory." },
     { "md5",      "Prints a file's MD5 hash." },
     { "mkdir",    "Creates a folder." },
@@ -4556,7 +4733,11 @@ const CliCmd kCliCommands[] = {
     { "shutdown", "Powers the Flipper off." },
     { "stat",     "Shows the size and type of a file or folder." },
     { "tree",     "Lists everything under a folder, recursively." },
+    { "tail",     "Prints the last lines of a file: tail [-n 20] <file>." },
     { "tgz",      "Packs a local folder into a .tgz, the same way Backup does: tgz <folder> [archive.tgz]." },
+    { "touch",    "Creates an empty file on the Flipper." },
+    { "wc",       "Counts the lines, words and bytes in a file." },
+    { "wget",     "Downloads a URL on this computer and saves it straight onto the Flipper: wget <url> [destination]. The Flipper has no network of its own." },
     { "verbose",  "Shows or hides the wire-level log of everything a command runs: verbose on | off." },
 };
 
@@ -4573,7 +4754,8 @@ const CliAlias kCliAliases[] = {
     { "poweroff", "shutdown" },  { "pull",     "cp" },
     { "push",     "cp" },        { "read",     "cat" },
     { "restart",  "reboot" },    { "vibrate",  "vibro" },
-    { "whoami",   "device_info" },
+    { "whoami",   "device_info" },   { "curl",     "wget" },
+    { "fetch",    "wget" },
 };
 
 QStringList cliOurNames()
@@ -4822,12 +5004,19 @@ QString cliExtractMd5(const QString &raw)
 // discarded entirely so neither half can drift out of line with the other.
 QString cliFormatHelp(const QString &raw, const QString &promptText)
 {
-    const QString header = QStringLiteral("Commands available:");
-    const int hdr = raw.indexOf(header);
-    if (hdr < 0) { return raw; }
+    // Stock firmware prints "Commands available:", Unleashed/Momentum print
+    // "Available commands:". Only the first was matched, so on a fork this
+    // whole function bailed out on line one and the listing was passed through
+    // untouched -- which is why cd, ls, grep and the rest were missing from it.
+    static const QRegularExpression header(
+        QStringLiteral("(?:commands available|available commands)\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch hm = header.match(raw);
+    if (!hm.hasMatch()) { return raw; }
+    const int hdr = hm.capturedStart();
 
     int listStart = raw.indexOf(QLatin1Char('\n'), hdr);
-    listStart = (listStart < 0) ? (hdr + header.size()) : (listStart + 1);
+    listStart = (listStart < 0) ? hm.capturedEnd() : (listStart + 1);
 
     static const QRegularExpression ws(QStringLiteral("\\s+"));
     QStringList stock;
@@ -4842,7 +5031,18 @@ QString cliFormatHelp(const QString &raw, const QString &promptText)
         // into the command list and the prompt itself is eaten.
         if (line.isEmpty() || line.startsWith(QLatin1String(">:"))) { break; }
         if (!promptText.isEmpty() && line.startsWith(promptText)) { break; }
-        stock += line.split(ws, Qt::SkipEmptyParts);
+        // The firmware follows the grid with two sentences of prose ("If you
+        // added a new external command...", "Find out more: <url>"). Without
+        // this they were split on whitespace and sorted into the command list.
+        // A command row is nothing but bare names.
+        static const QRegularExpression nameRe(QStringLiteral("^[A-Za-z0-9_!?.-]{1,24}$"));
+        const QStringList tokens = line.split(ws, Qt::SkipEmptyParts);
+        bool allNames = !tokens.isEmpty();
+        for (const QString &t : tokens) {
+            if (!nameRe.match(t).hasMatch()) { allNames = false; break; }
+        }
+        if (!allNames) { break; }
+        stock += tokens;
         if (eol < 0) { listEnd = raw.size(); break; }
         pos = eol + 1;
         listEnd = pos;
@@ -4885,6 +5085,18 @@ QString cliFormatHelp(const QString &raw, const QString &promptText)
 
     QString out = raw;
     out.replace(listStart, listEnd - listStart, block);
+
+    // Drop the firmware's two trailing sentences. "reload_ext_cmds" is still in
+    // the listing above for anyone who needs it, and the docs link is already a
+    // line of the banner on connect -- repeating both after every `help` is
+    // noise in a panel this size.
+    static const QRegularExpression trailer(
+        QStringLiteral("(?m)^[ \\t]*(?:If you added a new external command.*|Find out more:.*)$\\n?"));
+    out.remove(trailer);
+    // A colour reset that arrived split across two reads leaves its tail behind
+    // as literal text.
+    out.remove(QRegularExpression(QStringLiteral("(?m)^\\[[0-9;]*m$\\n?")));
+    out.replace(QRegularExpression(QStringLiteral("\\[[0-9;]*m")), QString());
     return out;
 }
 
@@ -5141,9 +5353,20 @@ void FlipperCli::connectCli()
         m_capture = Capture::None;
         m_captureBuf.clear();
         m_echoPending.clear();
+        m_escTail.clear();
         setActive(true);
         setStatus(QStringLiteral("CLI live -- type a command (try 'help')."));
-        m_port->write("\r\n");   // nudge a fresh prompt
+
+        // The firmware prints its banner and a prompt by itself the moment the
+        // CDC port is opened. Writing "\r\n" here unconditionally asked it for a
+        // second one, which is the duplicate "name@qflipper ~ %" line sitting
+        // above the caret on every connect. Nudge only if it stayed silent --
+        // which does happen when the device was already parked at a prompt and
+        // has nothing new to announce.
+        m_sawDeviceBytes = false;
+        QTimer::singleShot(700, this, [this]() {
+            if (m_port && m_active && !m_sawDeviceBytes) { m_port->write("\r\n"); }
+        });
     });
 }
 
@@ -5259,6 +5482,10 @@ void FlipperCli::finishOneShot(bool ok, const QString &out)
 void FlipperCli::send(const QString &cmd)
 {
     m_lastTyped = cmd.trimmed();
+    if (!m_lastTyped.isEmpty() && m_history.value(m_history.size() - 1) != m_lastTyped) {
+        m_history += m_lastTyped;
+        if (m_history.size() > 200) { m_history.removeFirst(); }
+    }
 
     // "clear" / "cls" clears the on-screen CLI view (the Flipper firmware has no
     // clear command) instead of being sent to the device.
@@ -5382,6 +5609,28 @@ void FlipperCli::send(const QString &cmd)
     // The terminal types straight into the view, so anything we answer locally
     // never gets echoed back by the firmware -- echo the typed line ourselves.
     auto echo = [](const QString &c) { return c.trimmed() + QLatin1Char('\n'); };
+
+    // "echo <text> > <file>" and ">>" write to the Flipper's storage. The
+    // firmware's own echo only parrots bytes back down the wire, so the redirect
+    // form is entirely ours -- and it is handled here, before the tokeniser,
+    // because splitting on whitespace would lose the spacing inside the text.
+    {
+        static const QRegularExpression redir(QStringLiteral("^echo\\s+(.*?)\\s*(>>|>)\\s*(\\S+)\\s*$"));
+        const QRegularExpressionMatch m = redir.match(cmd.trimmed());
+        if (m.hasMatch()) {
+            QString text = m.captured(1);
+            if (text.size() >= 2
+                && ((text.startsWith(QLatin1Char('"'))  && text.endsWith(QLatin1Char('"')))
+                 || (text.startsWith(QLatin1Char('\'')) && text.endsWith(QLatin1Char('\''))))) {
+                text = text.mid(1, text.size() - 2);
+            }
+            appendOutput(echo(cmd));
+            writeTextToDevice(text + QLatin1Char('\n'),
+                              cliResolvePath(m_cwd, m.captured(3)),
+                              m.captured(2) == QLatin1String(">>"));
+            return;
+        }
+    }
 
     // ---- Linux-style shortcuts over the firmware's own commands ----
     // "help <name>" -> one short line for ours, or what an alias points at.
@@ -5537,6 +5786,72 @@ void FlipperCli::send(const QString &cmd)
             appendOutput(echo(cmd));
             startFind(p1.isEmpty() ? m_cwd : here(p1), p0);
             return;
+        } else if (verb == QLatin1String("grep")) {
+            if (p1.isEmpty()) { usage(QStringLiteral("grep <text> <file>")); return; }
+            appendOutput(echo(cmd));
+            startGrep(p0, here(p1));
+            return;
+        } else if (verb == QLatin1String("head") || verb == QLatin1String("tail")) {
+            // "-n" survives the generic flag strip above precisely because it
+            // takes a value.
+            int n = 10;
+            QString file = p0;
+            if (p0 == QLatin1String("-n")) {
+                bool okN = false;
+                const int v = p1.toInt(&okN);
+                if (okN) { n = v; }
+                file = a.value(2);
+            }
+            if (file.isEmpty()) { usage(QStringLiteral("%1 [-n lines] <file>").arg(verb)); return; }
+            appendOutput(echo(cmd));
+            startHeadTail(here(file), n, verb == QLatin1String("head"));
+            return;
+        } else if (verb == QLatin1String("wc")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("wc <file>")); return; }
+            appendOutput(echo(cmd));
+            startWc(here(p0));
+            return;
+        } else if (verb == QLatin1String("du")) {
+            appendOutput(echo(cmd));
+            startDu(p0.isEmpty() ? m_cwd : here(p0));
+            return;
+        } else if (verb == QLatin1String("touch")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("touch <file>")); return; }
+            appendOutput(echo(cmd));
+            writeTextToDevice(QString(), here(p0), false);
+            return;
+        } else if (verb == QLatin1String("wget")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("wget <url> [destination]   e.g. wget https://.../app.fap /ext/apps/Tools/")); return; }
+            appendOutput(echo(cmd));
+            // No destination -> keep the URL's own filename, drop it here.
+            QString name = QUrl(p0).fileName();
+            if (name.isEmpty()) { name = QStringLiteral("download.bin"); }
+            // Either way we hand startWget a complete file path, so the upload
+            // never has to guess whether the last segment is a folder.
+            QString dst;
+            if (p1.isEmpty()) {
+                dst = cliResolvePath(m_cwd, name);
+            } else if (p1.endsWith(QLatin1Char('/'))) {
+                QString dir = cliResolvePath(m_cwd, p1);
+                while (dir.size() > 1 && dir.endsWith(QLatin1Char('/'))) { dir.chop(1); }
+                dst = dir + QLatin1Char('/') + name;
+            } else {
+                dst = here(p1);
+            }
+            startWget(p0, dst, true);
+            return;
+        } else if (verb == QLatin1String("history")) {
+            appendOutput(echo(cmd));
+            if (m_history.isEmpty()) {
+                appendOutput(QStringLiteral("[ nothing yet this session ]\n") + prompt());
+            } else {
+                QStringList rows;
+                for (int i = 0; i < m_history.size(); ++i) {
+                    rows += QStringLiteral("%1  %2").arg(i + 1, 4).arg(m_history.at(i));
+                }
+                appendOutput(rows.join(QLatin1Char('\n')) + QLatin1Char('\n') + prompt());
+            }
+            return;
         } else if (verb == QLatin1String("edit")) {
             if (p0.isEmpty()) { usage(QStringLiteral("edit <file>")); return; }
             appendOutput(echo(cmd));
@@ -5672,6 +5987,7 @@ void FlipperCli::resetTransientState()
     m_capture = Capture::None;
     m_captureBuf.clear();
     m_echoPending.clear();
+    m_escTail.clear();
     m_quiet = false;
 }
 
@@ -5864,6 +6180,7 @@ void FlipperCli::onReadyRead()
 {
     if (!m_port) { return; }
     const QByteArray chunk = m_port->readAll();
+    if (!chunk.isEmpty()) { m_sawDeviceBytes = true; }
 
     // Bytes arriving mean the device is still talking, so the no-reply
     // watchdog only ever fires on real silence.
@@ -5973,6 +6290,27 @@ void FlipperCli::onReadyRead()
     }
 
     QString text = QString::fromUtf8(chunk);
+
+    // An escape sequence can be split across two serial reads. When that
+    // happened the regex below saw only "\x1B[0" (no final byte) and left it
+    // alone, the control-character sweep then ate the lone ESC, and the "[0m"
+    // remainder was printed as text -- the stray "[0m" after the help listing.
+    // Hold an unterminated tail back and glue it onto the next chunk instead.
+    static const QRegularExpression ansiWhole(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
+    if (!m_escTail.isEmpty()) { text.prepend(m_escTail); m_escTail.clear(); }
+    {
+        const int e = text.lastIndexOf(QChar(0x1B));
+        if (e >= 0) {
+            const QString tail = text.mid(e);
+            // Bounded: a sequence this long is not one, and holding bytes back
+            // forever would stall the view.
+            if (tail.size() < 16 && !ansiWhole.match(tail).hasMatch()) {
+                m_escTail = tail;
+                text.chop(tail.size());
+            }
+        }
+    }
+
     // Strip ANSI escape sequences (colours, cursor moves) for a clean text view.
     static const QRegularExpression ansi(QStringLiteral("\x1B\\[[0-9;?]*[A-Za-z]"));
     text.remove(ansi);
@@ -6003,7 +6341,14 @@ void FlipperCli::onReadyRead()
     // can't be reformatted chunk by chunk -- that's what left our shortcuts on a
     // different grid. Hold the whole listing back until the prompt returns, then
     // lay the entire thing out at once.
-    if (m_capture == Capture::None && text.contains(QLatin1String("Commands available:"))) {
+    // Both spellings: stock firmware says "Commands available:", Unleashed and
+    // Momentum say "Available commands:". Matching only the first one meant the
+    // whole help reformatter never ran on a fork -- which is why the listing
+    // came through raw, with none of our own commands in it.
+    static const QRegularExpression helpHdr(
+        QStringLiteral("(?:commands available|available commands)\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (m_capture == Capture::None && helpHdr.match(text).hasMatch()) {
         m_capture = Capture::Help;
     }
     if (m_capture != Capture::None) {
@@ -6062,7 +6407,7 @@ void FlipperCli::flushCapture()
 }
 
 // ---- host <-> Flipper file transfer over the plain CLI ----------------------
-void FlipperCli::uploadToFlipper(const QString &hostPath, const QString &devPath)
+void FlipperCli::uploadToFlipper(const QString &hostPath, const QString &devPath, bool exactDest)
 {
     // Every bail-out below goes through finishXfer rather than printing and
     // returning. A cp -r sets m_xferChain before calling in, so a plain return
@@ -6086,7 +6431,12 @@ void FlipperCli::uploadToFlipper(const QString &hostPath, const QString &devPath
     const QByteArray data = f.readAll();
     f.close();
 
-    const QString dst = cliJoinDest(devPath, fi.fileName(), cliLooksLikeDir(devPath));
+    // exactDest is set by the commands that build their payload in a temp file
+    // (echo, touch, wget): there the host filename is a throwaway, and a
+    // destination like /ext/notes has no dot in its last segment, so the
+    // usual "looks like a folder" guess would bury the temp name inside it.
+    const QString dst = exactDest ? devPath
+                                  : cliJoinDest(devPath, fi.fileName(), cliLooksLikeDir(devPath));
 
     // The firmware reads write_chunk's payload in a fixed 1 KB loop rather than
     // malloc'ing the whole thing, so this cap is just a sane one-shot size for
@@ -6471,6 +6821,199 @@ void FlipperCli::startEdit(const QString &path)
     });
 }
 
+// ---- host-side text utilities over "storage read" --------------------------
+//
+// The Flipper cannot run grep, head, tail or wc itself, and never will: the
+// firmware lives on an STM32WB55 with 256 KB of RAM and a fixed command table.
+// So the file comes over the wire once and this computer does the work -- which
+// is the same trade the rest of this panel already makes for find and cp -r.
+void FlipperCli::readDeviceText(const QString &path, std::function<void(bool, const QString &)> done)
+{
+    sendRaw(QStringLiteral("storage read ") + path, [this, path, done](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) { done(false, QString()); return; }
+        // "storage read" prints a "Size: N" header before the body and the
+        // prompt after it; neither belongs to the file.
+        QString body = raw;
+        const int c = raw.indexOf(QLatin1String("Size:"));
+        if (c >= 0) {
+            const int nl = raw.indexOf(QLatin1Char('\n'), c);
+            body = (nl >= 0) ? raw.mid(nl + 1) : QString();
+        }
+        const int p = body.lastIndexOf(QLatin1String(">:"));
+        if (p >= 0) { body = body.left(p); }
+        done(true, body);
+    });
+}
+
+void FlipperCli::startGrep(const QString &pattern, const QString &path)
+{
+    readDeviceText(path, [this, pattern, path](bool ok, const QString &body) {
+        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
+        // Plain substring, case-insensitive -- the same thing `grep -i` does for
+        // the overwhelming majority of what gets typed at a Flipper. A regex
+        // pattern would need escaping rules the rest of this shell doesn't have.
+        QStringList hits;
+        const QStringList lines = body.split(QLatin1Char('\n'));
+        for (int i = 0; i < lines.size(); ++i) {
+            if (lines.at(i).contains(pattern, Qt::CaseInsensitive)) {
+                hits += QStringLiteral("%1: %2").arg(i + 1, 4).arg(lines.at(i).trimmed());
+            }
+        }
+        appendOutput((hits.isEmpty() ? QStringLiteral("[ no matches ]\n")
+                                     : hits.join(QLatin1Char('\n')) + QLatin1Char('\n'))
+                     + prompt());
+    });
+}
+
+void FlipperCli::startHeadTail(const QString &path, int n, bool head)
+{
+    readDeviceText(path, [this, path, n, head](bool ok, const QString &body) {
+        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
+        QStringList lines = body.split(QLatin1Char('\n'));
+        while (!lines.isEmpty() && lines.last().trimmed().isEmpty()) { lines.removeLast(); }
+        const int take = qBound(1, n, lines.size());
+        const QStringList slice = head ? lines.mid(0, take) : lines.mid(lines.size() - take);
+        appendOutput(slice.join(QLatin1Char('\n')) + QLatin1Char('\n') + prompt());
+    });
+}
+
+void FlipperCli::startWc(const QString &path)
+{
+    readDeviceText(path, [this, path](bool ok, const QString &body) {
+        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
+        const QStringList lines = body.split(QLatin1Char('\n'));
+        int words = 0;
+        for (const QString &l : lines) {
+            words += l.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts).size();
+        }
+        appendOutput(QStringLiteral("%1 lines  %2 words  %3 bytes  %4\n")
+                         .arg(lines.size()).arg(words).arg(body.toUtf8().size()).arg(path)
+                     + prompt());
+    });
+}
+
+// du: one "storage tree" walk, summed here. Prints the total plus a line per
+// immediate child, which is the question actually being asked when an SD card
+// is filling up.
+void FlipperCli::startDu(const QString &path)
+{
+    sendRaw(QStringLiteral("storage tree ") + path, [this, path](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            appendOutput(QStringLiteral("[ no such folder: %1 ]\n").arg(path) + prompt());
+            return;
+        }
+        QString root = path;
+        while (root.size() > 1 && root.endsWith(QLatin1Char('/'))) { root.chop(1); }
+
+        qint64 total = 0;
+        int files = 0;
+        QMap<QString, qint64> perChild;
+        for (const auto &e : cliParseTree(raw)) {
+            if (e.isDir || e.size < 0) { continue; }
+            total += e.size;
+            ++files;
+            QString rel = e.path;
+            if (rel.startsWith(root)) { rel = rel.mid(root.size()); }
+            while (rel.startsWith(QLatin1Char('/'))) { rel.remove(0, 1); }
+            const int slash = rel.indexOf(QLatin1Char('/'));
+            perChild[slash >= 0 ? rel.left(slash) : QStringLiteral(".")] += e.size;
+        }
+
+        auto human = [](qint64 b) {
+            if (b >= 1024 * 1024) { return QStringLiteral("%1 MB").arg(b / 1048576.0, 0, 'f', 1); }
+            if (b >= 1024)        { return QStringLiteral("%1 KB").arg(b / 1024.0, 0, 'f', 1); }
+            return QStringLiteral("%1 B").arg(b);
+        };
+
+        QStringList out;
+        for (auto it = perChild.constBegin(); it != perChild.constEnd(); ++it) {
+            out += QStringLiteral("%1\t%2").arg(human(it.value()), it.key());
+        }
+        out += QStringLiteral("%1\t%2  (%3 files)").arg(human(total), root).arg(files);
+        appendOutput(out.join(QLatin1Char('\n')) + QLatin1Char('\n') + prompt());
+    });
+}
+
+// echo > / >> and touch. Both stage the bytes in a temp file and hand them to
+// the normal upload path, so they get its remove-then-write_chunk sequence and
+// its MD5 verification for free rather than reimplementing either.
+void FlipperCli::writeTextToDevice(const QString &text, const QString &devPath, bool append)
+{
+    if (append) {
+        // ">>" has to read first: storage write_chunk appends, but the upload
+        // deliberately removes the file beforehand so a repeated cp can't
+        // concatenate. Merging here keeps that rule in one place.
+        readDeviceText(devPath, [this, text, devPath](bool ok, const QString &body) {
+            QString merged = ok ? body : QString();
+            if (!merged.isEmpty() && !merged.endsWith(QLatin1Char('\n'))) { merged += QLatin1Char('\n'); }
+            merged += text;
+            writeTextToDevice(merged, devPath, false);
+        });
+        return;
+    }
+
+    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/lotei-write-XXXXXX"));
+    if (!tmp.open()) {
+        appendOutput(QStringLiteral("[ can't create a temp file on this computer ]\n") + prompt());
+        return;
+    }
+    tmp.write(text.toUtf8());
+    tmp.flush();
+    const QString hostPath = tmp.fileName();
+    // uploadToFlipper reads the file synchronously, so the temp file going out
+    // of scope here is safe.
+    uploadToFlipper(hostPath, devPath, true);
+}
+
+// wget: this computer does the downloading -- the Flipper has no network stack
+// at all -- and the result lands on the SD card. That is the honest version of
+// "install something from the internet onto the Flipper": .fap apps, IR and
+// Sub-GHz databases, wordlists, anything that is just a file.
+void FlipperCli::startWget(const QString &url, const QString &devPath, bool exactDest)
+{
+    QUrl u(url);
+    if (!u.isValid() || u.scheme().isEmpty()) { u = QUrl(QStringLiteral("https://") + url); }
+    if (!u.isValid() || (u.scheme() != QLatin1String("http") && u.scheme() != QLatin1String("https"))) {
+        appendOutput(QStringLiteral("[ not a http(s) URL: %1 ]\n").arg(url) + prompt());
+        return;
+    }
+
+    appendOutput(QStringLiteral("[ downloading %1 ]\n").arg(u.toString()));
+    QNetworkRequest req(u);
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("lotei-cli"));
+
+    QNetworkReply *reply = m_dl.get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, devPath, exactDest]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            appendOutput(QStringLiteral("[ download failed: %1 ]\n").arg(reply->errorString()) + prompt());
+            return;
+        }
+        const QByteArray data = reply->readAll();
+        if (data.isEmpty()) {
+            appendOutput(QStringLiteral("[ the server sent an empty body ]\n") + prompt());
+            return;
+        }
+        // Same 1 MiB ceiling the CLI upload path enforces -- say so here rather
+        // than downloading first and refusing afterwards.
+        if (data.size() > 1024 * 1024) {
+            appendOutput(QStringLiteral("[ %1 bytes -- over the 1 MB CLI upload limit. Save it on this computer and use the file tools. ]\n")
+                             .arg(data.size())
+                         + prompt());
+            return;
+        }
+        QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/lotei-wget-XXXXXX"));
+        if (!tmp.open()) {
+            appendOutput(QStringLiteral("[ can't create a temp file on this computer ]\n") + prompt());
+            return;
+        }
+        tmp.write(data);
+        tmp.flush();
+        uploadToFlipper(tmp.fileName(), devPath, exactDest);
+    });
+}
+
 void FlipperCli::clearOutput()
 {
     if (m_output.isEmpty()) { return; }
@@ -6496,15 +7039,27 @@ void FlipperCli::appendOutput(const QString &text)
     m_output += tail;
     while (m_output.startsWith(QLatin1Char('\n'))) { m_output.remove(0, 1); }
 
-    // Collapse a prompt that lands straight after another one -- the firmware
-    // prints its own on connect and again for our wake-up newline.
+    // Collapse a prompt that lands straight after another one. The old version
+    // matched three exact spellings of the gap between them (p+p, p+\n+p,
+    // rtrim+\n+p), so a single stray space from the firmware was enough for a
+    // duplicate to slip through. Two prompts with nothing but whitespace
+    // between them means nothing was typed or printed in between, so the
+    // earlier one is always the redundant one.
     const QString p = prompt();
     const QString rtrim = p.trimmed();
-    for (;;) {
-        if (m_output.endsWith(p + p))                          { m_output.chop(p.size()); continue; }
-        if (m_output.endsWith(p + QLatin1Char('\n') + p))       { m_output.chop(p.size() + 1); continue; }
-        if (m_output.endsWith(rtrim + QLatin1Char('\n') + p))   { m_output.chop(p.size() + 1); continue; }
-        break;
+    if (!rtrim.isEmpty()) {
+        for (;;) {
+            int e = m_output.size();
+            while (e > 0 && m_output.at(e - 1).isSpace()) { --e; }
+            if (e < rtrim.size() || QStringView{m_output}.mid(e - rtrim.size(), rtrim.size()) != QStringView{rtrim}) { break; }
+            const int lastStart = e - rtrim.size();
+
+            int w = lastStart;
+            while (w > 0 && m_output.at(w - 1).isSpace()) { --w; }
+            if (w < rtrim.size() || QStringView{m_output}.mid(w - rtrim.size(), rtrim.size()) != QStringView{rtrim}) { break; }
+
+            m_output.remove(w - rtrim.size(), lastStart - (w - rtrim.size()));
+        }
     }
     // Whatever the user types next belongs on the prompt's own line, so the
     // prompt is never the second-to-last thing in the buffer.

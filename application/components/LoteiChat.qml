@@ -322,16 +322,51 @@ Rectangle {
 
             // Model manager (gear icon)
             Rectangle {
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 18
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 20
+                Layout.alignment: Qt.AlignVCenter
                 radius: 3
                 color: gearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
 
-                Text {
+                // Drawn rather than typed. "\u2699" has no glyph in Share Tech
+                // Mono (nor in the app's other faces), so Qt was substituting a
+                // system symbol font for that one character -- which is why the
+                // gear came out smaller than its neighbours and sitting on a
+                // different baseline. A Canvas has no font to fall back to: it
+                // scales cleanly and takes the theme colour directly.
+                Canvas {
+                    id: gearIcon
+                    width: 15; height: 15
                     anchors.centerIn: parent
-                    text: "\u2699"   // ⚙
-                    color: Theme.color.lightorange2
-                    font.pixelSize: 13
+                    property color tint: gearMouse.containsMouse ? "#eaffea" : Theme.color.lightorange2
+                    onTintChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d");
+                        ctx.reset();
+                        ctx.translate(width / 2, height / 2);
+                        ctx.fillStyle = gearIcon.tint;
+
+                        var teeth = 8;
+                        var rOuter = width * 0.50;
+                        var rBody  = width * 0.34;
+                        var toothW = width * 0.20;
+
+                        for (var i = 0; i < teeth; i++) {
+                            ctx.save();
+                            ctx.rotate(i * Math.PI / teeth * 2);
+                            ctx.fillRect(-toothW / 2, -rOuter, toothW, rOuter - rBody + 1);
+                            ctx.restore();
+                        }
+                        ctx.beginPath();
+                        ctx.arc(0, 0, rBody, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Punch the hub out so it reads as a gear, not a blob.
+                        ctx.globalCompositeOperation = "destination-out";
+                        ctx.beginPath();
+                        ctx.arc(0, 0, width * 0.14, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 }
                 MouseArea {
                     id: gearMouse
@@ -345,8 +380,9 @@ Rectangle {
 
             // Clear conversation
             Rectangle {
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 18
+                Layout.preferredWidth: 42
+                Layout.preferredHeight: 20
+                Layout.alignment: Qt.AlignVCenter
                 radius: 3
                 color: clearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
 
@@ -368,8 +404,9 @@ Rectangle {
 
             // Minimize / restore (collapse to title bar)
             Rectangle {
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 18
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 20
+                Layout.alignment: Qt.AlignVCenter
                 radius: 3
                 color: minMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
 
@@ -389,8 +426,9 @@ Rectangle {
 
             // Maximize / restore (big read view)
             Rectangle {
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 18
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 20
+                Layout.alignment: Qt.AlignVCenter
                 radius: 3
                 color: maxMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
 
@@ -707,32 +745,47 @@ Rectangle {
         }
     }
 
-    // ---- Model manager popup (gear icon) ----------------------------------
-    Popup {
+    // ---- Model manager panel (gear icon) ----------------------------------
+    // Not a Popup any more. A modal Popup brought a style-drawn dim with it and
+    // read as something layered on top of the app; the CLI panel next door is
+    // just an Item filling the same content box, and that is what the rest of
+    // this UI looks like. So this is the same shape: parented to the overlay
+    // LoteiChat itself sits in (which fills mainContent, exactly the area the
+    // CLI covers), toggled by `open`, no dim behind it.
+    Item {
         id: modelManager
-        parent: Overlay.overlay
-        x: Math.round((parent.width  - width)  / 2)
-        y: Math.round((parent.height - height) / 2)
-        width: 420
-        height: 460
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        parent: root.parent ? root.parent : root
+        anchors.fill: parent
+        z: 200
 
-        // Model list is only pulled fresh when the window opens, not polled --
-        // it changes only in response to actions this same window drives.
+        property bool open: false
+        visible: opacity > 0
+        enabled: visible
+        // Needed for Escape to reach Keys.onEscapePressed below; dropped again
+        // on close so the chat input can take the keyboard back.
+        focus: open
+        opacity: open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.InOutQuad } }
+
+        // Model list is only pulled fresh when the panel opens, not polled --
+        // it changes only in response to actions this same panel drives.
         function openManager() {
             catalogModel.refresh();
             Lotei.detectOllama();
-            open();
+            modelManager.open = true;
+        }
+        function close() { modelManager.open = false; }
+
+        // Swallows anything aimed at the screen behind, the way cliOverlay does.
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            onWheel: function(wheel) { wheel.accepted = true }
         }
 
-        background: Rectangle {
-            radius: 8
-            color: "#0b0410"
-            border.width: 2
-            border.color: Theme.color.lightorange2
-        }
+        Keys.onEscapePressed: modelManager.close()
+
 
         // Backing list model for the catalog. A plain ListModel refreshed from
         // Lotei.modelCatalog() -- simplest option here since the catalog is
@@ -782,23 +835,33 @@ Rectangle {
             function onModelChanged()             { if (modelManager.visible) { catalogModel.refresh(); } }
         }
 
+        // Same panel chrome as the CLI: filled card on the content box, one
+        // border, title in the header row, close on the right.
+        Rectangle {
+            anchors.fill: parent
+            color: "#0b0410"
+            radius: 8
+            border.width: 2
+            border.color: Theme.color.mediumorange2
+        }
+
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
+            anchors.margins: 18
+            spacing: 10
 
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: "Model manager"
+                    text: "MODEL MANAGER"
                     color: Theme.color.lightorange2
-                    font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+                    font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true
                     Layout.fillWidth: true
                 }
                 Text {
                     text: "\u2715"   // ✕
-                    color: closeMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                    font.pixelSize: 14
+                    color: closeMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
+                    font.family: "Share Tech Mono"; font.pixelSize: 18
                     MouseArea {
                         id: closeMouse
                         anchors.fill: parent
@@ -847,6 +910,22 @@ Rectangle {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             font.family: "Share Tech Mono"; font.pixelSize: 10
+                        }
+                        // Manual re-probe, for the macOS path where the install
+                        // happens outside the app (download page / Ollama.app).
+                        Text {
+                            visible: Lotei.modelOpKind !== "ollama"
+                            text: "recheck"
+                            color: recheckMouse.containsMouse ? "#ff6a6a" : "#ffb3b3"
+                            font.family: "Share Tech Mono"; font.pixelSize: 10; font.bold: true
+                            MouseArea {
+                                id: recheckMouse
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Lotei.detectOllama()
+                            }
                         }
                         Text {
                             visible: Lotei.modelOpKind === "ollama"
@@ -927,12 +1006,71 @@ Rectangle {
                         ColumnLayout {
                             visible: model.busy
                             Layout.fillWidth: true
-                            spacing: 2
-                            ProgressBar {
+                            spacing: 4
+
+                            // Deliberately NOT a ProgressBar. The DefaultAmber
+                            // style's ProgressBar is built for the full-screen
+                            // firmware update: its contentItem centres a 48px
+                            // "HaxrCorp 4089" percentage label, and that label is
+                            // `Math.round(control.value) + "%"` -- i.e. it assumes
+                            // value runs 0..100, while ProgressBar's default range
+                            // (and modelOpProgress) is 0..1. Two consequences, both
+                            // visible in the screenshots: the control's implicit
+                            // height collapses to zero, so the 48px label escapes
+                            // and floats unclipped over the row as that pixelated
+                            // blob; and Math.round(0.63) is 1, so it reads "0%"
+                            // until the download passes halfway and then "1%" for
+                            // the entire rest of it. That is the stuck 1%.
+                            Item {
+                                id: barTrack
                                 Layout.fillWidth: true
-                                indeterminate: Lotei.modelOpProgress < 0
-                                value: Lotei.modelOpProgress < 0 ? 0 : Lotei.modelOpProgress
+                                Layout.preferredHeight: 6
+                                clip: true
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 3
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: Theme.color.mediumorange2
+                                }
+
+                                // Determinate fill.
+                                Rectangle {
+                                    visible: Lotei.modelOpProgress >= 0
+                                    x: 1; y: 1
+                                    height: parent.height - 2
+                                    radius: 2
+                                    color: Theme.color.lightorange2
+                                    width: Math.max(0, (barTrack.width - 2) * Math.min(1, Lotei.modelOpProgress))
+                                    Behavior on width { NumberAnimation { duration: 150 } }
+                                }
+
+                                // Indeterminate sweep, for the stages that report
+                                // no percentage ("pulling manifest", "verifying").
+                                Rectangle {
+                                    id: barSweep
+                                    visible: Lotei.modelOpProgress < 0
+                                    y: 1
+                                    height: parent.height - 2
+                                    width: Math.max(12, barTrack.width * 0.25)
+                                    radius: 2
+                                    color: Theme.color.mediumorange1
+                                    SequentialAnimation on x {
+                                        running: barSweep.visible && modelManager.visible
+                                        loops: Animation.Infinite
+                                        NumberAnimation {
+                                            from: 1; to: Math.max(1, barTrack.width - barSweep.width - 1)
+                                            duration: 850; easing.type: Easing.InOutQuad
+                                        }
+                                        NumberAnimation {
+                                            from: Math.max(1, barTrack.width - barSweep.width - 1); to: 1
+                                            duration: 850; easing.type: Easing.InOutQuad
+                                        }
+                                    }
+                                }
                             }
+
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
@@ -941,7 +1079,14 @@ Rectangle {
                                     color: Theme.color.mediumorange1
                                     font.family: "Share Tech Mono"; font.pixelSize: 9
                                     elide: Text.ElideRight
+                                    maximumLineCount: 1
                                     Layout.fillWidth: true
+                                }
+                                Text {
+                                    visible: Lotei.modelOpProgress >= 0
+                                    text: Math.round(Lotei.modelOpProgress * 100) + "%"
+                                    color: Theme.color.lightorange2
+                                    font.family: "Share Tech Mono"; font.pixelSize: 9; font.bold: true
                                 }
                                 Text {
                                     text: "cancel"
@@ -1041,6 +1186,22 @@ Rectangle {
                         }
                     }
                 }
+            }
+
+            // Result line for the op that just finished. Until now the only
+            // places modelOpStatus was shown were bound to an op being *in
+            // flight* (modelOpKind === "ollama", or a row's busy state), so a
+            // fast failure -- start, fail, finish, kind back to "" -- left no
+            // trace anywhere in the UI and read as "the button does nothing".
+            Text {
+                visible: Lotei.modelOpKind === "" && Lotei.modelOpStatus.length > 0
+                text: Lotei.modelOpStatus
+                color: Theme.color.mediumorange1
+                font.family: "Share Tech Mono"; font.pixelSize: 10
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+                Layout.fillWidth: true
             }
         }
     }

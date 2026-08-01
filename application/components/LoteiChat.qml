@@ -106,15 +106,79 @@ Rectangle {
     }
     function copySelection() {
         var t = root.selectedText();
-        if (t.length === 0) {
-            var all = [];
-            for (var i = 0; i < chatModel.count; i++) {
-                all.push((chatModel.get(i).role === "lotei" ? root.aiName : "you") + ": " + chatModel.get(i).text);
-            }
-            t = all.join("\n\n");
-        }
+        if (t.length === 0) { t = root.conversationText(); }
         Cli.copyToClipboard(t);
     }
+    function copyMessage(i) {
+        if (i < 0 || i >= chatModel.count) { return; }
+        Cli.copyToClipboard(chatModel.get(i).text);
+    }
+    function conversationText() {
+        var all = [];
+        for (var i = 0; i < chatModel.count; i++) {
+            all.push((chatModel.get(i).role === "lotei" ? root.aiName : "you") + ": " + chatModel.get(i).text);
+        }
+        return all.join("\n\n");
+    }
+    function copyConversation() { Cli.copyToClipboard(root.conversationText()); }
+
+    // Nothing ever called copySelection() or selectAllMessages(): the drag could
+    // build a selection but there was no way to get it out, which is the whole
+    // reason copying here felt broken next to the CLI. Guarded on the input not
+    // having focus, so Cmd+C/Cmd+A still mean what they should while typing.
+    Shortcut {
+        sequences: [StandardKey.Copy]
+        // Not while the CLI owns the screen -- it has its own selection, and a
+        // Shortcut fires regardless of what is on top.
+        enabled: root.visible && !input.activeFocus && !Cli.open
+        onActivated: root.copySelection()
+    }
+    Shortcut {
+        sequences: [StandardKey.SelectAll]
+        enabled: root.visible && !input.activeFocus && !Cli.open
+        onActivated: root.selectAllMessages()
+    }
+
+    // Right-click menu on a message -- the discoverable half of the same thing.
+    Menu {
+        id: msgMenu
+        property int msgIndex: -1
+        MenuItem {
+            text: "Copy selection"
+            enabled: root.selRange() !== null
+            onTriggered: root.copySelection()
+        }
+        MenuItem {
+            text: "Copy this message"
+            onTriggered: root.copyMessage(msgMenu.msgIndex)
+        }
+        MenuItem {
+            text: "Copy whole conversation"
+            onTriggered: root.copyConversation()
+        }
+        MenuItem {
+            text: "Select all"
+            onTriggered: root.selectAllMessages()
+        }
+    }
+
+    // Dragging a selection past the top or bottom edge scrolls the log, the way
+    // every other text view does. Without it a selection could never reach
+    // anything that was off-screen when the drag started.
+    property real dragScroll: 0
+    Timer {
+        interval: 16; repeat: true; running: root.dragScroll !== 0
+        onTriggered: {
+            var maxY = Math.max(0, listView.contentHeight - listView.height);
+            listView.contentY = Math.max(0, Math.min(maxY, listView.contentY + root.dragScroll));
+        }
+    }
+
+    // Header label. "no model" read like the name of a model; this says what it
+    // actually means, and every layer of the chromatic-aberration stack reads
+    // the same property so they can never drift apart.
+    readonly property bool hasModel: Lotei.modelName.length > 0
+    readonly property string modelLabel: root.hasModel ? Lotei.modelName : "no model selected"
 
     // ---- view state / geometry ------------------------------------------
     // "normal" = docked in the corner, "max" = big read view, "min" = collapsed
@@ -233,6 +297,8 @@ Rectangle {
                 root.appendMessage("lotei", text);
             }
         }
+        // A model was picked (or the first one finished installing).
+        function onModelChanged() { root.greetIfReady(); }
         // Feedback from the manual save panel (model-free save straight to SD).
         function onScriptSaved(path) {
             root.appendMessage("lotei", "✅ Salvo em " + path);
@@ -248,12 +314,22 @@ Rectangle {
     // whenever a Flipper becomes available (startup, connect, or reconnect).
     Timer { interval: 2000; repeat: true; running: true; onTriggered: root.maybeHealthCheck() }
 
-    // One fixed greeting on startup; everything after that is the model talking.
+    // The greeting is the assistant speaking, so it waits until there is an
+    // assistant to speak. With no model selected there is nobody behind it, and
+    // an empty chat that opens with "how can I help you today?" only to reject
+    // the first message is worse than saying nothing. The empty state over the
+    // log explains the situation instead, and the greeting lands the moment a
+    // model is picked.
+    function greetIfReady() {
+        if (!root.hasModel) { return; }
+        if (chatModel.count > 0) { return; }
+        root.appendMessage("lotei", "Hey, how can I help you today?");
+    }
+
     Component.onCompleted: {
-        // The greeting goes first on purpose. It used to sit after a
-        // reloadMemory() call, and anything that threw in there took the
-        // greeting with it -- the chat opened silent.
-        appendMessage("lotei", "Hey, how can I help you today?");
+        // Kept ahead of reloadMemory() for the original reason: anything that
+        // throws in there used to take the greeting down with it.
+        greetIfReady();
         Lotei.reloadMemory();
     }
 
@@ -280,13 +356,19 @@ Rectangle {
                     onTriggered: glitch.off = (Math.random() < 0.16) ? (Math.random() * 2.4) : 0
                 }
 
-                // pulsing status dot: green idle, magenta while thinking
+                // Pulsing status dot, read left to right like a traffic light:
+                //   red    -- no model selected, nothing can be sent
+                //   yellow -- working on an answer
+                //   green  -- ready for the next message
                 Rectangle {
                     id: dot
                     width: 6; height: 6; radius: 3
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    color: Lotei.thinking ? "#ff2fb0" : "#39ff14"
+                    color: !root.hasModel   ? "#ff3b30"
+                         : Lotei.thinking   ? "#ffd400"
+                                            : "#39ff14"
+                    Behavior on color { ColorAnimation { duration: 150 } }
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite; running: true
                         NumberAnimation { from: 1.0; to: 0.2; duration: 850; easing.type: Easing.InOutSine }
@@ -296,14 +378,14 @@ Rectangle {
 
                 // chromatic-aberration layers (magenta + cyan behind, bright on top)
                 Text {
-                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
+                    text: root.modelLabel
                     color: "#ff2fb0"; opacity: 0.7
                     anchors.left: dot.right; anchors.leftMargin: 8 + glitch.off
                     anchors.verticalCenter: parent.verticalCenter
                     font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                 }
                 Text {
-                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
+                    text: root.modelLabel
                     color: "#00e5ff"; opacity: 0.7
                     anchors.left: dot.right; anchors.leftMargin: 8 - glitch.off
                     anchors.verticalCenter: parent.verticalCenter
@@ -311,7 +393,7 @@ Rectangle {
                 }
                 Text {
                     id: modelFg
-                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
+                    text: root.modelLabel
                     color: "#eaffea"
                     anchors.left: dot.right; anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
@@ -322,11 +404,22 @@ Rectangle {
 
             // Model manager (gear icon)
             Rectangle {
+                // Needs an id because the Canvas below reads gearHot. An
+                // unqualified name in a binding resolves against the object
+                // itself, then the root of this file -- it does NOT walk up
+                // through parent objects. So `gearHot` inside the Canvas was a
+                // ReferenceError, the tint binding died, and `tint` sat at the
+                // default-constructed colour: black. Hence the invisible gear.
+                id: gearBtn
                 Layout.preferredWidth: 26
                 Layout.preferredHeight: 20
                 Layout.alignment: Qt.AlignVCenter
                 radius: 3
-                color: gearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+                // One source of truth for both the box and the icon colour: the
+                // panel covers this button while it is open, so hover there is
+                // never real.
+                readonly property bool gearHot: gearMouse.containsMouse && !modelManager.open
+                color: gearBtn.gearHot ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
 
                 // Drawn rather than typed. "\u2699" has no glyph in Share Tech
                 // Mono (nor in the app's other faces), so Qt was substituting a
@@ -338,11 +431,22 @@ Rectangle {
                     id: gearIcon
                     width: 15; height: 15
                     anchors.centerIn: parent
-                    property color tint: gearMouse.containsMouse ? "#eaffea" : Theme.color.lightorange2
+                    // Constant. The hover feedback is the box behind it; the
+                    // icon itself stays the theme pink.
+                    property color tint: Theme.color.lightorange2
                     onTintChanged: requestPaint()
+                    Component.onCompleted: requestPaint()
                     onPaint: {
                         var ctx = getContext("2d");
+                        // reset() restores the context state but does NOT erase
+                        // what is already on the canvas, and a Canvas keeps its
+                        // pixels between paints. So the bright hover gear was
+                        // still sitting underneath when the normal one was drawn
+                        // back over it, and its antialiased edges showed through
+                        // as a white fringe that never went away -- the gear
+                        // looked permanently stuck on.
                         ctx.reset();
+                        ctx.clearRect(0, 0, width, height);
                         ctx.translate(width / 2, height / 2);
                         ctx.fillStyle = gearIcon.tint;
 
@@ -371,11 +475,17 @@ Rectangle {
                 MouseArea {
                     id: gearMouse
                     anchors.fill: parent
-                    hoverEnabled: true
+                    // Switched off while the panel is up. Opening it puts a
+                    // full-area MouseArea over this button, so the exit event
+                    // never arrived and containsMouse stayed true forever --
+                    // the gear kept its hover box and its bright hover colour
+                    // even after the pointer had gone. Dropping hoverEnabled
+                    // resets containsMouse to false.
+                    hoverEnabled: !modelManager.visible
                     cursorShape: Qt.PointingHandCursor
                     onClicked: modelManager.openManager()
                 }
-                ToolTip { text: "Model manager"; visible: gearMouse.containsMouse; delay: 400 }
+
             }
 
             // Clear conversation
@@ -399,7 +509,7 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.clearChat()
                 }
-                ToolTip { text: "Clear chat"; visible: clearMouse.containsMouse; delay: 400 }
+
             }
 
             // Minimize / restore (collapse to title bar)
@@ -520,6 +630,8 @@ Rectangle {
 
                 TextEdit { id: clip; visible: false }  // hidden clipboard helper
 
+                HoverHandler { id: msgHover }
+
                 Row {
                     spacing: 8
                     Rectangle {
@@ -536,6 +648,37 @@ Rectangle {
                             font.pixelSize: 11
                         }
                     }
+                    // One click for the whole message, since that is what people
+                    // want most of the time and a keyboard shortcut nobody can
+                    // see is not an interface.
+                    // msgCopyBtn, not copyBtn: the save-script panel further down
+                    // this same delegate already owns that id, and two of them in
+                    // one component scope is a hard QML error -- the whole file
+                    // fails to load, which takes MainWindow and the app with it.
+                    Text {
+                        id: msgCopyBtn
+                        property bool done: false
+                        visible: msgHover.hovered || done
+                        text: done ? "copied" : "copy"
+                        color: done ? "#39ff14"
+                                    : (msgCopyMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4)
+                        font.family: "Share Tech Mono"
+                        font.pixelSize: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        Timer { id: msgCopiedReset; interval: 1200; onTriggered: msgCopyBtn.done = false }
+                        MouseArea {
+                            id: msgCopyMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.copyMessage(index);
+                                msgCopyBtn.done = true;
+                                msgCopiedReset.restart();
+                            }
+                        }
+                    }
                 }
                 TextEdit {
                     id: bodyText
@@ -549,6 +692,12 @@ Rectangle {
                     wrapMode: TextEdit.Wrap
                     textFormat: model.role === "lotei" ? TextEdit.MarkdownText : TextEdit.PlainText
                     color: "white"
+                    // Spelled out rather than left to the style: the default
+                    // highlight is nearly invisible on this background, so a
+                    // selection that was working still looked like nothing had
+                    // happened. Same blue the role label uses.
+                    selectionColor: "#3b5bdb"
+                    selectedTextColor: "white"
                     font.family: "Share Tech Mono"
                     font.pixelSize: 13
                     onLinkActivated: function(link) { Qt.openUrlExternally(link) }
@@ -557,7 +706,7 @@ Rectangle {
                     // panel below keeps its own mouse handling untouched.
                     MouseArea {
                         anchors.fill: parent
-                        acceptedButtons: Qt.LeftButton
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         cursorShape: Qt.IBeamCursor
                         // The list is a Flickable: without this it steals the
                         // drag halfway through and treats it as a scroll, which
@@ -565,14 +714,31 @@ Rectangle {
                         preventStealing: true
 
                         onPressed: function(mouse) {
+                            if (mouse.button === Qt.RightButton) {
+                                // Keep an existing selection: right-clicking
+                                // inside one in order to copy it should not be
+                                // the thing that throws it away.
+                                if (!root.indexInSelection(index)) { root.clearSelection(); }
+                                msgMenu.msgIndex = index;
+                                msgMenu.popup();
+                                return;
+                            }
                             root.selAnchorIdx = index;
                             root.selAnchorPos = bodyText.positionAt(mouse.x, mouse.y);
                             root.selHeadIdx = index;
                             root.selHeadPos = root.selAnchorPos;
                             root.applySelection();
                         }
+                        onReleased: root.dragScroll = 0
+                        onCanceled: root.dragScroll = 0
                         onPositionChanged: function(mouse) {
                             if (!pressed) { return; }
+                            // Past an edge of the viewport -> scroll towards it,
+                            // faster the further out the pointer goes.
+                            var vp = mapToItem(listView, mouse.x, mouse.y);
+                            if (vp.y < 0)                        { root.dragScroll = Math.max(-30, vp.y / 2); }
+                            else if (vp.y > listView.height)     { root.dragScroll = Math.min(30, (vp.y - listView.height) / 2); }
+                            else                                 { root.dragScroll = 0; }
                             // Which message is under the cursor now? Map into the
                             // list's content item so the answer stays right while
                             // the view scrolls.
@@ -723,14 +889,15 @@ Rectangle {
                     selectionColor: Theme.color.lightorange2
                     font.family: "Share Tech Mono"
                     font.pixelSize: 13
-                    enabled: !Lotei.thinking
+                    enabled: !Lotei.thinking && root.hasModel
                     onAccepted: root.sendCurrent()
 
                     Text {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: input.text.length === 0 && !input.activeFocus
-                        text: "Talk to " + root.aiName + "…"
+                        text: root.hasModel ? ("Talk to " + root.aiName + "…")
+                                            : "Select a model to start…"
                         color: Theme.color.mediumorange1
                         font: input.font
                     }
@@ -739,10 +906,31 @@ Rectangle {
 
             Button {
                 text: "Send"
-                enabled: !Lotei.thinking && input.text.length > 0
+                enabled: !Lotei.thinking && root.hasModel && input.text.length > 0
                 onClicked: root.sendCurrent()
             }
         }
+    }
+
+    // Empty state for the log. Parented to listView rather than declared inside
+    // it: a visual child declared in a ListView is reparented to the scrolling
+    // contentItem, which is zero-height when there are no rows to give it one.
+    //
+    // One line, not three. The heading repeated what the header already says a
+    // few pixels above it, and the "open model manager" link repeated the gear
+    // sitting right next to that -- in the docked size all of it collided with
+    // the input box.
+    Text {
+        parent: listView
+        anchors.centerIn: parent
+        width: Math.max(120, listView.width - 32)
+        visible: chatModel.count === 0 && root.viewState !== "min"
+        text: root.hasModel ? "No messages yet."
+                            : "Pick or install a model to start talking."
+        color: Theme.color.mediumorange1
+        font.family: "Share Tech Mono"; font.pixelSize: 11
+        wrapMode: Text.WordWrap
+        horizontalAlignment: Text.AlignHCenter
     }
 
     // ---- Model manager panel (gear icon) ----------------------------------
@@ -853,7 +1041,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: "MODEL MANAGER"
+                    text: "CHOOSE A MODEL"
                     color: Theme.color.lightorange2
                     font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true
                     Layout.fillWidth: true
@@ -943,14 +1131,6 @@ Rectangle {
                         }
                     }
                 }
-            }
-
-            Text {
-                text: "Curated models known to work well with LOTEI's tools:"
-                color: Theme.color.mediumorange1
-                font.family: "Share Tech Mono"; font.pixelSize: 11
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
             }
 
             // ---- catalog list ----

@@ -122,22 +122,12 @@ AbstractOverlay {
             icon.source: "qrc:/assets/gfx/symbolic/info.svg"
             icon.width: 25
             icon.height: 25
-
-            ToolTip {
-                text: qsTr("Device information")
-                visible: parent.hovered
-            }
         }
 
         TabButton {
             icon.source: "qrc:/assets/gfx/symbolic/wrench.svg"
             icon.width: 27
             icon.height: 27
-
-            ToolTip {
-                text: qsTr("Advanced controls")
-                visible: parent.hovered
-            }
         }
 
         TabButton {
@@ -149,11 +139,6 @@ AbstractOverlay {
             icon.height: 29
 
             onCheckedChanged: if(checked) Backend.fileManager.refresh()
-
-            ToolTip {
-                text: qsTr("File manager")
-                visible: parent.hovered
-            }
         }
     }
 

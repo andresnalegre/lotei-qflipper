@@ -84,8 +84,8 @@ struct LoteiCatalogEntry {
     const char *blurb;
 };
 static const LoteiCatalogEntry LOTEI_CATALOG[] = {
-    { "qwen2.5:7b",  "Qwen 2.5 7B",     "4.7 GB", "Default pick. Reliable tool-calling, good balance of speed and quality." },
-    { "qwen2.5:3b",  "Qwen 2.5 3B",     "1.9 GB", "Lighter/faster version of the default -- for weaker GPUs or CPU-only." },
+    { "qwen2.5:3b",  "Qwen 2.5 3B",     "1.9 GB", "Lighter and faster -- runs on a weaker GPU, or on CPU alone." },
+    { "qwen2.5:7b",  "Qwen 2.5 7B",     "4.7 GB", "Reliable tool-calling, good balance of speed and quality." },
     { "llama3.1:8b", "Llama 3.1 8B",    "4.7 GB", "Strong general-purpose alternative, solid tool support." },
     { "mistral:7b",  "Mistral 7B",      "4.1 GB", "Fast, capable, tool-calling supported." },
     { "phi3.5",      "Phi-3.5 Mini",    "2.2 GB", "Small and quick. Weaker at following the tool-call format than the others." },
@@ -1690,9 +1690,12 @@ void LoteiBackend::runModelOp(const QString &kind, const QString &name, const QS
         const bool cancelled = m_modelOpCancelled;
         if (cancelled && kind == QLatin1String("install")) { purgePartialBlobs(); }
         const QString tail = sanitizeStatusLine(QString::fromUtf8(m_modelOpBuf.right(400)));
+        // Cancelling leaves no message at all. The row goes straight back to
+        // "install", which is the whole of what happened -- a line reporting
+        // the cleanup was explaining an implementation detail to someone who
+        // had just said they were not interested. Failures still speak up.
         const QString message = cancelled
-            ? (kind == QLatin1String("install") ? QStringLiteral("Cancelled -- partial download removed.")
-                                                 : QStringLiteral("Cancelled."))
+            ? QString()
             : (ok ? (kind == QLatin1String("install") ? QStringLiteral("%1 is ready.").arg(name)
                                                         : QStringLiteral("%1 removed.").arg(name))
                   : (tail.isEmpty() ? QStringLiteral("ollama exited with code %1.").arg(code) : tail));
@@ -1897,7 +1900,7 @@ void LoteiBackend::installOllama()
         const bool ok = (status == QProcess::NormalExit && code == 0);
         const bool cancelled = m_modelOpCancelled;
         const QString tail = sanitizeStatusLine(QString::fromUtf8(m_modelOpBuf.right(400)));
-        const QString message = cancelled ? QStringLiteral("Cancelled.")
+        const QString message = cancelled ? QString()
             : (ok ? QStringLiteral("Ollama installed.")
                   : (tail.isEmpty() ? QStringLiteral("installer exited with code %1.").arg(code) : tail));
         finishModelOp(ok, message);

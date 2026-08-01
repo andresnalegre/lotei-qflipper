@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"unknown\" -DAPP_TIMESTAMP=0 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"63527538\" -DAPP_TIMESTAMP=1785341372 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 -fPIC $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -fPIC -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../dfu -I. -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -37,7 +37,7 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = dfu1.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/dfu/.tmp/dfu1.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/dfu/.tmp/dfu1.0.0
 AR            = /Library/Developer/CommandLineTools/usr/bin/ar cq
 RANLIB        = /Library/Developer/CommandLineTools/usr/bin/ranlib -s
 SED           = sed
@@ -482,7 +482,7 @@ EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro
 
 
 first: all
@@ -1328,7 +1328,7 @@ moc_stm32wb55.cpp: ../../dfu/device/stm32wb55/stm32wb55.h \
 		../../dfu/device/stm32wb55/fusstate.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/device/stm32wb55/stm32wb55.h -o moc_stm32wb55.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/device/stm32wb55/stm32wb55.h -o moc_stm32wb55.cpp
 
 moc_dfusedevice.cpp: ../../dfu/dfusedevice.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QIODevice \
@@ -1349,7 +1349,7 @@ moc_dfusedevice.cpp: ../../dfu/dfusedevice.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/dfusedevice.h -o moc_dfusedevice.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/dfusedevice.h -o moc_dfusedevice.cpp
 
 moc_usbdevice.cpp: ../../dfu/libusb/usbdevice.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
@@ -1359,7 +1359,7 @@ moc_usbdevice.cpp: ../../dfu/libusb/usbdevice.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMetaType \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/libusb/usbdevice.h -o moc_usbdevice.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/libusb/usbdevice.h -o moc_usbdevice.cpp
 
 moc_usbdevicedetector.cpp: ../../dfu/libusb/usbdevicedetector.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVector \
@@ -1370,7 +1370,7 @@ moc_usbdevicedetector.cpp: ../../dfu/libusb/usbdevicedetector.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMetaType \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/libusb/usbdevicedetector.h -o moc_usbdevicedetector.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/dfu/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../dfu/libusb/usbdevicedetector.h -o moc_usbdevicedetector.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:

@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"unknown\" -DAPP_TIMESTAMP=0 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_SERIALPORT_LIB -DQT_NETWORK_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"63527538\" -DAPP_TIMESTAMP=1785341372 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_SERIALPORT_LIB -DQT_NETWORK_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../cli -I. -I../../dfu -I../../backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -37,10 +37,10 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = qFlipper-cli1.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/cli/.tmp/qFlipper-cli1.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/.tmp/qFlipper-cli1.0.0
 LINK          = /Library/Developer/CommandLineTools/usr/bin/clang++
 LFLAGS        = -stdlib=libc++ -headerpad_max_install_names $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,/opt/homebrew/lib
-LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../backend/ -lbackend -L/Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../dfu/ -ldfu -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtSerialPort -framework QtNetwork -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers   
+LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../backend/ -lbackend -L/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../dfu/ -ldfu -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtSerialPort -framework QtNetwork -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers   
 AR            = /Library/Developer/CommandLineTools/usr/bin/ar cq
 RANLIB        = /Library/Developer/CommandLineTools/usr/bin/ranlib -s
 SED           = sed
@@ -441,19 +441,19 @@ TARGET        = ../../build_mac/qFlipper-cli
 EXPORT_QMAKE_MAC_SDK = macosx
 EXPORT_QMAKE_MAC_SDK_VERSION = 26.4.1
 EXPORT_QMAKE_XCODE_DEVELOPER_PATH = /Library/Developer/CommandLineTools
-EXPORT__QMAKE_STASH_ = /Users/nikita/Desktop/lotei-qflipper/build_mac/.qmake.stash
+EXPORT__QMAKE_STASH_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/.qmake.stash
 EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro
 
 
 include /opt/homebrew/share/qt/mkspecs/features/mac/sdk.mk
 first: all
 ####### Build rules
 
-../../build_mac/qFlipper-cli: /Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../backend/libbackend.a /Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../dfu/libdfu.a $(OBJECTS)  
+../../build_mac/qFlipper-cli: /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../backend/libbackend.a /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../dfu/libdfu.a $(OBJECTS)  
 	@test -d ../../build_mac/ || mkdir -p ../../build_mac/
 	$(LINK) $(LFLAGS) -o $(TARGET)  $(OBJECTS) $(OBJCOMP) $(LIBS)
 
@@ -1285,7 +1285,7 @@ moc_cli.cpp: ../../cli/cli.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonValue \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/cli/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/cli -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../cli/cli.h -o moc_cli.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/cli -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../cli/cli.h -o moc_cli.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:
@@ -1361,13 +1361,13 @@ moc_cli.o: moc_cli.cpp
 ####### Install
 
 install_target: first FORCE
-	@test -d $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS || mkdir -p $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS
-	$(QINSTALL_PROGRAM) ../../build_mac/$(QMAKE_TARGET) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
-	-$(STRIP) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
+	@test -d $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS || mkdir -p $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS
+	$(QINSTALL_PROGRAM) ../../build_mac/$(QMAKE_TARGET) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
+	-$(STRIP) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
 
 uninstall_target: FORCE
-	-$(DEL_FILE) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
-	-$(DEL_DIR) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS/ 
+	-$(DEL_FILE) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/MacOS/$(QMAKE_TARGET)
+	-$(DEL_DIR) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/cli/../qFlipper.app/Contents/MacOS/ 
 
 
 install: install_target  FORCE

@@ -57,12 +57,37 @@
 #include "flipperzero/utility/filesuploadoperation.h"
 
 // ---- Configuration -------------------------------------------------------
-static const char *LOTEI_MODEL = "phi3.5";
+// No hardcoded fallback model anymore -- see refreshModels(): if the saved
+// choice isn't installed, we fall back to whatever the user actually has,
+// picked from the catalog below in recommended order, not an assumption
+// about what's on their machine.
+static const char *LOTEI_MODEL = "";
 static const char *LOTEI_URL   = "http://localhost:11434/api/chat";
 static const int   LOTEI_NUM_CTX = 8192;
 static const int   LOTEI_MAX_TOOL_ROUNDS = 12;   // more headroom for multi-step agent work
 static const int   LOTEI_READ_CAP = 8000;
 static const int   LOTEI_MAX_PRESSES = 12;
+
+// ---- Model catalog (gear icon / model manager) ----------------------------
+// A curated shortlist, not the full Ollama library -- these are the models
+// known to behave well with LOTEI's tool-calling. Order here is also the
+// fallback preference order in refreshModels() when the saved model is gone.
+// "tag" is the exact name passed to `ollama pull` / matched against /api/tags.
+struct LoteiCatalogEntry {
+    const char *tag;
+    const char *label;
+    const char *size;    // approx download size, for the list UI
+    const char *blurb;
+};
+static const LoteiCatalogEntry LOTEI_CATALOG[] = {
+    { "qwen2.5:7b",  "Qwen 2.5 7B",     "4.7 GB", "Default pick. Reliable tool-calling, good balance of speed and quality." },
+    { "qwen2.5:3b",  "Qwen 2.5 3B",     "1.9 GB", "Lighter/faster version of the default -- for weaker GPUs or CPU-only." },
+    { "llama3.1:8b", "Llama 3.1 8B",    "4.7 GB", "Strong general-purpose alternative, solid tool support." },
+    { "mistral:7b",  "Mistral 7B",      "4.1 GB", "Fast, capable, tool-calling supported." },
+    { "phi3.5",      "Phi-3.5 Mini",    "2.2 GB", "Small and quick. Weaker at following the tool-call format than the others." },
+    { "gemma2:9b",   "Gemma 2 9B",      "5.4 GB", "Chat-only in LOTEI: Ollama does not support tool-calling for this model." },
+};
+static const int LOTEI_CATALOG_COUNT = int(sizeof(LOTEI_CATALOG) / sizeof(LOTEI_CATALOG[0]));
 
 // ---- Host agent (edit/test the app's own source) -------------------------
 // Off by default. The user opts in and picks a workspace folder; every host
@@ -1012,6 +1037,10 @@ LoteiBackend::LoteiBackend(QObject *parent)
     QDir().mkpath(m_voiceTmpDir);
     discoverPiper();
     refreshModels();   // discover installed Ollama models (async; harmless if Ollama's down)
+    // Deferred rather than called inline: detectOllamaBinary() spawns a small
+    // process and briefly blocks the calling thread, and this way it happens
+    // once the event loop is already pumping instead of stretching startup.
+    QTimer::singleShot(0, this, &LoteiBackend::detectOllama);
 #ifdef HZUI_VOICE
     // Restore the saved voice once the TTS engine has enumerated its voices.
     QTimer::singleShot(1200, this, [this]() {
@@ -1363,6 +1392,7 @@ QStringList LoteiBackend::availableModels() const
 void LoteiBackend::setModel(const QString &model)
 {
     if (model.isEmpty() || model == m_model) { return; }
+    if (!m_models.contains(model)) { return; }   // can only equip a model that's actually installed
     m_model = model;
     QSettings().setValue(QStringLiteral("lotei/model"), m_model);
     emit modelChanged();
@@ -1396,23 +1426,328 @@ void LoteiBackend::refreshModels()
             m_models = found;
             emit modelChanged();   // let the switcher pick up the discovered list
         }
-        // Self-heal: if the saved model isn't installed in Ollama anymore (e.g. an
-        // old qwen the user removed), fall back to the default -- or the first model
-        // available -- and persist it, so we never stay stuck on a deleted model.
-        auto baseAvailable = [&found](const QString &m) {
-            const QString base = m.section(QLatin1Char(':'), 0, 0);
-            for (const QString &f : found) {
-                if (f == m || f.section(QLatin1Char(':'), 0, 0) == base) { return true; }
+        // Self-heal: if the saved model isn't installed in Ollama anymore (e.g. the
+        // user removed it), fall back to the best one actually on the machine --
+        // walking the catalog's recommended order first -- and persist it, so we
+        // never stay stuck pointing at a deleted model. This has to be an exact
+        // tag check, not a base-name one: equip is per-exact-tag (qwen2.5:7b and
+        // qwen2.5:3b are different installs), so "some sibling quant is still
+        // around" is not the same thing as "this model is still around".
+        if (!found.contains(m_model)) {
+            QString pick;
+            for (int i = 0; i < LOTEI_CATALOG_COUNT && pick.isEmpty(); ++i) {
+                const QString cand = QString::fromUtf8(LOTEI_CATALOG[i].tag);
+                if (found.contains(cand)) { pick = cand; }
             }
-            return false;
-        };
-        if (!found.isEmpty() && !baseAvailable(m_model)) {
-            const QString def = QString::fromUtf8(LOTEI_MODEL);
-            m_model = baseAvailable(def) ? def : found.first();
-            QSettings().setValue(QStringLiteral("lotei/model"), m_model);
-            emit modelChanged();
+            // Nothing installed at all -> no active model, rather than leaving
+            // m_model (and the "active" pill) pointing at something that's gone.
+            const QString next = pick.isEmpty() ? (found.isEmpty() ? QString() : found.first()) : pick;
+            if (next != m_model) {
+                m_model = next;
+                QSettings().setValue(QStringLiteral("lotei/model"), m_model);
+                emit modelChanged();
+            }
         }
     });
+}
+
+// ---- Model manager (gear icon) --------------------------------------------
+
+QVariantList LoteiBackend::modelCatalog() const
+{
+    QVariantList out;
+    for (int i = 0; i < LOTEI_CATALOG_COUNT; ++i) {
+        const LoteiCatalogEntry &e = LOTEI_CATALOG[i];
+        const QString tag = QString::fromUtf8(e.tag);
+        // Exact tag match only. The base-name comparison (used in refreshModels()'s
+        // self-heal, where "is *some* variant of this family still here?" is the
+        // right question) is wrong here: qwen2.5:7b and qwen2.5:3b share the base
+        // "qwen2.5", so it was marking both installed/active off of either one alone.
+        bool installed = false;
+        for (const QString &m : m_models) {
+            if (m == tag) { installed = true; break; }
+        }
+        out.append(QVariantMap{
+            {"tag",       tag},
+            {"label",     QString::fromUtf8(e.label)},
+            {"size",      QString::fromUtf8(e.size)},
+            {"blurb",     QString::fromUtf8(e.blurb)},
+            {"installed", installed},
+            {"active",    installed && tag == m_model},
+            // Busy state for THIS row, so the list can disable just the one button.
+            {"busy",      m_modelOpProc && m_modelOpName == tag}
+        });
+    }
+    return out;
+}
+
+// True while a pull/rm/Ollama-install is running -- callers should disable
+// every row's buttons except a possible cancel, but we keep it simple and
+// just refuse a second op outright (see runModelOp).
+void LoteiBackend::setModelOp(const QString &kind, const QString &name,
+                              const QString &status, double progress)
+{
+    m_modelOpKind = kind;
+    m_modelOpName = name;
+    m_modelOpStatus = status;
+    m_modelOpProgress = progress;
+    emit modelOpChanged();
+}
+
+// `ollama pull` lines look like "pulling 8934d996d8:  63% ▕████████▏ 2.9 GB/4.7 GB".
+// The ▕...▏ segment is ollama's own ASCII-art bar, drawn with Unicode block
+// characters. We already render a native ProgressBar from the parsed
+// percentage (see appendModelOpOutput below), so that segment is redundant --
+// and displaying it caused a visible glitch: the UI font doesn't have glyphs
+// for those block-drawing characters, so Qt substitutes a fallback font just
+// for that run, which renders at a mismatched size and baseline (a stray
+// glyph floating above the rest of the line). This cuts it out before display.
+static QString stripOllamaBar(const QString &line)
+{
+    const int lo = line.indexOf(QChar(0x2595));   // ▕ -- bar's left cap
+    const int hi = line.indexOf(QChar(0x258F));   // ▏ -- bar's right cap
+    if (lo >= 0 && hi > lo) {
+        return (line.left(lo) + QLatin1Char(' ') + line.mid(hi + 1)).simplified();
+    }
+    return line;
+}
+
+// `ollama pull` resumes from partial blobs on disk by design (handy on a
+// flaky connection) -- but that works against an intentional cancel: if the
+// user genuinely doesn't want the model, re-pulling it later would silently
+// pick the interrupted download back up instead of starting clean, and the
+// half-downloaded blob just sits there as dead weight if they never do.
+// `ollama rm` won't touch it either -- the manifest that rm looks up was
+// never written, since it's only created after every blob finishes (this is
+// a known rough edge in ollama itself, see ollama/ollama#14177).
+//
+// Partial blobs are safe to delete outright: the "-partial" suffix is only
+// ever used for a download that hasn't finished, so nothing can already be
+// referencing one. A fully-downloaded, deduped layer keeps its plain
+// sha256-<hash> name and is never touched by this.
+static void purgePartialBlobs()
+{
+    QString modelsDir = qEnvironmentVariable("OLLAMA_MODELS");
+    if (modelsDir.isEmpty()) {
+        modelsDir = QDir::homePath() + QStringLiteral("/.ollama/models");
+    }
+    QDir blobs(modelsDir + QStringLiteral("/blobs"));
+    if (!blobs.exists()) { return; }
+    const QStringList partials = blobs.entryList({QStringLiteral("sha256-*-partial*")}, QDir::Files);
+    for (const QString &f : partials) { QFile::remove(blobs.filePath(f)); }
+}
+
+void LoteiBackend::installModel(const QString &name)
+{
+    if (name.trimmed().isEmpty()) { return; }
+    if (!m_ollamaInstalled) {
+        emit modelInstallFinished(name, false, QStringLiteral("Ollama itself isn't installed yet."));
+        return;
+    }
+    runModelOp(QStringLiteral("install"), name, {QStringLiteral("pull"), name});
+}
+
+void LoteiBackend::uninstallModel(const QString &name)
+{
+    if (name.trimmed().isEmpty()) { return; }
+    runModelOp(QStringLiteral("uninstall"), name, {QStringLiteral("rm"), name});
+}
+
+void LoteiBackend::cancelModelOp()
+{
+    if (!m_modelOpProc) { return; }
+    m_modelOpCancelled = true;
+    setModelOp(m_modelOpKind, m_modelOpName, QStringLiteral("Cancelling…"), -1.0);
+    // kill() rather than terminate() -- ollama pull, winget and curl|sh don't
+    // reliably respond to a polite SIGTERM. The finished handler already wired
+    // up in runModelOp()/installOllama() picks up the exit from here and does
+    // the cleanup + reports it as "Cancelled." rather than an exit-code message.
+    m_modelOpProc->kill();
+}
+
+// Fires up `ollama <args>` (pull/rm) as a tracked child process. Only one
+// model op (or the Ollama installer below) runs at a time -- a second call
+// while one is in flight is rejected rather than queued, so progress in the
+// UI always refers to exactly one row.
+void LoteiBackend::runModelOp(const QString &kind, const QString &name, const QStringList &args)
+{
+    if (m_modelOpProc) {
+        const QString msg = QStringLiteral("Already %1 %2 -- wait for that to finish first.")
+                                 .arg(m_modelOpKind, m_modelOpName);
+        if (kind == QLatin1String("install"))   { emit modelInstallFinished(name, false, msg); }
+        else                                    { emit modelUninstallFinished(name, false, msg); }
+        return;
+    }
+
+    setModelOp(kind, name, kind == QLatin1String("install") ? QStringLiteral("Starting download…")
+                                                              : QStringLiteral("Removing…"), -1.0);
+
+    m_modelOpCancelled = false;
+    m_modelOpBuf.clear();
+    m_modelOpProc = new QProcess(this);
+    m_modelOpProc->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(m_modelOpProc, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendModelOpOutput(m_modelOpProc->readAllStandardOutput());
+    });
+
+    connect(m_modelOpProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, kind, name](int code, QProcess::ExitStatus status) {
+        const bool ok = (status == QProcess::NormalExit && code == 0);
+        const bool cancelled = m_modelOpCancelled;
+        if (cancelled && kind == QLatin1String("install")) { purgePartialBlobs(); }
+        const QString tail = stripOllamaBar(QString::fromUtf8(m_modelOpBuf.right(400)).trimmed());
+        const QString message = cancelled
+            ? (kind == QLatin1String("install") ? QStringLiteral("Cancelled -- partial download removed.")
+                                                 : QStringLiteral("Cancelled."))
+            : (ok ? (kind == QLatin1String("install") ? QStringLiteral("%1 is ready.").arg(name)
+                                                        : QStringLiteral("%1 removed.").arg(name))
+                  : (tail.isEmpty() ? QStringLiteral("ollama exited with code %1.").arg(code) : tail));
+        finishModelOp(ok, message);
+        if (kind == QLatin1String("install"))   { emit modelInstallFinished(name, ok && !cancelled, message); }
+        else                                    { emit modelUninstallFinished(name, ok && !cancelled, message); }
+        refreshModels();   // pick up the new install list either way
+    });
+
+    connect(m_modelOpProc, &QProcess::errorOccurred, this, [this, kind, name](QProcess::ProcessError) {
+        if (!m_modelOpProc) { return; }
+        const QString message = QStringLiteral("couldn't start ollama -- is it on PATH?");
+        finishModelOp(false, message);
+        if (kind == QLatin1String("install"))   { emit modelInstallFinished(name, false, message); }
+        else                                    { emit modelUninstallFinished(name, false, message); }
+    });
+
+    m_modelOpProc->start(QStringLiteral("ollama"), args);
+}
+
+// `ollama pull` redraws its progress bar with '\r', not '\n', so split on
+// either. Lines look like "pulling 8934d996d8:  63% ▕████████▏ 2.9 GB/4.7 GB"
+// -- pull the percentage out with a light-touch scan (no QRegularExpression
+// dependency here) rather than parse the whole bar.
+void LoteiBackend::appendModelOpOutput(const QByteArray &chunk)
+{
+    m_modelOpBuf += chunk;
+    if (m_modelOpBuf.size() > 8000) { m_modelOpBuf.remove(0, m_modelOpBuf.size() - 8000); }
+
+    QByteArray tail = chunk;
+    tail.replace('\r', '\n');
+    const QList<QByteArray> lines = tail.split('\n');
+    QString lastLine;
+    for (const QByteArray &l : lines) {
+        if (!l.trimmed().isEmpty()) { lastLine = QString::fromUtf8(l).trimmed(); }
+    }
+    if (lastLine.isEmpty()) { return; }
+
+    double progress = -1.0;
+    const int pct = lastLine.indexOf(QLatin1Char('%'));
+    if (pct > 0) {
+        int start = pct - 1;
+        while (start >= 0 && (lastLine.at(start).isDigit())) { --start; }
+        bool ok = false;
+        const int v = lastLine.mid(start + 1, pct - start - 1).toInt(&ok);
+        if (ok) { progress = qBound(0.0, v / 100.0, 1.0); }
+    }
+    setModelOp(m_modelOpKind, m_modelOpName, stripOllamaBar(lastLine), progress);
+}
+
+void LoteiBackend::finishModelOp(bool /*ok*/, const QString &message)
+{
+    if (m_modelOpProc) { m_modelOpProc->deleteLater(); m_modelOpProc = nullptr; }
+    setModelOp(QString(), QString(), message, -1.0);
+}
+
+// ---- Ollama itself (not a model) ------------------------------------------
+
+// Plain cached read -- never spawns a process from a property getter (QML
+// bindings evaluate these on the UI thread, and `where`/`which` can briefly
+// stall on a slow disk). The cache is primed by detectOllama(), called once
+// from the constructor via a queued call and again whenever the user hits
+// "Install Ollama" or the manual recheck.
+bool LoteiBackend::ollamaInstalled() const
+{
+    return m_ollamaInstalled;
+}
+
+void LoteiBackend::detectOllama()
+{
+    const bool was = m_ollamaInstalled;
+    m_ollamaInstalled = detectOllamaBinary();
+    m_ollamaChecked = true;
+    if (was != m_ollamaInstalled) { emit ollamaInstalledChanged(); }
+    if (m_ollamaInstalled) { refreshModels(); }
+}
+
+bool LoteiBackend::detectOllamaBinary() const
+{
+    // `ollama --version` -- succeeds (exit 0) whether or not the server/tray
+    // app is currently running; we only care whether the CLI is on PATH.
+    QProcess p;
+    p.setProcessChannelMode(QProcess::MergedChannels);
+#if defined(Q_OS_WIN)
+    p.start(QStringLiteral("where"), {QStringLiteral("ollama")});
+#else
+    p.start(QStringLiteral("which"), {QStringLiteral("ollama")});
+#endif
+    if (!p.waitForStarted(3000)) { return false; }
+    p.waitForFinished(3000);
+    return p.exitCode() == 0;
+}
+
+// Installs the Ollama application itself via the platform's normal channel.
+// This is NOT a model -- it's the runtime the models above depend on. There
+// is no single official one-liner for every platform, so:
+//   - Linux/macOS: the official install script (curl | sh), same one-liner
+//     https://ollama.com documents.
+//   - Windows: winget, which ships with Windows 10 2004+/11 -- the closest
+//     thing to an unattended install without bundling our own copy of the
+//     ~700 MB Windows installer.
+// Either way this only ever runs when the user clicks "Install Ollama" --
+// never automatically.
+void LoteiBackend::installOllama()
+{
+    if (m_modelOpProc) {
+        emit ollamaInstallFinished(false, QStringLiteral("An install/uninstall is already running -- wait for it first."));
+        return;
+    }
+    setModelOp(QStringLiteral("ollama"), QString(), QStringLiteral("Installing Ollama…"), -1.0);
+    m_modelOpCancelled = false;
+    m_modelOpBuf.clear();
+    m_modelOpProc = new QProcess(this);
+    m_modelOpProc->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(m_modelOpProc, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendModelOpOutput(m_modelOpProc->readAllStandardOutput());
+    });
+    connect(m_modelOpProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this](int code, QProcess::ExitStatus status) {
+        const bool ok = (status == QProcess::NormalExit && code == 0);
+        const bool cancelled = m_modelOpCancelled;
+        const QString tail = stripOllamaBar(QString::fromUtf8(m_modelOpBuf.right(400)).trimmed());
+        const QString message = cancelled ? QStringLiteral("Cancelled.")
+            : (ok ? QStringLiteral("Ollama installed.")
+                  : (tail.isEmpty() ? QStringLiteral("installer exited with code %1.").arg(code) : tail));
+        finishModelOp(ok, message);
+        m_ollamaChecked = false;   // force a fresh `where`/`which` check
+        if (ok && !cancelled) { detectOllama(); }
+        emit ollamaInstallFinished(ok && !cancelled, message);
+    });
+    connect(m_modelOpProc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (!m_modelOpProc) { return; }
+        const QString message = QStringLiteral("couldn't start the installer.");
+        finishModelOp(false, message);
+        emit ollamaInstallFinished(false, message);
+    });
+
+#if defined(Q_OS_WIN)
+    m_modelOpProc->start(QStringLiteral("winget"),
+                         {QStringLiteral("install"), QStringLiteral("--id"), QStringLiteral("Ollama.Ollama"),
+                          QStringLiteral("-e"), QStringLiteral("--accept-package-agreements"),
+                          QStringLiteral("--accept-source-agreements")});
+#else
+    // sh -c so the pipe (curl | sh) actually pipes.
+    m_modelOpProc->start(QStringLiteral("/bin/sh"),
+                         {QStringLiteral("-c"), QStringLiteral("curl -fsSL https://ollama.com/install.sh | sh")});
+#endif
 }
 
 bool LoteiBackend::setupComplete() const { return m_setupComplete; }
@@ -1840,19 +2175,21 @@ static QString friendlyOllamaError(const QByteArray &body, const QString &model,
     // The common one on modest machines: the model doesn't fit in RAM/VRAM.
     if (low.contains(QStringLiteral("system memory")) || low.contains(QStringLiteral("out of memory"))
         || low.contains(QStringLiteral("insufficient memory")) || low.contains(QStringLiteral("cudamalloc"))) {
-        return QStringLiteral("%1 needs more memory than you have free. Try a smaller brain — run "
-                              "`ollama pull phi3.5`, then click my model name to switch. (Ollama said: %2)")
+        return QStringLiteral("%1 needs more memory than you have free. Open the model manager (gear icon) "
+                              "and install a smaller model like qwen2.5:3b, then click my name to switch. "
+                              "(Ollama said: %2)")
                 .arg(model, raw);
     }
     // Model was never pulled.
     if (low.contains(QStringLiteral("not found"))) {
-        return QStringLiteral("the model %1 isn't downloaded yet. Run `ollama pull %1` in a terminal, "
-                              "then poke me again.").arg(model);
+        return QStringLiteral("the model %1 isn't downloaded yet. Open the model manager (gear icon) and "
+                              "hit Install next to it, then poke me again.").arg(model);
     }
     // Tools: we already retry tools-less once; if we still land here, say so plainly.
     if (low.contains(QStringLiteral("tool"))) {
         return QStringLiteral("%1 can't use my Flipper tools. Chat still works — for the device tools, "
-                              "pick a tool-capable model like phi3.5. (Ollama said: %2)").arg(model, raw);
+                              "open the model manager (gear icon) and install a tool-capable model like "
+                              "qwen2.5:7b. (Ollama said: %2)").arg(model, raw);
     }
     return QStringLiteral("Ollama said: %1").arg(raw);
 }

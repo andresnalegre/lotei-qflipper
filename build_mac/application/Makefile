@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"unknown\" -DAPP_TIMESTAMP=0 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"63527538\" -DAPP_TIMESTAMP=1785341372 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../application -I. -I../../dfu -I../../backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -37,10 +37,10 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = qFlipper1.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/application/.tmp/qFlipper1.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/.tmp/qFlipper1.0.0
 LINK          = /Library/Developer/CommandLineTools/usr/bin/clang++
 LFLAGS        = -stdlib=libc++ -headerpad_max_install_names $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,/opt/homebrew/lib
-LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lotei-qflipper/build_mac/application/../backend/ -lbackend -L/Users/nikita/Desktop/lotei-qflipper/build_mac/application/../dfu/ -ldfu -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtQuickControls2 -framework QtQuick -framework QtOpenGL -framework QtWidgets -framework QtSvg -framework QtGui -framework AppKit -framework ImageIO -framework Metal -framework QtQml -framework QtNetwork -framework QtSerialPort -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers -framework OpenGL   
+LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/../backend/ -lbackend -L/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/../dfu/ -ldfu -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtQuickControls2 -framework QtQuick -framework QtOpenGL -framework QtWidgets -framework QtSvg -framework QtGui -framework AppKit -framework ImageIO -framework Metal -framework QtQml -framework QtNetwork -framework QtSerialPort -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers -framework OpenGL   
 AR            = /Library/Developer/CommandLineTools/usr/bin/ar cq
 RANLIB        = /Library/Developer/CommandLineTools/usr/bin/ranlib -s
 SED           = sed
@@ -621,19 +621,19 @@ TARGET        = ../../build_mac/qFlipper.app/Contents/MacOS/qFlipper
 EXPORT_QMAKE_MAC_SDK = macosx
 EXPORT_QMAKE_MAC_SDK_VERSION = 26.4.1
 EXPORT_QMAKE_XCODE_DEVELOPER_PATH = /Library/Developer/CommandLineTools
-EXPORT__QMAKE_STASH_ = /Users/nikita/Desktop/lotei-qflipper/build_mac/.qmake.stash
+EXPORT__QMAKE_STASH_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/.qmake.stash
 EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/application/application.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro
 
 
 include /opt/homebrew/share/qt/mkspecs/features/mac/sdk.mk
 first: all
 ####### Build rules
 
-../../build_mac/qFlipper.app/Contents/MacOS/qFlipper: /Users/nikita/Desktop/lotei-qflipper/build_mac/application/../backend/libbackend.a /Users/nikita/Desktop/lotei-qflipper/build_mac/application/../dfu/libdfu.a $(OBJECTS)  
+../../build_mac/qFlipper.app/Contents/MacOS/qFlipper: /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/../backend/libbackend.a /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/../dfu/libdfu.a $(OBJECTS)  
 	@test -d ../../build_mac/qFlipper.app/Contents/MacOS/ || mkdir -p ../../build_mac/qFlipper.app/Contents/MacOS/
 	$(LINK) $(LFLAGS) -o $(TARGET)  $(OBJECTS) $(OBJCOMP) $(LIBS)
 
@@ -1494,253 +1494,253 @@ compiler_qmlcache_clean:
 	-$(DEL_FILE) styles_DefaultAmber_Button_qml.cpp
 main_qml.cpp: ../../application/main.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o main_qml.cpp ../../application/main.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o main_qml.cpp ../../application/main.qml
 
 imports_Primitives_ColorSet_qml.cpp: ../../application/imports/Primitives/ColorSet.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Primitives_ColorSet_qml.cpp ../../application/imports/Primitives/ColorSet.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Primitives_ColorSet_qml.cpp ../../application/imports/Primitives/ColorSet.qml
 
 imports_Primitives_AdvancedRectangle_qml.cpp: ../../application/imports/Primitives/AdvancedRectangle.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Primitives_AdvancedRectangle_qml.cpp ../../application/imports/Primitives/AdvancedRectangle.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Primitives_AdvancedRectangle_qml.cpp ../../application/imports/Primitives/AdvancedRectangle.qml
 
 imports_Misc_FileTypes_qml.cpp: ../../application/imports/Misc/FileTypes.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Misc_FileTypes_qml.cpp ../../application/imports/Misc/FileTypes.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Misc_FileTypes_qml.cpp ../../application/imports/Misc/FileTypes.qml
 
 imports_Misc_ErrorStrings_qml.cpp: ../../application/imports/Misc/ErrorStrings.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Misc_ErrorStrings_qml.cpp ../../application/imports/Misc/ErrorStrings.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Misc_ErrorStrings_qml.cpp ../../application/imports/Misc/ErrorStrings.qml
 
 imports_Misc_Mitigations_qml.cpp: ../../application/imports/Misc/Mitigations.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Misc_Mitigations_qml.cpp ../../application/imports/Misc/Mitigations.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Misc_Mitigations_qml.cpp ../../application/imports/Misc/Mitigations.qml
 
 imports_Theme_Theme_qml.cpp: ../../application/imports/Theme/Theme.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o imports_Theme_Theme_qml.cpp ../../application/imports/Theme/Theme.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o imports_Theme_Theme_qml.cpp ../../application/imports/Theme/Theme.qml
 
 components_StatusBar_qml.cpp: ../../application/components/StatusBar.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_StatusBar_qml.cpp ../../application/components/StatusBar.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_StatusBar_qml.cpp ../../application/components/StatusBar.qml
 
 components_TabPane_qml.cpp: ../../application/components/TabPane.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_TabPane_qml.cpp ../../application/components/TabPane.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_TabPane_qml.cpp ../../application/components/TabPane.qml
 
 components_StreamOverlay_qml.cpp: ../../application/components/StreamOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_StreamOverlay_qml.cpp ../../application/components/StreamOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_StreamOverlay_qml.cpp ../../application/components/StreamOverlay.qml
 
 components_FileManager_qml.cpp: ../../application/components/FileManager.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_FileManager_qml.cpp ../../application/components/FileManager.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_FileManager_qml.cpp ../../application/components/FileManager.qml
 
 components_LinkButton_qml.cpp: ../../application/components/LinkButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_LinkButton_qml.cpp ../../application/components/LinkButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_LinkButton_qml.cpp ../../application/components/LinkButton.qml
 
 components_TextLabel_qml.cpp: ../../application/components/TextLabel.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_TextLabel_qml.cpp ../../application/components/TextLabel.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_TextLabel_qml.cpp ../../application/components/TextLabel.qml
 
 components_DeviceActions_qml.cpp: ../../application/components/DeviceActions.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_DeviceActions_qml.cpp ../../application/components/DeviceActions.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_DeviceActions_qml.cpp ../../application/components/DeviceActions.qml
 
 components_GridBackground_qml.cpp: ../../application/components/GridBackground.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_GridBackground_qml.cpp ../../application/components/GridBackground.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_GridBackground_qml.cpp ../../application/components/GridBackground.qml
 
 components_UpdateOverlay_qml.cpp: ../../application/components/UpdateOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_UpdateOverlay_qml.cpp ../../application/components/UpdateOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_UpdateOverlay_qml.cpp ../../application/components/UpdateOverlay.qml
 
 components_ImageButton_qml.cpp: ../../application/components/ImageButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ImageButton_qml.cpp ../../application/components/ImageButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ImageButton_qml.cpp ../../application/components/ImageButton.qml
 
 components_CustomDialog_qml.cpp: ../../application/components/CustomDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_CustomDialog_qml.cpp ../../application/components/CustomDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_CustomDialog_qml.cpp ../../application/components/CustomDialog.qml
 
 components_MainButton_qml.cpp: ../../application/components/MainButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_MainButton_qml.cpp ../../application/components/MainButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_MainButton_qml.cpp ../../application/components/MainButton.qml
 
 components_FinishOverlay_qml.cpp: ../../application/components/FinishOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_FinishOverlay_qml.cpp ../../application/components/FinishOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_FinishOverlay_qml.cpp ../../application/components/FinishOverlay.qml
 
 components_WindowShadow_qml.cpp: ../../application/components/WindowShadow.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_WindowShadow_qml.cpp ../../application/components/WindowShadow.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_WindowShadow_qml.cpp ../../application/components/WindowShadow.qml
 
 components_ProgressDialog_qml.cpp: ../../application/components/ProgressDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ProgressDialog_qml.cpp ../../application/components/ProgressDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ProgressDialog_qml.cpp ../../application/components/ProgressDialog.qml
 
 components_ChannelDelegate_qml.cpp: ../../application/components/ChannelDelegate.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ChannelDelegate_qml.cpp ../../application/components/ChannelDelegate.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ChannelDelegate_qml.cpp ../../application/components/ChannelDelegate.qml
 
 components_ChangelogDialog_qml.cpp: ../../application/components/ChangelogDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ChangelogDialog_qml.cpp ../../application/components/ChangelogDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ChangelogDialog_qml.cpp ../../application/components/ChangelogDialog.qml
 
 components_ExpandWidget_qml.cpp: ../../application/components/ExpandWidget.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ExpandWidget_qml.cpp ../../application/components/ExpandWidget.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ExpandWidget_qml.cpp ../../application/components/ExpandWidget.qml
 
 components_SmallButtonRed_qml.cpp: ../../application/components/SmallButtonRed.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_SmallButtonRed_qml.cpp ../../application/components/SmallButtonRed.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_SmallButtonRed_qml.cpp ../../application/components/SmallButtonRed.qml
 
 components_LoteiChat_qml.cpp: ../../application/components/LoteiChat.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_LoteiChat_qml.cpp ../../application/components/LoteiChat.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_LoteiChat_qml.cpp ../../application/components/LoteiChat.qml
 
 components_FileManagerDelegate_qml.cpp: ../../application/components/FileManagerDelegate.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_FileManagerDelegate_qml.cpp ../../application/components/FileManagerDelegate.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_FileManagerDelegate_qml.cpp ../../application/components/FileManagerDelegate.qml
 
 components_TransparentLabel_qml.cpp: ../../application/components/TransparentLabel.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_TransparentLabel_qml.cpp ../../application/components/TransparentLabel.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_TransparentLabel_qml.cpp ../../application/components/TransparentLabel.qml
 
 components_SelfUpdateDialog_qml.cpp: ../../application/components/SelfUpdateDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_SelfUpdateDialog_qml.cpp ../../application/components/SelfUpdateDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_SelfUpdateDialog_qml.cpp ../../application/components/SelfUpdateDialog.qml
 
 components_DeviceInfo_qml.cpp: ../../application/components/DeviceInfo.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_DeviceInfo_qml.cpp ../../application/components/DeviceInfo.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_DeviceInfo_qml.cpp ../../application/components/DeviceInfo.qml
 
 components_DeviceWidget_qml.cpp: ../../application/components/DeviceWidget.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_DeviceWidget_qml.cpp ../../application/components/DeviceWidget.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_DeviceWidget_qml.cpp ../../application/components/DeviceWidget.qml
 
 components_DirectionalKeypad_qml.cpp: ../../application/components/DirectionalKeypad.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_DirectionalKeypad_qml.cpp ../../application/components/DirectionalKeypad.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_DirectionalKeypad_qml.cpp ../../application/components/DirectionalKeypad.qml
 
 components_AbstractOverlay_qml.cpp: ../../application/components/AbstractOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_AbstractOverlay_qml.cpp ../../application/components/AbstractOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_AbstractOverlay_qml.cpp ../../application/components/AbstractOverlay.qml
 
 components_TextBox_qml.cpp: ../../application/components/TextBox.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_TextBox_qml.cpp ../../application/components/TextBox.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_TextBox_qml.cpp ../../application/components/TextBox.qml
 
 components_MessageDialog_qml.cpp: ../../application/components/MessageDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_MessageDialog_qml.cpp ../../application/components/MessageDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_MessageDialog_qml.cpp ../../application/components/MessageDialog.qml
 
 components_NoDeviceOverlay_qml.cpp: ../../application/components/NoDeviceOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_NoDeviceOverlay_qml.cpp ../../application/components/NoDeviceOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_NoDeviceOverlay_qml.cpp ../../application/components/NoDeviceOverlay.qml
 
 components_WindowControls_qml.cpp: ../../application/components/WindowControls.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_WindowControls_qml.cpp ../../application/components/WindowControls.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_WindowControls_qml.cpp ../../application/components/WindowControls.qml
 
 components_KeypadButton_qml.cpp: ../../application/components/KeypadButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_KeypadButton_qml.cpp ../../application/components/KeypadButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_KeypadButton_qml.cpp ../../application/components/KeypadButton.qml
 
 components_SDWarningDialog_qml.cpp: ../../application/components/SDWarningDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_SDWarningDialog_qml.cpp ../../application/components/SDWarningDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_SDWarningDialog_qml.cpp ../../application/components/SDWarningDialog.qml
 
 components_DeveloperActions_qml.cpp: ../../application/components/DeveloperActions.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_DeveloperActions_qml.cpp ../../application/components/DeveloperActions.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_DeveloperActions_qml.cpp ../../application/components/DeveloperActions.qml
 
 components_HomeOverlay_qml.cpp: ../../application/components/HomeOverlay.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_HomeOverlay_qml.cpp ../../application/components/HomeOverlay.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_HomeOverlay_qml.cpp ../../application/components/HomeOverlay.qml
 
 components_ConfirmationDialog_qml.cpp: ../../application/components/ConfirmationDialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_ConfirmationDialog_qml.cpp ../../application/components/ConfirmationDialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_ConfirmationDialog_qml.cpp ../../application/components/ConfirmationDialog.qml
 
 components_MainWindow_qml.cpp: ../../application/components/MainWindow.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_MainWindow_qml.cpp ../../application/components/MainWindow.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_MainWindow_qml.cpp ../../application/components/MainWindow.qml
 
 components_TextView_qml.cpp: ../../application/components/TextView.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_TextView_qml.cpp ../../application/components/TextView.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_TextView_qml.cpp ../../application/components/TextView.qml
 
 components_SmallButton_qml.cpp: ../../application/components/SmallButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o components_SmallButton_qml.cpp ../../application/components/SmallButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o components_SmallButton_qml.cpp ../../application/components/SmallButton.qml
 
 styles_DefaultAmber_ScrollBar_qml.cpp: ../../application/styles/DefaultAmber/ScrollBar.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_ScrollBar_qml.cpp ../../application/styles/DefaultAmber/ScrollBar.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_ScrollBar_qml.cpp ../../application/styles/DefaultAmber/ScrollBar.qml
 
 styles_DefaultAmber_ProgressBar_qml.cpp: ../../application/styles/DefaultAmber/ProgressBar.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_ProgressBar_qml.cpp ../../application/styles/DefaultAmber/ProgressBar.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_ProgressBar_qml.cpp ../../application/styles/DefaultAmber/ProgressBar.qml
 
 styles_DefaultAmber_ScrollView_qml.cpp: ../../application/styles/DefaultAmber/ScrollView.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_ScrollView_qml.cpp ../../application/styles/DefaultAmber/ScrollView.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_ScrollView_qml.cpp ../../application/styles/DefaultAmber/ScrollView.qml
 
 styles_DefaultAmber_ComboBox_qml.cpp: ../../application/styles/DefaultAmber/ComboBox.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_ComboBox_qml.cpp ../../application/styles/DefaultAmber/ComboBox.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_ComboBox_qml.cpp ../../application/styles/DefaultAmber/ComboBox.qml
 
 styles_DefaultAmber_DialogButtonBox_qml.cpp: ../../application/styles/DefaultAmber/DialogButtonBox.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_DialogButtonBox_qml.cpp ../../application/styles/DefaultAmber/DialogButtonBox.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_DialogButtonBox_qml.cpp ../../application/styles/DefaultAmber/DialogButtonBox.qml
 
 styles_DefaultAmber_Dialog_qml.cpp: ../../application/styles/DefaultAmber/Dialog.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_Dialog_qml.cpp ../../application/styles/DefaultAmber/Dialog.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_Dialog_qml.cpp ../../application/styles/DefaultAmber/Dialog.qml
 
 styles_DefaultAmber_Menu_qml.cpp: ../../application/styles/DefaultAmber/Menu.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_Menu_qml.cpp ../../application/styles/DefaultAmber/Menu.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_Menu_qml.cpp ../../application/styles/DefaultAmber/Menu.qml
 
 styles_DefaultAmber_ToolTip_qml.cpp: ../../application/styles/DefaultAmber/ToolTip.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_ToolTip_qml.cpp ../../application/styles/DefaultAmber/ToolTip.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_ToolTip_qml.cpp ../../application/styles/DefaultAmber/ToolTip.qml
 
 styles_DefaultAmber_IconLabelEx_qml.cpp: ../../application/styles/DefaultAmber/IconLabelEx.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_IconLabelEx_qml.cpp ../../application/styles/DefaultAmber/IconLabelEx.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_IconLabelEx_qml.cpp ../../application/styles/DefaultAmber/IconLabelEx.qml
 
 styles_DefaultAmber_Switch_qml.cpp: ../../application/styles/DefaultAmber/Switch.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_Switch_qml.cpp ../../application/styles/DefaultAmber/Switch.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_Switch_qml.cpp ../../application/styles/DefaultAmber/Switch.qml
 
 styles_DefaultAmber_MenuSeparator_qml.cpp: ../../application/styles/DefaultAmber/MenuSeparator.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_MenuSeparator_qml.cpp ../../application/styles/DefaultAmber/MenuSeparator.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_MenuSeparator_qml.cpp ../../application/styles/DefaultAmber/MenuSeparator.qml
 
 styles_DefaultAmber_TabButton_qml.cpp: ../../application/styles/DefaultAmber/TabButton.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_TabButton_qml.cpp ../../application/styles/DefaultAmber/TabButton.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_TabButton_qml.cpp ../../application/styles/DefaultAmber/TabButton.qml
 
 styles_DefaultAmber_MenuItem_qml.cpp: ../../application/styles/DefaultAmber/MenuItem.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_MenuItem_qml.cpp ../../application/styles/DefaultAmber/MenuItem.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_MenuItem_qml.cpp ../../application/styles/DefaultAmber/MenuItem.qml
 
 styles_DefaultAmber_TabBar_qml.cpp: ../../application/styles/DefaultAmber/TabBar.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_TabBar_qml.cpp ../../application/styles/DefaultAmber/TabBar.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_TabBar_qml.cpp ../../application/styles/DefaultAmber/TabBar.qml
 
 styles_DefaultAmber_Button_qml.cpp: ../../application/styles/DefaultAmber/Button.qml \
 		/opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc -o styles_DefaultAmber_Button_qml.cpp ../../application/styles/DefaultAmber/Button.qml
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc -o styles_DefaultAmber_Button_qml.cpp ../../application/styles/DefaultAmber/Button.qml
 
 compiler_qmlcache_loader_make_all: qmlcache_loader.cpp
 compiler_qmlcache_loader_clean:
 	-$(DEL_FILE) qmlcache_loader.cpp
 qmlcache_loader.cpp: ../../application/qml.qrc /opt/homebrew/share/qt/libexec/qmlcachegen
-	/opt/homebrew/share/qt/libexec/qmlcachegen --resource-file-mapping=/Users/nikita/Desktop/lotei-qflipper/application/qml.qrc=/Users/nikita/Desktop/lotei-qflipper/build_mac/application/qml_qmlcache.qrc -o qmlcache_loader.cpp ../../application/qml.qrc
+	/opt/homebrew/share/qt/libexec/qmlcachegen --resource-file-mapping=/Users/nikita/Desktop/lalaland/nikita-qflipper/application/qml.qrc=/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/qml_qmlcache.qrc -o qmlcache_loader.cpp ../../application/qml.qrc
 
 compiler_rcc_make_all: qrc_qml_qmlcache.cpp qrc_qmake_qmake_qm_files.cpp
 compiler_rcc_clean:
@@ -1944,7 +1944,7 @@ moc_application.cpp: ../../application/application.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QList \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/application.h -o moc_application.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/application.h -o moc_application.cpp
 
 moc_applicationupdater.cpp: ../../application/applicationupdater.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
@@ -1956,7 +1956,7 @@ moc_applicationupdater.cpp: ../../application/applicationupdater.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonValue \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/applicationupdater.h -o moc_applicationupdater.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/applicationupdater.h -o moc_applicationupdater.cpp
 
 moc_applicationupdateregistry.cpp: ../../application/applicationupdateregistry.h \
 		../../backend/updateregistry.h \
@@ -1971,7 +1971,7 @@ moc_applicationupdateregistry.cpp: ../../application/applicationupdateregistry.h
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonValue \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/applicationupdateregistry.h -o moc_applicationupdateregistry.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/applicationupdateregistry.h -o moc_applicationupdateregistry.cpp
 
 moc_loteibackend.cpp: ../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
@@ -1987,7 +1987,7 @@ moc_loteibackend.cpp: ../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QTimer \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/loteibackend.h -o moc_loteibackend.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/loteibackend.h -o moc_loteibackend.cpp
 
 moc_qtlocalpeer.cpp: ../../application/qtsingleapplication/qtlocalpeer.h \
 		/opt/homebrew/lib/QtNetwork.framework/Headers/QLocalServer \
@@ -1998,19 +1998,19 @@ moc_qtlocalpeer.cpp: ../../application/qtsingleapplication/qtlocalpeer.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVector \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtlocalpeer.h -o moc_qtlocalpeer.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtlocalpeer.h -o moc_qtlocalpeer.cpp
 
 moc_qtsingleapplication.cpp: ../../application/qtsingleapplication/qtsingleapplication.h \
 		/opt/homebrew/lib/QtWidgets.framework/Headers/QApplication \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtsingleapplication.h -o moc_qtsingleapplication.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtsingleapplication.h -o moc_qtsingleapplication.cpp
 
 moc_qtsinglecoreapplication.cpp: ../../application/qtsingleapplication/qtsinglecoreapplication.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QCoreApplication \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtsinglecoreapplication.h -o moc_qtsinglecoreapplication.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/qtsingleapplication/qtsinglecoreapplication.h -o moc_qtsinglecoreapplication.cpp
 
 moc_screencanvas.cpp: ../../application/screencanvas.h \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
@@ -2022,14 +2022,14 @@ moc_screencanvas.cpp: ../../application/screencanvas.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QSize \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/screencanvas.h -o moc_screencanvas.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/screencanvas.h -o moc_screencanvas.cpp
 
 moc_systemfiledialog.cpp: ../../application/systemfiledialog.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QUrl \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/application -I/Users/nikita/Desktop/lotei-qflipper/dfu -I/Users/nikita/Desktop/lotei-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/systemfiledialog.h -o moc_systemfiledialog.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/application/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/application -I/Users/nikita/Desktop/lalaland/nikita-qflipper/dfu -I/Users/nikita/Desktop/lalaland/nikita-qflipper/backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../application/systemfiledialog.h -o moc_systemfiledialog.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:

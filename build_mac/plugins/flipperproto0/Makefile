@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"unknown\" -DAPP_TIMESTAMP=0 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DPB_ENABLE_MALLOC -DQT_NO_DEBUG -DQT_PLUGIN -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"63527538\" -DAPP_TIMESTAMP=1785341372 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DPB_ENABLE_MALLOC -DQT_NO_DEBUG -DQT_PLUGIN -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra -fPIC $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra -fPIC $(DEFINES)
 INCPATH       = -I../../../plugins/flipperproto0 -I. -I../../../plugins/protobufinterface -I../../../3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -37,10 +37,10 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = flipperproto00.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/.tmp/flipperproto00.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/.tmp/flipperproto00.0.0
 LINK          = /Library/Developer/CommandLineTools/usr/bin/clang++
 LFLAGS        = -stdlib=libc++ -headerpad_max_install_names $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,/opt/homebrew/lib -single_module -dynamiclib
-LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/../../3rdparty/ -l3rdparty -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers   
+LIBS          = $(SUBLIBS) -F/opt/homebrew/lib -L/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/../../3rdparty/ -l3rdparty -L/opt/homebrew/Cellar/libusb_universal/1.0.24/lib -lusb-1.0 -lz -framework QtCore5Compat -framework QtCore -framework IOKit -framework DiskArbitration -framework UniformTypeIdentifiers   
 AR            = /Library/Developer/CommandLineTools/usr/bin/ar cq
 RANLIB        = /Library/Developer/CommandLineTools/usr/bin/ranlib -s
 SED           = sed
@@ -539,7 +539,7 @@ EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro
 
 
 first: all
@@ -1380,7 +1380,7 @@ moc_guiresponse.cpp: ../../../plugins/flipperproto0/guiresponse.h \
 		../../../plugins/protobufinterface/guiresponseinterface.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/guiresponse.h -o moc_guiresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/guiresponse.h -o moc_guiresponse.cpp
 
 moc_mainresponse.cpp: ../../../plugins/flipperproto0/mainresponse.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
@@ -1399,7 +1399,7 @@ moc_mainresponse.cpp: ../../../plugins/flipperproto0/mainresponse.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QtPlugin \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/mainresponse.h -o moc_mainresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/mainresponse.h -o moc_mainresponse.cpp
 
 moc_propertyresponse.cpp: ../../../plugins/flipperproto0/propertyresponse.h \
 		../../../plugins/flipperproto0/mainresponse.h \
@@ -1420,7 +1420,7 @@ moc_propertyresponse.cpp: ../../../plugins/flipperproto0/propertyresponse.h \
 		../../../plugins/protobufinterface/propertyresponseinterface.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/propertyresponse.h -o moc_propertyresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/propertyresponse.h -o moc_propertyresponse.cpp
 
 moc_protobufplugin.cpp: ../../../plugins/flipperproto0/protobufplugin.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
@@ -1431,7 +1431,7 @@ moc_protobufplugin.cpp: ../../../plugins/flipperproto0/protobufplugin.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QList \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/protobufplugin.h -o moc_protobufplugin.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/protobufplugin.h -o moc_protobufplugin.cpp
 
 moc_statusresponse.cpp: ../../../plugins/flipperproto0/statusresponse.h \
 		../../../plugins/flipperproto0/mainresponse.h \
@@ -1452,7 +1452,7 @@ moc_statusresponse.cpp: ../../../plugins/flipperproto0/statusresponse.h \
 		../../../plugins/protobufinterface/statusresponseinterface.h \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/statusresponse.h -o moc_statusresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/statusresponse.h -o moc_statusresponse.cpp
 
 moc_storageresponse.cpp: ../../../plugins/flipperproto0/storageresponse.h \
 		../../../plugins/flipperproto0/mainresponse.h \
@@ -1474,7 +1474,7 @@ moc_storageresponse.cpp: ../../../plugins/flipperproto0/storageresponse.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QVector \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/storageresponse.h -o moc_storageresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/storageresponse.h -o moc_storageresponse.cpp
 
 moc_systemresponse.cpp: ../../../plugins/flipperproto0/systemresponse.h \
 		../../../plugins/flipperproto0/mainresponse.h \
@@ -1496,7 +1496,7 @@ moc_systemresponse.cpp: ../../../plugins/flipperproto0/systemresponse.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		moc_predefs.h \
 		/opt/homebrew/share/qt/libexec/moc
-	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lotei-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/systemresponse.h -o moc_systemresponse.cpp
+	/opt/homebrew/share/qt/libexec/moc $(DEFINES) --include /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/moc_predefs.h -I/opt/homebrew/share/qt/mkspecs/macx-clang -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0 -I/Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface -I/Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/nanopb -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1 -I/Library/Developer/CommandLineTools/usr/lib/clang/21/include -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I/Library/Developer/CommandLineTools/usr/include -F/opt/homebrew/lib ../../../plugins/flipperproto0/systemresponse.h -o moc_systemresponse.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:
@@ -1850,13 +1850,13 @@ moc_systemresponse.o: moc_systemresponse.cpp
 ####### Install
 
 install_target: first FORCE
-	@test -d $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns || mkdir -p $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns
-	$(QINSTALL_PROGRAM) ../../plugins/$(TARGET) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
-	-$(STRIP) -S -x $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
+	@test -d $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns || mkdir -p $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns
+	$(QINSTALL_PROGRAM) ../../plugins/$(TARGET) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
+	-$(STRIP) -S -x $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
 
 uninstall_target: FORCE
-	-$(DEL_FILE) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
-	-$(DEL_DIR) $(INSTALL_ROOT)/Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns/ 
+	-$(DEL_FILE) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/qFlipper.app/Contents/PlugIns/$(TARGET)
+	-$(DEL_DIR) $(INSTALL_ROOT)/Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/flipperproto0/../../qFlipper.app/Contents/PlugIns/ 
 
 
 install: install_target  FORCE

@@ -296,14 +296,14 @@ Rectangle {
 
                 // chromatic-aberration layers (magenta + cyan behind, bright on top)
                 Text {
-                    text: Lotei.modelName
+                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
                     color: "#ff2fb0"; opacity: 0.7
                     anchors.left: dot.right; anchors.leftMargin: 8 + glitch.off
                     anchors.verticalCenter: parent.verticalCenter
                     font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
                 }
                 Text {
-                    text: Lotei.modelName
+                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
                     color: "#00e5ff"; opacity: 0.7
                     anchors.left: dot.right; anchors.leftMargin: 8 - glitch.off
                     anchors.verticalCenter: parent.verticalCenter
@@ -311,7 +311,7 @@ Rectangle {
                 }
                 Text {
                     id: modelFg
-                    text: Lotei.modelName
+                    text: Lotei.modelName.length > 0 ? Lotei.modelName : "no model"
                     color: "#eaffea"
                     anchors.left: dot.right; anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
@@ -319,6 +319,29 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
+
+            // Model manager (gear icon)
+            Rectangle {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 18
+                radius: 3
+                color: gearMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "\u2699"   // ⚙
+                    color: Theme.color.lightorange2
+                    font.pixelSize: 13
+                }
+                MouseArea {
+                    id: gearMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: modelManager.openManager()
+                }
+                ToolTip { text: "Model manager"; visible: gearMouse.containsMouse; delay: 400 }
+            }
 
             // Clear conversation
             Rectangle {
@@ -680,6 +703,344 @@ Rectangle {
                 text: "Send"
                 enabled: !Lotei.thinking && input.text.length > 0
                 onClicked: root.sendCurrent()
+            }
+        }
+    }
+
+    // ---- Model manager popup (gear icon) ----------------------------------
+    Popup {
+        id: modelManager
+        parent: Overlay.overlay
+        x: Math.round((parent.width  - width)  / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 420
+        height: 460
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        // Model list is only pulled fresh when the window opens, not polled --
+        // it changes only in response to actions this same window drives.
+        function openManager() {
+            catalogModel.refresh();
+            Lotei.detectOllama();
+            open();
+        }
+
+        background: Rectangle {
+            radius: 8
+            color: "#0b0410"
+            border.width: 2
+            border.color: Theme.color.lightorange2
+        }
+
+        // Backing list model for the catalog. A plain ListModel refreshed from
+        // Lotei.modelCatalog() -- simplest option here since the catalog is
+        // small (a handful of curated entries), not something worth a C++
+        // QAbstractListModel for.
+        ListModel { id: catalogModel
+            function refresh() {
+                // Update rows in place rather than clear()+append(): clearing
+                // drops the list to zero items for a frame, which snaps
+                // catalogView's scroll position back to the top on every
+                // refresh -- annoying if you'd scrolled down and an install
+                // finishes, or Ollama comes online, mid-scroll.
+                var rows = Lotei.modelCatalog();
+                for (var i = 0; i < rows.length; i++) {
+                    if (i < count) { set(i, rows[i]); } else { append(rows[i]); }
+                }
+                while (count > rows.length) { remove(count - 1); }
+            }
+        }
+
+        // modelOpKind/Name/Status/Progress all share one NOTIFY (modelOpChanged),
+        // which fires on every chunk of `ollama pull` output -- many times a
+        // second while a download is running. The busy row's progress bar and
+        // status text already bind straight to Lotei.modelOpProgress/modelOpStatus
+        // below, so they don't need a list rebuild to update. Only rebuild when
+        // a row actually needs to flip into/out of "busy" -- i.e. when the op
+        // kind itself changes -- otherwise every tick was tearing down and
+        // recreating all the delegates, which is what caused the flicker/glitch
+        // during a pull.
+        QtObject {
+            id: modelOpTracker
+            property string kind: ""
+        }
+
+        Connections {
+            target: Lotei
+            function onModelOpChanged() {
+                if (Lotei.modelOpKind !== modelOpTracker.kind) {
+                    modelOpTracker.kind = Lotei.modelOpKind;
+                    catalogModel.refresh();
+                }
+            }
+            function onModelInstallFinished()     { catalogModel.refresh(); }
+            function onModelUninstallFinished()   { catalogModel.refresh(); }
+            function onOllamaInstallFinished()    { catalogModel.refresh(); }
+            function onOllamaInstalledChanged()   { catalogModel.refresh(); }
+            function onModelChanged()             { if (modelManager.visible) { catalogModel.refresh(); } }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    text: "Model manager"
+                    color: Theme.color.lightorange2
+                    font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+                    Layout.fillWidth: true
+                }
+                Text {
+                    text: "\u2715"   // ✕
+                    color: closeMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
+                    font.pixelSize: 14
+                    MouseArea {
+                        id: closeMouse
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: modelManager.close()
+                    }
+                }
+            }
+
+            // ---- "Ollama itself isn't installed" banner ----
+            Rectangle {
+                visible: !Lotei.ollamaInstalled
+                Layout.fillWidth: true
+                Layout.preferredHeight: ollamaBannerCol.implicitHeight + 16
+                radius: 5
+                color: "#2a0a0a"
+                border.width: 1
+                border.color: "#ff5a5a"
+
+                ColumnLayout {
+                    id: ollamaBannerCol
+                    x: 10; y: 8
+                    width: parent.width - 20
+                    spacing: 6
+
+                    Text {
+                        text: "Ollama isn't installed on this machine. LOTEI needs it to run any model."
+                        color: "#ffb3b3"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        font.family: "Share Tech Mono"; font.pixelSize: 11
+                    }
+                    RowLayout {
+                        spacing: 8
+                        Button {
+                            text: (Lotei.modelOpKind === "ollama") ? "Installing…" : "Install Ollama"
+                            enabled: Lotei.modelOpKind !== "ollama"
+                            onClicked: Lotei.installOllama()
+                        }
+                        Text {
+                            visible: Lotei.modelOpKind === "ollama"
+                            text: Lotei.modelOpStatus
+                            color: "#ffb3b3"
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                            font.family: "Share Tech Mono"; font.pixelSize: 10
+                        }
+                        Text {
+                            visible: Lotei.modelOpKind === "ollama"
+                            text: "cancel"
+                            color: cancelOllamaMouse.containsMouse ? "#ff6a6a" : "#ffb3b3"
+                            font.family: "Share Tech Mono"; font.pixelSize: 10; font.bold: true
+                            MouseArea {
+                                id: cancelOllamaMouse
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Lotei.cancelModelOp()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: "Curated models known to work well with LOTEI's tools:"
+                color: Theme.color.mediumorange1
+                font.family: "Share Tech Mono"; font.pixelSize: 11
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+            }
+
+            // ---- catalog list ----
+            ListView {
+                id: catalogView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: catalogModel
+                spacing: 6
+                enabled: Lotei.ollamaInstalled
+
+                delegate: Rectangle {
+                    width: catalogView.width
+                    height: rowCol.implicitHeight + 16
+                    radius: 5
+                    color: model.active ? "#1a0d24" : "#120818"
+                    border.width: 1
+                    border.color: model.active ? Theme.color.lightorange2 : Theme.color.mediumorange2
+
+                    ColumnLayout {
+                        id: rowCol
+                        x: 10; y: 8
+                        width: parent.width - 20
+                        spacing: 4
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Text {
+                                text: model.label + "  ·  " + model.size
+                                color: "#eaffea"
+                                font.family: "Share Tech Mono"; font.pixelSize: 12; font.bold: true
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                visible: model.active
+                                text: "active"
+                                color: "#39ff14"
+                                font.family: "Share Tech Mono"; font.pixelSize: 10
+                            }
+                        }
+
+                        Text {
+                            text: model.blurb
+                            color: Theme.color.mediumorange1
+                            font.family: "Share Tech Mono"; font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        // Busy row: progress bar + status line instead of the buttons.
+                        ColumnLayout {
+                            visible: model.busy
+                            Layout.fillWidth: true
+                            spacing: 2
+                            ProgressBar {
+                                Layout.fillWidth: true
+                                indeterminate: Lotei.modelOpProgress < 0
+                                value: Lotei.modelOpProgress < 0 ? 0 : Lotei.modelOpProgress
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Text {
+                                    text: Lotei.modelOpStatus
+                                    color: Theme.color.mediumorange1
+                                    font.family: "Share Tech Mono"; font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: "cancel"
+                                    color: cancelOpMouse.containsMouse ? "#ff6a6a" : Theme.color.mediumorange1
+                                    font.family: "Share Tech Mono"; font.pixelSize: 9; font.bold: true
+                                    MouseArea {
+                                        id: cancelOpMouse
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Lotei.cancelModelOp()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Idle row: status pill + action button.
+                        RowLayout {
+                            visible: !model.busy
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Rectangle {
+                                Layout.preferredWidth: installedPill.implicitWidth + 12
+                                Layout.preferredHeight: 18
+                                radius: 3
+                                color: model.installed ? "#0f3d1f" : "transparent"
+                                border.width: model.installed ? 0 : 1
+                                border.color: Theme.color.mediumorange2
+                                Text {
+                                    id: installedPill
+                                    anchors.centerIn: parent
+                                    text: model.installed ? "installed" : "not installed"
+                                    color: model.installed ? "#39ff14" : Theme.color.mediumorange1
+                                    font.family: "Share Tech Mono"; font.pixelSize: 10
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Text {
+                                visible: !model.installed
+                                text: "install"
+                                color: installMouse.containsMouse ? Theme.color.lightgreen : Theme.color.lightorange2
+                                font.family: "Share Tech Mono"; font.pixelSize: 11; font.bold: true
+                                MouseArea {
+                                    id: installMouse
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: Lotei.modelOpKind === ""
+                                    onClicked: Lotei.installModel(model.tag)
+                                }
+                            }
+                            Rectangle {
+                                visible: model.installed && !model.active
+                                Layout.preferredWidth: equipLabel.implicitWidth + 14
+                                Layout.preferredHeight: 18
+                                radius: 3
+                                color: equipMouse.containsMouse ? Theme.color.lightorange2 : "transparent"
+                                border.width: 1
+                                border.color: Theme.color.lightorange2
+                                Text {
+                                    id: equipLabel
+                                    anchors.centerIn: parent
+                                    text: "EQUIP"
+                                    color: equipMouse.containsMouse ? "#0b0410" : Theme.color.lightorange2
+                                    font.family: "Share Tech Mono"; font.pixelSize: 10; font.bold: true
+                                }
+                                MouseArea {
+                                    id: equipMouse
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: Lotei.modelOpKind === ""
+                                    onClicked: Lotei.setModel(model.tag)
+                                }
+                            }
+                            Text {
+                                visible: model.installed
+                                text: "uninstall"
+                                color: uninstallMouse.containsMouse ? "#ff6a6a" : Theme.color.mediumorange1
+                                font.family: "Share Tech Mono"; font.pixelSize: 11
+                                MouseArea {
+                                    id: uninstallMouse
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: Lotei.modelOpKind === ""
+                                    onClicked: Lotei.uninstallModel(model.tag)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

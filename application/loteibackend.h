@@ -87,6 +87,34 @@ public:
     Q_INVOKABLE QStringList availableModels() const;  // models installed in Ollama
     Q_INVOKABLE QString musicFolderUrl() const;   // <appdir>/Music as a file URL
 
+    // ---- Model manager (gear icon) ----------------------------------------
+    // Curated catalog of downloadable Ollama models, each tagged with whether
+    // it's currently installed. QML renders this as the model-manager list.
+    Q_INVOKABLE QVariantList modelCatalog() const;
+    Q_INVOKABLE void installModel(const QString &name);    // `ollama pull <name>`
+    Q_INVOKABLE void uninstallModel(const QString &name);  // `ollama rm <name>`
+    // Kills whatever install/uninstall/Ollama-install is currently running.
+    // Works for all three since they share m_modelOpProc.
+    Q_INVOKABLE void cancelModelOp();
+
+    // Whether the Ollama binary itself was found on this machine (independent
+    // of whether the server is currently answering /api/tags).
+    Q_PROPERTY(bool ollamaInstalled READ ollamaInstalled NOTIFY ollamaInstalledChanged)
+    bool ollamaInstalled() const;
+    Q_INVOKABLE void installOllama();       // platform install script/package manager
+    Q_INVOKABLE void detectOllama();        // re-check whether the binary is on PATH
+
+    // Progress of whatever model pull/remove/Ollama-install is currently running.
+    // One op at a time; op == "" when idle.
+    Q_PROPERTY(QString modelOpName READ modelOpName NOTIFY modelOpChanged)
+    Q_PROPERTY(QString modelOpKind READ modelOpKind NOTIFY modelOpChanged)      // "install" | "uninstall" | "ollama" | ""
+    Q_PROPERTY(QString modelOpStatus READ modelOpStatus NOTIFY modelOpChanged)  // human-readable line
+    Q_PROPERTY(double  modelOpProgress READ modelOpProgress NOTIFY modelOpChanged) // 0..1, or -1 = indeterminate
+    QString modelOpName() const     { return m_modelOpName; }
+    QString modelOpKind() const     { return m_modelOpKind; }
+    QString modelOpStatus() const   { return m_modelOpStatus; }
+    double  modelOpProgress() const { return m_modelOpProgress; }
+
     // First-run setup wizard
     Q_INVOKABLE void completeSetup();                    // mark the wizard done
     Q_INVOKABLE void resetSetup();                       // re-trigger the wizard (testing)
@@ -157,6 +185,11 @@ signals:
     void setupCompleteChanged();
     void manualNameChanged();
     void agentChanged();
+    void ollamaInstalledChanged();
+    void modelOpChanged();                                  // progress tick, any op
+    void modelInstallFinished(const QString &name, bool ok, const QString &message);
+    void modelUninstallFinished(const QString &name, bool ok, const QString &message);
+    void ollamaInstallFinished(bool ok, const QString &message);
     void scriptSaved(const QString &path);        // manual save succeeded
     void scriptSaveError(const QString &message);  // manual save failed
     void fileOpened(const QString &path, const QString &content); // editor: file read
@@ -180,6 +213,14 @@ private:
     double piperLengthScale(const QString &moodText) const;
     void discoverPiper();
     void refreshModels();   // query Ollama /api/tags for installed models
+
+    // Model manager internals.
+    bool detectOllamaBinary() const;                 // `ollama --version` on PATH?
+    void runModelOp(const QString &kind, const QString &name, const QStringList &args);
+    void appendModelOpOutput(const QByteArray &chunk); // parse a QProcess output chunk
+    void finishModelOp(bool ok, const QString &message);
+    void setModelOp(const QString &kind, const QString &name,
+                    const QString &status, double progress);
 
     void loadHistory();   // restore past conversation from disk
     void saveHistory();   // persist conversation (user + final replies only)
@@ -278,6 +319,18 @@ private:
     QString    m_streamContent;   // accumulated reply text this response
     QJsonArray m_streamTools;     // accumulated tool calls this response
     QNetworkReply *m_currentReply = nullptr;
+
+    // ---- Model manager --------------------------------------------------
+    bool m_ollamaInstalled = false;
+    bool m_ollamaChecked = false;
+
+    QProcess   *m_modelOpProc = nullptr;   // pull / rm / install-ollama, one at a time
+    QString     m_modelOpKind;             // "install" | "uninstall" | "ollama" | ""
+    QString     m_modelOpName;             // model name, or "" for the Ollama install itself
+    QString     m_modelOpStatus;
+    double      m_modelOpProgress = -1.0;
+    QByteArray  m_modelOpBuf;              // partial line buffer (pull output uses \r a lot)
+    bool        m_modelOpCancelled = false;  // user hit cancel -- report "cancelled", not exit code noise
 };
 
 // Runtime-editable color palette. Every Theme.color.* value flows from here, so

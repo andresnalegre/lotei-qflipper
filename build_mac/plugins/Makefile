@@ -30,7 +30,7 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = plugins1.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/plugins/.tmp/plugins1.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/plugins/.tmp/plugins1.0.0
 SUBTARGETS    =  \
 		sub-flipperproto0 \
 		sub-protobufinterface
@@ -41,58 +41,58 @@ EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro
 
 sub-flipperproto0-qmake_all:  FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd flipperproto0/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd flipperproto0/ && $(MAKE) -f Makefile qmake_all
 sub-flipperproto0: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-flipperproto0-make_first: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-flipperproto0-all: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-flipperproto0-clean: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-flipperproto0-distclean: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-flipperproto0-install_subtargets: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-flipperproto0-uninstall_subtargets: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-protobufinterface-qmake_all:  FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd protobufinterface/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd protobufinterface/ && $(MAKE) -f Makefile qmake_all
 sub-protobufinterface: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-protobufinterface-make_first: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-protobufinterface-all: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-protobufinterface-clean: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-protobufinterface-distclean: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-protobufinterface-install_subtargets: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-protobufinterface-uninstall_subtargets: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 
 Makefile: ../../plugins/plugins.pro /opt/homebrew/share/qt/mkspecs/macx-clang/qmake.conf /opt/homebrew/share/qt/mkspecs/features/spec_pre.prf \
 		/opt/homebrew/share/qt/mkspecs/features/device_config.prf \
@@ -847,18 +847,18 @@ xcodeproj:
 
 sub-flipperproto0-check:
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-protobufinterface-check:
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 check: sub-flipperproto0-check sub-protobufinterface-check
 
 sub-flipperproto0-benchmark:
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-protobufinterface-benchmark:
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 benchmark: sub-flipperproto0-benchmark sub-protobufinterface-benchmark
 install:install_subtargets  FORCE
 
@@ -877,9 +877,9 @@ distdir: sub-flipperproto0-distdir sub-protobufinterface-distdir FORCE
 
 sub-flipperproto0-distdir: FORCE
 	@test -d flipperproto0/ || mkdir -p flipperproto0/
-	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/flipperproto0
+	cd flipperproto0/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/flipperproto0/flipperproto0.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/flipperproto0
 
 sub-protobufinterface-distdir: FORCE
 	@test -d protobufinterface/ || mkdir -p protobufinterface/
-	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/protobufinterface
+	cd protobufinterface/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/protobufinterface/protobufinterface.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/protobufinterface
 

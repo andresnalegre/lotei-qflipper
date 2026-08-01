@@ -30,7 +30,7 @@ MOVE          = mv -f
 TAR           = tar -cf
 COMPRESS      = gzip -9f
 DISTNAME      = qFlipper1.0.0
-DISTDIR = /Users/nikita/Desktop/lotei-qflipper/build_mac/.tmp/qFlipper1.0.0
+DISTDIR = /Users/nikita/Desktop/lalaland/nikita-qflipper/build_mac/.tmp/qFlipper1.0.0
 SUBTARGETS    =  \
 		sub-3rdparty \
 		sub-application \
@@ -45,159 +45,159 @@ EXPORT_VALID_ARCHS = arm64
 EXPORT_DEFAULT_ARCHS = arm64
 EXPORT_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(if $(ARCHS), $(ARCHS), $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), $(EXPORT_VALID_ARCHS))))
 EXPORT_ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
-EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lotei-qflipper/qFlipper.pro
+EXPORT__PRO_FILE_ = /Users/nikita/Desktop/lalaland/nikita-qflipper/qFlipper.pro
 
 sub-3rdparty-qmake_all:  FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd 3rdparty/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd 3rdparty/ && $(MAKE) -f Makefile qmake_all
 sub-3rdparty: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-3rdparty-make_first: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-3rdparty-all: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-3rdparty-clean: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-3rdparty-distclean: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-3rdparty-install_subtargets: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-3rdparty-uninstall_subtargets: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-application-qmake_all: sub-backend-qmake_all FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd application/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd application/ && $(MAKE) -f Makefile qmake_all
 sub-application: sub-backend FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-application-make_first: sub-backend-make_first FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-application-all: sub-backend-all FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-application-clean: sub-backend-clean FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-application-distclean: sub-backend-distclean FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-application-install_subtargets: sub-backend-install_subtargets FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-application-uninstall_subtargets: sub-backend-uninstall_subtargets FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-backend-qmake_all: sub-dfu-qmake_all sub-plugins-qmake_all FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd backend/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd backend/ && $(MAKE) -f Makefile qmake_all
 sub-backend: sub-dfu \
 		sub-plugins FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-backend-make_first: sub-dfu-make_first sub-plugins-make_first FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-backend-all: sub-dfu-all sub-plugins-all FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-backend-clean: sub-dfu-clean sub-plugins-clean FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-backend-distclean: sub-dfu-distclean sub-plugins-distclean FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-backend-install_subtargets: sub-dfu-install_subtargets sub-plugins-install_subtargets FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-backend-uninstall_subtargets: sub-dfu-uninstall_subtargets sub-plugins-uninstall_subtargets FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-dfu-qmake_all:  FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd dfu/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd dfu/ && $(MAKE) -f Makefile qmake_all
 sub-dfu: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-dfu-make_first: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-dfu-all: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-dfu-clean: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-dfu-distclean: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-dfu-install_subtargets: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-dfu-uninstall_subtargets: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-plugins-qmake_all: sub-3rdparty-qmake_all FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd plugins/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd plugins/ && $(MAKE) -f Makefile qmake_all
 sub-plugins: sub-3rdparty FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-plugins-make_first: sub-3rdparty-make_first FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-plugins-all: sub-3rdparty-all FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-plugins-clean: sub-3rdparty-clean FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-plugins-distclean: sub-3rdparty-distclean FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-plugins-install_subtargets: sub-3rdparty-install_subtargets FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-plugins-uninstall_subtargets: sub-3rdparty-uninstall_subtargets FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 sub-cli-qmake_all: sub-backend-qmake_all FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
+	cd cli/ && $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64
 	cd cli/ && $(MAKE) -f Makefile qmake_all
 sub-cli: sub-backend FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile
 sub-cli-make_first: sub-backend-make_first FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile 
 sub-cli-all: sub-backend-all FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile all
 sub-cli-clean: sub-backend-clean FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile clean
 sub-cli-distclean: sub-backend-distclean FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile distclean
 sub-cli-install_subtargets: sub-backend-install_subtargets FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile install
 sub-cli-uninstall_subtargets: sub-backend-uninstall_subtargets FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile uninstall
 
 Makefile: ../qFlipper.pro /opt/homebrew/share/qt/mkspecs/macx-clang/qmake.conf /opt/homebrew/share/qt/mkspecs/features/spec_pre.prf \
 		/opt/homebrew/share/qt/mkspecs/features/device_config.prf \
@@ -950,42 +950,42 @@ xcodeproj:
 
 sub-3rdparty-check:
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-application-check: sub-backend-check
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-backend-check: sub-dfu-check sub-plugins-check
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-dfu-check:
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-plugins-check: sub-3rdparty-check
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 sub-cli-check: sub-backend-check
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile check
 check: sub-3rdparty-check sub-application-check sub-backend-check sub-dfu-check sub-plugins-check sub-cli-check
 
 sub-3rdparty-benchmark:
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-application-benchmark: sub-backend-benchmark
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-backend-benchmark: sub-dfu-benchmark sub-plugins-benchmark
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-dfu-benchmark:
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-plugins-benchmark: sub-3rdparty-benchmark
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 sub-cli-benchmark: sub-backend-benchmark
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -f Makefile benchmark
 benchmark: sub-3rdparty-benchmark sub-application-benchmark sub-backend-benchmark sub-dfu-benchmark sub-plugins-benchmark sub-cli-benchmark
 install:install_subtargets  FORCE
 
@@ -1004,25 +1004,25 @@ distdir: sub-3rdparty-distdir sub-application-distdir sub-backend-distdir sub-df
 
 sub-3rdparty-distdir: FORCE
 	@test -d 3rdparty/ || mkdir -p 3rdparty/
-	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/3rdparty
+	cd 3rdparty/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/3rdparty/3rdparty.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/3rdparty
 
 sub-application-distdir: FORCE
 	@test -d application/ || mkdir -p application/
-	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/application
+	cd application/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/application/application.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/application
 
 sub-backend-distdir: FORCE
 	@test -d backend/ || mkdir -p backend/
-	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/backend
+	cd backend/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/backend/backend.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/backend
 
 sub-dfu-distdir: FORCE
 	@test -d dfu/ || mkdir -p dfu/
-	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/dfu
+	cd dfu/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/dfu/dfu.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/dfu
 
 sub-plugins-distdir: FORCE
 	@test -d plugins/ || mkdir -p plugins/
-	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/plugins
+	cd plugins/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/plugins/plugins.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/plugins
 
 sub-cli-distdir: FORCE
 	@test -d cli/ || mkdir -p cli/
-	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lotei-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/cli
+	cd cli/ && ( test -e Makefile || $(QMAKE) -o Makefile /Users/nikita/Desktop/lalaland/nikita-qflipper/cli/cli.pro -spec macx-clang 'CONFIG+=release qtquickcompiler' QMAKE_APPLE_DEVICE_ARCHS=arm64 ) && $(MAKE) -e -f Makefile distdir DISTDIR=$(DISTDIR)/cli
 

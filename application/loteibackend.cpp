@@ -4859,16 +4859,6 @@ const CliCmd kCliCommands[] = {
     { "ip",       "Shows THIS COMPUTER's network interfaces (the Flipper has none)." },
     { "uname",    "Shows THIS COMPUTER's system info. For the Flipper's own, use device_info." },
     { "pm3",      "Runs a Proxmark3 command via the pm3 client on THIS computer (Proxmark must be plugged into the Mac): pm3 hf search, pm3 lf search, etc." },
-    { "time",      "Explains why a device command can't be timed meaningfully (points at uptime)." },
-    { "zip",       "Packing a folder: use tgz (a .tgz on this computer). Raw .zip isn't supported." },
-    { "tar",       "Same as zip here -- use tgz to pack a folder into a .tgz." },
-    { "unzip",     "Unpacking isn't wired up yet -- pull the archive to this computer and unpack it there." },
-    { "nano",      "No in-terminal editor; opens the file in an editor on this computer instead (same as edit)." },
-    { "kill",      "The Flipper runs one thing at a time and has no process list -- use the app's Back button or reboot." },
-    { "sudo",      "The Flipper has no users, root or permissions -- there's nothing to elevate." },
-    { "chmod",     "The Flipper has no file permissions -- nothing to change." },
-    { "chown",     "The Flipper has no file owners -- nothing to change." },
-    { "passwd",    "The Flipper has no user accounts or passwords." },
     { "verbose",  "Shows or hides the wire-level log of everything a command runs: verbose on | off." },
 };
 
@@ -6005,20 +5995,6 @@ void FlipperCli::send(const QString &cmd)
             appendOutput(echo(cmd));
             startLocate(p0);
             return;
-        } else if (verb == QLatin1String("zip") || verb == QLatin1String("tar")) {
-            // Packaging a Flipper folder = the existing tgz path (gzip tar). A
-            // real .zip needs a zip lib the app doesn't link; tgz is the honest
-            // one-liner and round-trips with untar below.
-            appendOutput(echo(cmd) + QStringLiteral(
-                "[ use 'tgz <folder> [archive.tgz]' -- it packs a folder into a .tgz on this "
-                "computer. A raw .zip isn't supported; .tgz is the same idea and unpacks with untar. ]\n") + prompt());
-            return;
-        } else if (verb == QLatin1String("unzip") || verb == QLatin1String("untar")) {
-            appendOutput(echo(cmd) + QStringLiteral(
-                "[ not wired up yet -- for now pull the archive to this computer with "
-                "'cp /ext/path/archive.tgz ~/' and unpack it here. ]\n") + prompt());
-            return;
-
         // ---- host-side system / network tools (run on THIS computer) --------
         } else if (verb == QLatin1String("pm3") || verb == QLatin1String("proxmark3")
                 || verb == QLatin1String("proxmark")) {
@@ -6072,39 +6048,6 @@ void FlipperCli::send(const QString &cmd)
                 "[ the Flipper has no kernel; its firmware/hardware identity is 'device_info' "
                 "or 'neofetch'. Showing this computer's uname: ]\n"));
             runHostProgram(QStringLiteral("uname -a"), QStringLiteral("uname"), {QStringLiteral("-a")});
-            return;
-        } else if (verb == QLatin1String("time")) {
-            // Timing a Flipper command means timing the USB round trip, which is
-            // this computer's serial latency, not the device doing work -- so it
-            // would measure the cable, not the Flipper. Point at the honest tool.
-            appendOutput(echo(cmd) + QStringLiteral(
-                "[ can't time device commands meaningfully -- it measures USB latency, not the "
-                "Flipper. For how long the Flipper has been on, use 'uptime'. ]\n") + prompt());
-            return;
-        } else if (verb == QLatin1String("sudo") || verb == QLatin1String("chmod")
-                || verb == QLatin1String("chown") || verb == QLatin1String("passwd")
-                || verb == QLatin1String("whoiam")) {
-            // The Flipper has no users, no permissions, no root -- so none of
-            // these have anything to act on. Say so once, plainly, instead of a
-            // bare "command not found" that looks like a typo.
-            appendOutput(echo(cmd) + QStringLiteral(
-                "[ the Flipper has no user accounts or file permissions -- there's no root, no "
-                "owners, no passwords. Everything you can do here, you can already do. "
-                "(Did you mean 'whoami'? That prints the device name.) ]\n") + prompt());
-            return;
-        } else if (verb == QLatin1String("kill")) {
-            appendOutput(echo(cmd) + QStringLiteral(
-                "[ the Flipper runs one thing at a time and has no process list -- nothing to "
-                "kill. To stop the running app, use its Back button, or 'reboot'. ]\n") + prompt());
-            return;
-        } else if (verb == QLatin1String("nano") || verb == QLatin1String("vi")
-                || verb == QLatin1String("vim")) {
-            // No interactive full-screen editor over an append-only terminal.
-            // But 'edit' opens the file in a real editor on the host, which is
-            // strictly better -- point there instead of failing.
-            if (p0.isEmpty()) { usage(QStringLiteral("edit <file>   (opens it on this computer)")); return; }
-            appendOutput(echo(cmd) + QStringLiteral("[ no in-terminal editor; opening it on this computer instead ]\n"));
-            startEdit(here(p0));
             return;
         } else if (verb == QLatin1String("history")) {
             appendOutput(echo(cmd));

@@ -34,10 +34,6 @@ AbstractOverlay {
         enabled: App.isDeveloperMode
         visible: App.isDeveloperMode
 
-        ToolTip {
-            text: qsTr("Developer mode. Use with caution!")
-            visible: parent.hovered
-        }
     }
 
     MessageDialog {
@@ -122,12 +118,14 @@ AbstractOverlay {
             icon.source: "qrc:/assets/gfx/symbolic/info.svg"
             icon.width: 25
             icon.height: 25
+
         }
 
         TabButton {
             icon.source: "qrc:/assets/gfx/symbolic/wrench.svg"
             icon.width: 27
             icon.height: 27
+
         }
 
         TabButton {
@@ -139,6 +137,7 @@ AbstractOverlay {
             icon.height: 29
 
             onCheckedChanged: if(checked) Backend.fileManager.refresh()
+
         }
     }
 
@@ -224,61 +223,6 @@ AbstractOverlay {
         icon.width: 32
         icon.height: 32
 
-        ToolTip {
-            id: installTip
-            text: {
-                if(Firmware.hasSelection) {
-                    return qsTr("Install %1 %2 imported from the firmware store")
-                           .arg(Firmware.selectedName).arg(Firmware.selectedVersion);
-                }
-                if(Lotei.sdFormatted) {
-                    return qsTr("The card was formatted. Import a firmware from Custom firmware to put it back, then Restore your files.");
-                }
-                if(overlay.onFork) {
-                    if(!Firmware.installedReady) {
-                        return qsTr("Couldn't reach the %1 release feed, so it isn't known whether a newer build exists. Press to try again.")
-                               .arg(Firmware.installedName);
-                    }
-                    if(Firmware.channelSwitchPending && Firmware.installedLatest === Firmware.deviceVersion) {
-                        return qsTr("Move %1 from the %2 channel to %3. Same build, different channel.")
-                               .arg(Firmware.installedName)
-                               .arg(Firmware.installedFromChannel)
-                               .arg(Firmware.installedChannel);
-                    }
-                    return Firmware.updateAvailable
-                           ? qsTr("Update %1 to %2 (%3 channel)")
-                             .arg(Firmware.installedName).arg(Firmware.installedLatest).arg(Firmware.installedChannel)
-                           : qsTr("%1 is already the newest build. Use Custom firmware to switch to a different one.")
-                             .arg(Firmware.installedName);
-                }
-                switch(Backend.firmwareUpdateState) {
-                case ApplicationBackend.CanRepair:
-                    return qsTr("Repair a broken firmware installation. May erase your progress and settings.");
-                case ApplicationBackend.CanUpdate:
-                    return qsTr("Update Flipper to the latest version");
-                case ApplicationBackend.CanInstall:
-                    return qsTr("Install firmware from currently selected update channel");
-                case ApplicationBackend.ErrorOccured:
-                    return qsTr("Press to check internet connection and try to update Flipper again");
-                default:
-                    return "";
-                }
-            }
-
-            implicitWidth: 300
-            x: Math.round((parent.width - width) / 2)
-            y: parent.height + 6
-            visible: parent.hovered && text.length !== 0 && !Firmware.open && !Cli.open
-
-            contentItem: Text {
-                text: installTip.text
-                color: Theme.color.lightorange2
-                font: installTip.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                wrapMode: Text.WordWrap
-            }
-        }
     }
 
     LinkButton {

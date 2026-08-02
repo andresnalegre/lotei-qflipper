@@ -69,13 +69,6 @@ Item {
                 else       { Preferences.updateChannel = textAt(index); }
             }
 
-            ToolTip {
-                visible: parent.hovered
-                text: channelComboBox.onFork
-                      ? qsTr("Update channel for %1, the firmware on this Flipper").arg(Firmware.installedName)
-                      : qsTr("Change the firmware update channel")
-                implicitWidth: 250
-            }
         }
 
         TransparentLabel {
@@ -98,11 +91,6 @@ Item {
                 icon.width: 18
                 icon.height: 20
 
-                ToolTip {
-                    visible: parent.hovered
-                    text: qsTr("Save the contents of Flipper's internal storage to this computer's disk.")
-                    implicitWidth: 250
-                }
             }
 
             SmallButton {
@@ -113,11 +101,6 @@ Item {
                 icon.width: 18
                 icon.height: 20
 
-                ToolTip {
-                    visible: parent.hovered
-                    text: qsTr("Download the contents of a backup directory to Flipper's internal storage.")
-                    implicitWidth: 250
-                }
             }
 
             SmallButton {
@@ -128,11 +111,6 @@ Item {
                 icon.width: 18
                 icon.height: 20
 
-                ToolTip {
-                    visible: parent.hovered
-                    text: qsTr("Revert Flipper to its default settings. WARNING! All progress will be lost!")
-                    implicitWidth: 250
-                }
             }
 
             SmallButton {
@@ -143,11 +121,6 @@ Item {
                 icon.width: 16
                 icon.height: 16
 
-                ToolTip {
-                    visible: parent.hovered
-                    text: qsTr("Flash the current firmware over itself. Use it if an install was interrupted.")
-                    implicitWidth: 250
-                }
             }
         }
 
@@ -164,11 +137,6 @@ Item {
             icon.width: 16
             icon.height: 16
 
-            ToolTip {
-                visible: parent.hovered
-                text: qsTr("New updates soon!")
-                implicitWidth: 250
-            }
         }
 
         // Only ever one firmware is staged -- picking another replaces it, so
@@ -181,13 +149,6 @@ Item {
             // No icon: with one there, the label sat off to the right of it
             // rather than in the middle of the button.
 
-            ToolTip {
-                visible: parent.hovered
-                text: Firmware.hasSelection
-                      ? qsTr("Drop the %1 firmware staged from Custom firmware.").arg(Firmware.selectedName)
-                      : qsTr("Nothing staged. Import a firmware from Custom firmware first.")
-                implicitWidth: 250
-            }
         }
 
         Action {

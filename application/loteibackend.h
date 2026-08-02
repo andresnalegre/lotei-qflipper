@@ -250,7 +250,8 @@ private:
     QJsonArray m_history;        // running messages (user / assistant / tool)
     QString    m_deviceContext;  // latest diagnostics snapshot from QML
     int        m_toolRounds = 0;
-    // Anti-hallucination bookkeeping (see finalizeStream):
+    bool       m_turnNeedsTools = false;   // set per turn by the intent router
+    // Anti-hallucination bookkeeping (see finalizeStream) + "edit the same file":
     bool       m_turnWasFileAction = false;  // this user turn asked to save/create/write a file
     bool       m_turnRanAnyTool    = false;  // at least one tool actually executed this turn
     bool       m_lastTurnWasAction = false;  // the PREVIOUS turn did a file/device action
@@ -258,7 +259,6 @@ private:
     QString    m_lastSavedPath;              // path of the most recent save_file this session,
                                              // injected into the prompt so "make it fancy" edits
                                              // the SAME file instead of spawning a new one
-    bool       m_turnNeedsTools = false;   // set per turn by the intent router
     bool       m_thinking = false;
     bool       m_muted = false;
     qreal      m_voiceVolume = 1.0;
@@ -589,6 +589,15 @@ signals:
     // "edit <path>" fetched the file -- whatever panel does host-side text
     // editing can hook this to pop it open instead of just printing it.
     void editRequested(const QString &path, const QString &content);
+    // The editor panel finished writing the file back (or hit an error).
+    void editSaved(const QString &path);
+    void editSaveError(const QString &path, const QString &message);
+
+public:
+    // Called by the editor panel's Save button: write the edited text back to
+    // the same path. Reuses the storage upload path (remove + write_chunk + md5)
+    // so a save here is verified exactly like a file-tool save.
+    Q_INVOKABLE void saveEditedFile(const QString &path, const QString &content);
 
 private slots:
     void onReadyRead();

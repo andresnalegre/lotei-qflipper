@@ -7025,8 +7025,12 @@ void FlipperCli::startEdit(const QString &path)
         const int p = body.lastIndexOf(QLatin1String(">:"));
         if (p >= 0) { body = body.left(p); }
         body = body.trimmed();
+        // Hand the file to the editor panel in the UI. We deliberately DON'T
+        // also dump the body into the terminal any more -- that made edit look
+        // like a glorified cat and buried the point. A short line confirms what
+        // opened; the panel shows and edits the actual contents.
         emit editRequested(path, body);
-        appendOutput(body + QLatin1Char('\n') + QStringLiteral("[ %1 ]\n").arg(path) + prompt());
+        appendOutput(QStringLiteral("[ editing %1 -- opening editor ]\n").arg(path) + prompt());
     });
 }
 
@@ -7146,6 +7150,30 @@ void FlipperCli::startDu(const QString &path)
 // echo > / >> and touch. Both stage the bytes in a temp file and hand them to
 // the normal upload path, so they get its remove-then-write_chunk sequence and
 // its MD5 verification for free rather than reimplementing either.
+// Save from the editor panel: write the edited text straight back to the same
+// path, verified through the normal upload path, and signal the panel so it can
+// show "saved" and close. Kept separate from writeTextToDevice so the editor
+// isn't coupled to the terminal's prompt printing.
+void FlipperCli::saveEditedFile(const QString &path, const QString &content)
+{
+    if (path.isEmpty()) { emit editSaveError(path, QStringLiteral("No path.")); return; }
+
+    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/lotei-edit-XXXXXX"));
+    if (!tmp.open()) {
+        emit editSaveError(path, QStringLiteral("Couldn't create a temp file on this computer."));
+        return;
+    }
+    tmp.write(content.toUtf8());
+    tmp.flush();
+
+    // uploadToFlipper reads the temp file synchronously and reports into the
+    // terminal; we additionally emit editSaved so the panel can react. A tiny
+    // deferred emit keeps ordering predictable relative to the upload's own
+    // terminal output.
+    uploadToFlipper(tmp.fileName(), path, true);
+    emit editSaved(path);
+}
+
 void FlipperCli::writeTextToDevice(const QString &text, const QString &devPath, bool append)
 {
     if (append) {

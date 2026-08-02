@@ -1274,6 +1274,9 @@ template <> constexpr inline auto FlipperCli::qt_create_metaobjectdata<qt_meta_t
         "editRequested",
         "path",
         "content",
+        "editSaved",
+        "editSaveError",
+        "message",
         "onReadyRead",
         "send",
         "cmd",
@@ -1283,6 +1286,7 @@ template <> constexpr inline auto FlipperCli::qt_create_metaobjectdata<qt_meta_t
         "clipboardText",
         "copyToClipboard",
         "text",
+        "saveEditedFile",
         "open",
         "active",
         "output",
@@ -1315,42 +1319,54 @@ template <> constexpr inline auto FlipperCli::qt_create_metaobjectdata<qt_meta_t
         QtMocHelpers::SignalData<void(const QString &, const QString &)>(11, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 12 }, { QMetaType::QString, 13 },
         }}),
+        // Signal 'editSaved'
+        QtMocHelpers::SignalData<void(const QString &)>(14, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 12 },
+        }}),
+        // Signal 'editSaveError'
+        QtMocHelpers::SignalData<void(const QString &, const QString &)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 12 }, { QMetaType::QString, 16 },
+        }}),
         // Slot 'onReadyRead'
-        QtMocHelpers::SlotData<void()>(14, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(17, 2, QMC::AccessPrivate, QMetaType::Void),
         // Method 'send'
-        QtMocHelpers::MethodData<void(const QString &)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 16 },
+        QtMocHelpers::MethodData<void(const QString &)>(18, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 19 },
         }}),
         // Method 'interrupt'
-        QtMocHelpers::MethodData<void()>(17, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(20, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'clearOutput'
-        QtMocHelpers::MethodData<void()>(18, 2, QMC::AccessPublic, QMetaType::Void),
+        QtMocHelpers::MethodData<void()>(21, 2, QMC::AccessPublic, QMetaType::Void),
         // Method 'complete'
-        QtMocHelpers::MethodData<void(const QString &)>(19, 2, QMC::AccessPublic, QMetaType::Void, {{
+        QtMocHelpers::MethodData<void(const QString &)>(22, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 10 },
         }}),
         // Method 'clipboardText'
-        QtMocHelpers::MethodData<QString() const>(20, 2, QMC::AccessPublic, QMetaType::QString),
+        QtMocHelpers::MethodData<QString() const>(23, 2, QMC::AccessPublic, QMetaType::QString),
         // Method 'copyToClipboard'
-        QtMocHelpers::MethodData<void(const QString &) const>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 22 },
+        QtMocHelpers::MethodData<void(const QString &) const>(24, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 25 },
+        }}),
+        // Method 'saveEditedFile'
+        QtMocHelpers::MethodData<void(const QString &, const QString &)>(26, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 12 }, { QMetaType::QString, 13 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'open'
-        QtMocHelpers::PropertyData<bool>(23, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
+        QtMocHelpers::PropertyData<bool>(27, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 0),
         // property 'active'
-        QtMocHelpers::PropertyData<bool>(24, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
+        QtMocHelpers::PropertyData<bool>(28, QMetaType::Bool, QMC::DefaultPropertyFlags, 1),
         // property 'output'
-        QtMocHelpers::PropertyData<QString>(25, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<QString>(29, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
         // property 'status'
-        QtMocHelpers::PropertyData<QString>(26, QMetaType::QString, QMC::DefaultPropertyFlags, 3),
+        QtMocHelpers::PropertyData<QString>(30, QMetaType::QString, QMC::DefaultPropertyFlags, 3),
         // property 'verbose'
-        QtMocHelpers::PropertyData<bool>(27, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 4),
+        QtMocHelpers::PropertyData<bool>(31, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 4),
         // property 'colored'
-        QtMocHelpers::PropertyData<bool>(28, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 5),
+        QtMocHelpers::PropertyData<bool>(32, QMetaType::Bool, QMC::DefaultPropertyFlags | QMC::Writable | QMC::StdCppSet, 5),
         // property 'promptText'
-        QtMocHelpers::PropertyData<QString>(29, QMetaType::QString, QMC::DefaultPropertyFlags, 6),
+        QtMocHelpers::PropertyData<QString>(33, QMetaType::QString, QMC::DefaultPropertyFlags, 6),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -1381,14 +1397,17 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 6: _t->promptChanged(); break;
         case 7: _t->completion((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         case 8: _t->editRequested((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
-        case 9: _t->onReadyRead(); break;
-        case 10: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 11: _t->interrupt(); break;
-        case 12: _t->clearOutput(); break;
-        case 13: _t->complete((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 14: { QString _r = _t->clipboardText();
+        case 9: _t->editSaved((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 10: _t->editSaveError((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 11: _t->onReadyRead(); break;
+        case 12: _t->send((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 13: _t->interrupt(); break;
+        case 14: _t->clearOutput(); break;
+        case 15: _t->complete((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 16: { QString _r = _t->clipboardText();
             if (_a[0]) *reinterpret_cast<QString*>(_a[0]) = std::move(_r); }  break;
-        case 15: _t->copyToClipboard((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 17: _t->copyToClipboard((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 18: _t->saveEditedFile((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
         default: ;
         }
     }
@@ -1410,6 +1429,10 @@ void FlipperCli::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & )>(_a, &FlipperCli::completion, 7))
             return;
         if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & , const QString & )>(_a, &FlipperCli::editRequested, 8))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & )>(_a, &FlipperCli::editSaved, 9))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (FlipperCli::*)(const QString & , const QString & )>(_a, &FlipperCli::editSaveError, 10))
             return;
     }
     if (_c == QMetaObject::ReadProperty) {
@@ -1455,14 +1478,14 @@ int FlipperCli::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 16)
+        if (_id < 19)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 19;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 16)
+        if (_id < 19)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 16;
+        _id -= 19;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty
@@ -1525,5 +1548,17 @@ void FlipperCli::completion(const QString & _t1)
 void FlipperCli::editRequested(const QString & _t1, const QString & _t2)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 8, nullptr, _t1, _t2);
+}
+
+// SIGNAL 9
+void FlipperCli::editSaved(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 9, nullptr, _t1);
+}
+
+// SIGNAL 10
+void FlipperCli::editSaveError(const QString & _t1, const QString & _t2)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 10, nullptr, _t1, _t2);
 }
 QT_WARNING_POP

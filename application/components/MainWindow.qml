@@ -1229,6 +1229,178 @@ Item {
         }
     }
 
+    // ---- file editor (the ONE editor) --------------------------------------
+    // Opened from two places, deliberately sharing one panel so they can never
+    // look different: the CLI's "edit <path>" (Cli.editRequested) and the file
+    // manager's double-click (Lotei.fileOpened). editorOverlay.source records
+    // which opened it, so Save routes to the matching backend.
+    Item {
+        id: editorOverlay
+        anchors.left: mainContent.left
+        anchors.right: mainContent.right
+        anchors.top: mainContent.top
+        anchors.bottom: mainContent.bottom
+        visible: open
+        z: 9997
+
+        property bool open: false
+        property string path: ""
+        property string source: ""      // "cli" or "fm"
+        property bool dirty: false
+        property bool justSaved: false
+
+        function beginEdit(src, p, content) {
+            editorOverlay.source = src;
+            editorOverlay.path = p;
+            cliEditArea.text = content;
+            editorOverlay.dirty = false;
+            editorOverlay.justSaved = false;
+            editorOverlay.open = true;
+            cliEditArea.forceActiveFocus();
+        }
+        function doSave() {
+            if (editorOverlay.source === "fm") { Lotei.writeFile(editorOverlay.path, cliEditArea.text); }
+            else { Cli.saveEditedFile(editorOverlay.path, cliEditArea.text); }
+        }
+        function markSaved() {
+            editorOverlay.dirty = false;
+            editorOverlay.justSaved = true;
+            cliSavedResetTimer.restart();
+        }
+
+        Connections {
+            target: Cli
+            function onEditRequested(path, content) { editorOverlay.beginEdit("cli", path, content); }
+            function onEditSaved(path) { editorOverlay.markSaved(); }
+            function onEditSaveError(path, message) { cliEditStatus.text = "save failed: " + message; }
+        }
+        Connections {
+            target: Lotei
+            function onFileOpened(path, content) { editorOverlay.beginEdit("fm", path, content); }
+            function onFileSaved(path) {
+                if (editorOverlay.source === "fm") {
+                    editorOverlay.markSaved();
+                    Backend.fileManager.refresh();
+                }
+            }
+            function onFileEditError(msg) {
+                if (editorOverlay.source === "fm") { cliEditStatus.text = "save failed: " + msg; }
+            }
+        }
+
+        Timer { id: cliSavedResetTimer; interval: 1500; onTriggered: editorOverlay.justSaved = false }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#0b0410"; radius: 8; border.width: 2; border.color: Theme.color.mediumorange2
+
+            MouseArea {
+                anchors.fill: parent; hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onWheel: function(wheel) { wheel.accepted = true }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent; anchors.margins: 18; spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "EDIT"; color: Theme.color.lightorange2
+                        font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true
+                    }
+                    Text {
+                        text: editorOverlay.path + (editorOverlay.dirty ? "  *" : "")
+                        color: Theme.color.mediumorange1
+                        font.family: "Share Tech Mono"; font.pixelSize: 11
+                        Layout.leftMargin: 8; Layout.alignment: Qt.AlignVCenter
+                        elide: Text.ElideMiddle; Layout.fillWidth: true
+                    }
+                    Text {
+                        text: "\u2715"
+                        color: cliCloseMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
+                        font.family: "Share Tech Mono"; font.pixelSize: 18
+                        MouseArea {
+                            id: cliCloseMouse; anchors.fill: parent; anchors.margins: -6
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: editorOverlay.open = false
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    color: "#160a1c"; radius: 6; border.width: 1; border.color: Theme.color.mediumorange1
+
+                    Flickable {
+                        id: cliEditFlick
+                        anchors.fill: parent; anchors.margins: 8
+                        clip: true
+                        contentWidth: width
+                        contentHeight: cliEditArea.implicitHeight
+                        ScrollBar.vertical: ScrollBar { }
+
+                        TextArea.flickable: TextArea {
+                            id: cliEditArea
+                            wrapMode: TextArea.NoWrap
+                            selectByMouse: true
+                            persistentSelection: true
+                            color: Theme.color.lightgreen
+                            selectionColor: "#3b5bdb"
+                            selectedTextColor: "white"
+                            font.family: "Share Tech Mono"; font.pixelSize: 12
+                            background: null
+                            onTextChanged: if (editorOverlay.open) { editorOverlay.dirty = true; editorOverlay.justSaved = false; }
+                            Keys.onPressed: function(e) {
+                                if ((e.modifiers & Qt.ControlModifier || e.modifiers & Qt.MetaModifier)
+                                    && e.key === Qt.Key_S) {
+                                    editorOverlay.doSave();
+                                    e.accepted = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 10
+                    Text {
+                        id: cliEditStatus
+                        text: editorOverlay.justSaved ? "saved" : ""
+                        color: editorOverlay.justSaved ? Theme.color.lightgreen : Theme.color.mediumorange4
+                        font.family: "Share Tech Mono"; font.pixelSize: 11
+                        Layout.fillWidth: true
+                    }
+                    Text {
+                        text: "CANCEL"
+                        color: cliCancelMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange4
+                        font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+                        MouseArea {
+                            id: cliCancelMouse; anchors.fill: parent; anchors.margins: -6
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: editorOverlay.open = false
+                        }
+                    }
+                    Item { width: 18 }
+                    Text {
+                        text: "SAVE"
+                        color: cliSaveMouse.containsMouse ? Theme.color.lightgreen
+                             : (editorOverlay.dirty ? Theme.color.lightorange2 : Theme.color.mediumorange4)
+                        font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+                        MouseArea {
+                            id: cliSaveMouse; anchors.fill: parent; anchors.margins: -6
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: editorOverlay.doSave()
+                        }
+                    }
+                }
+            }
+        }
+
+        Keys.onEscapePressed: editorOverlay.open = false
+    }
+
+
     // Reinstall and Update run from the tools tab and the main screen, where
     // the store panel is closed -- and its failed()/progress() handlers live
     // inside that panel. A download that died there failed in total silence.

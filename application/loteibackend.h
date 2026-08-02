@@ -198,6 +198,8 @@ signals:
     void fileSaved(const QString &path);           // editor: file written
     void fileEditError(const QString &message);    // editor: read/write failed
     void partialReceived(const QString &text);   // live-typing: reply text so far
+    // Every host_* tool call, as it happens, for the chat to show inline.
+    void hostActionRan(const QString &summary);
 
 private:
     void setThinking(bool value);
@@ -238,7 +240,9 @@ private:
 
     // Host agent: edit/build/test LOTEI's own source, hard-sandboxed to a folder.
     bool agentReady() const;                                     // enabled + valid workspace
-    QString resolveAgentPath(const QString &rel, bool mustExist) const; // contain to workspace
+    QString resolveAgentPath(const QString &rel, bool mustExist) const;
+    // Where relative paths land and where host_run starts. Never empty.
+    QString agentBaseDir() const; // contain to workspace
     void runHostTool(const QString &name, const QJsonObject &args,
                      std::function<void(const QString &)> done);
     void rememberFact(const QString &fact);   // append a durable fact to memory

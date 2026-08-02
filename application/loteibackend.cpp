@@ -100,10 +100,11 @@ static const int LOTEI_CATALOG_COUNT = int(sizeof(LOTEI_CATALOG) / sizeof(LOTEI_
 // symlinks). host_run executes a shell command in that folder with a timeout
 // and captured output -- enough for LOTEI to build, run tests and fix bugs in
 // his own code, but never outside the folder the user chose.
-static const int   LOTEI_HOST_RUN_TIMEOUT_MS = 180000;   // 3 min per command
-static const int   LOTEI_HOST_OUTPUT_CAP     = 12000;    // chars of stdout+stderr returned
-static const int   LOTEI_HOST_READ_CAP       = 16000;    // chars returned by host_read
-static const int   LOTEI_HOST_LIST_CAP       = 400;      // entries returned by host_list
+static const int   LOTEI_HOST_RUN_TIMEOUT_MS = 900000;   // 15 min per command
+static const int   LOTEI_HOST_OUTPUT_CAP     = 60000;    // chars of stdout+stderr returned
+static const int   LOTEI_HOST_READ_CAP       = 120000;   // chars returned by host_read
+static const int   LOTEI_HOST_LIST_CAP       = 4000;     // entries returned by host_list
+static const int   LOTEI_HOST_FIND_CAP       = 2000;     // paths returned by host_find
 
 // Nikita's personality: terse, sharp, Mr. Robot (Elliot Anderson) energy. Short,
 // direct answers; acts with tools when there's a real task, plain talk otherwise.
@@ -357,6 +358,9 @@ static QJsonArray salvageToolCalls(const QString &content)
         QStringLiteral("rename_file"), QStringLiteral("file_info"),
         QStringLiteral("host_list"), QStringLiteral("host_read"),
         QStringLiteral("host_write"), QStringLiteral("host_run"),
+        QStringLiteral("host_mkdir"), QStringLiteral("host_delete"),
+        QStringLiteral("host_move"), QStringLiteral("host_copy"),
+        QStringLiteral("host_find"),
         QStringLiteral("remember"), QStringLiteral("list_memory"),
         QStringLiteral("forget")
     };
@@ -738,7 +742,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "host_list"},
-            {"description", "List files and folders inside the HOST WORKSPACE (your own source tree on this computer). Paths are relative to the workspace root; use \".\" for the root."},
+            {"description", "List files and folders on THIS COMPUTER. Absolute path, or ~/... for home, or relative to the workspace folder. Use \".\" for the workspace folder itself."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -752,7 +756,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "host_read"},
-            {"description", "Read a text file from the HOST WORKSPACE (your own source). Path is relative to the workspace root."},
+            {"description", "Read a text file from THIS COMPUTER. Absolute path, or ~/... , or relative to the workspace folder."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -766,7 +770,7 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "host_write"},
-            {"description", "Write/overwrite a text file in the HOST WORKSPACE (your own source). Creates missing parent folders. Path is relative to the workspace root. Use this to fix bugs or add code, then host_run to build/test."},
+            {"description", "Write/overwrite a text file on THIS COMPUTER. Creates missing parent folders. Absolute path, or ~/... , or relative to the workspace folder. It OVERWRITES the whole file, so read it first."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
@@ -781,13 +785,88 @@ static QJsonArray loteiTools(bool agent)
         {"type", "function"},
         {"function", QJsonObject{
             {"name", "host_run"},
-            {"description", "Run a shell command inside the HOST WORKSPACE and get back its exit code plus captured stdout/stderr. Use it to build, run tests, git status, etc. Blocks until the command finishes or times out."},
+            {"description", "Run a shell command on THIS COMPUTER and get back its exit code plus captured stdout/stderr. Runs in the workspace folder unless cwd is given. Prefer a typed tool (host_read, host_find, host_delete) when one fits -- they report failures properly. Blocks until the command finishes or times out."},
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
-                    {"command", QJsonObject{{"type", "string"}, {"description", "The command line to run, e.g. build_pink_inc.bat or ctest"}}}
+                    {"command", QJsonObject{{"type", "string"}, {"description", "The command line to run, e.g. make -j8 or git status"}}},
+                    {"cwd", QJsonObject{{"type", "string"}, {"description", "Optional folder to run it in"}}}
                 }},
                 {"required", QJsonArray{"command"}}
+            }}
+        }}
+    };
+
+    const QJsonObject hostMkdir{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_mkdir"},
+            {"description", "Create a folder on this computer, parents included. Absolute path, or ~/... , or relative to the workspace folder."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}, {"description", "Folder to create"}}}
+                }},
+                {"required", QJsonArray{"path"}}
+            }}
+        }}
+    };
+    const QJsonObject hostDelete{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_delete"},
+            {"description", "Delete a file or a folder (recursively) on this computer. Destructive and not undoable -- only when the user clearly asked for it."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}, {"description", "File or folder to delete"}}}
+                }},
+                {"required", QJsonArray{"path"}}
+            }}
+        }}
+    };
+    const QJsonObject hostMove{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_move"},
+            {"description", "Move or rename a file on this computer. Creates the destination folder if it is missing."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"from", QJsonObject{{"type", "string"}, {"description", "Existing path"}}},
+                    {"to", QJsonObject{{"type", "string"}, {"description", "New path"}}}
+                }},
+                {"required", QJsonArray{"from", "to"}}
+            }}
+        }}
+    };
+    const QJsonObject hostCopy{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_copy"},
+            {"description", "Copy a file on this computer. Creates the destination folder if it is missing."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"from", QJsonObject{{"type", "string"}, {"description", "Existing path"}}},
+                    {"to", QJsonObject{{"type", "string"}, {"description", "Destination path"}}}
+                }},
+                {"required", QJsonArray{"from", "to"}}
+            }}
+        }}
+    };
+    const QJsonObject hostFind{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_find"},
+            {"description", "Search a folder tree on this computer for names matching a wildcard. Returns full paths."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}, {"description", "Folder to search under"}}},
+                    {"pattern", QJsonObject{{"type", "string"}, {"description", "Wildcard, e.g. *.cpp"}}}
+                }},
+                {"required", QJsonArray{"path"}}
             }}
         }}
     };
@@ -796,6 +875,11 @@ static QJsonArray loteiTools(bool agent)
     tools.append(hostRead);
     tools.append(hostWrite);
     tools.append(hostRun);
+    tools.append(hostMkdir);
+    tools.append(hostDelete);
+    tools.append(hostMove);
+    tools.append(hostCopy);
+    tools.append(hostFind);
     return tools;
 }
 
@@ -2217,9 +2301,14 @@ QString LoteiBackend::systemPrompt() const
         sys += QStringLiteral(
             "\n\nHOST WORKSPACE -- you can edit and test your OWN source code:\n"
             "- A workspace folder on THIS computer is wired up: \"%1\". It holds your own qFlipper/LOTEI source.\n"
-            "- host_list(path), host_read(path), host_write(path, content): browse/read/edit files, paths RELATIVE to the workspace root (use \".\" for root). host_write creates missing folders and OVERWRITES the whole file, so read first, then write the full new contents.\n"
-            "- host_run(command): run a shell command in the workspace (build, tests, git). You get the exit code and combined stdout/stderr back. It BLOCKS until the command finishes, so prefer fast, targeted commands.\n"
-            "- Your core lives in application/loteibackend.cpp + .h and application/components/LoteiChat.qml. To fix a bug: host_read the file, host_write the corrected version, then host_run the incremental build (e.g. build_pink_inc.bat on Windows) and read the errors.\n"
+            "- Your reach on this computer is the WHOLE FILESYSTEM, not a sandbox. Paths may be absolute (/Users/...), may start with ~ for home, or may be relative -- relative ones land in the workspace folder. There is no folder you have to ask permission for.\n"
+            "- host_list(path), host_read(path), host_write(path, content): browse, read and edit files anywhere. host_write creates missing folders and OVERWRITES the whole file, so read it first, then write the full new contents.\n"
+            "- host_mkdir(path), host_move(from, to), host_copy(from, to), host_delete(path), host_find(path, pattern): create, move, copy, delete and search. Use these instead of shelling out to mkdir/mv/cp/rm/find -- they report what actually happened, where a shell command just hands you an exit code.\n"
+            "- host_run(command, cwd): run a shell command and get the exit code plus combined stdout/stderr. It BLOCKS until the command finishes, so prefer targeted commands. Reach for it when no typed tool fits, not as the default.\n"
+            "- Every one of these is shown to the user as it happens, reads included. That is not a restriction on you -- it means you never have to describe what you are about to do to keep them informed. Just do it.\n"
+            "- The reach is real, so the care has to be too. host_delete is not undoable and there is no bin to fish things out of. Delete what was asked for and nothing adjacent; when a request would remove more than the user clearly named, do the named part and say what you left alone.\n"
+            "- The workspace folder is not a boundary, just a starting point: it is where bare relative paths land and where host_run begins. Say the path you actually mean.\n"
+            "- Your own core lives in application/loteibackend.cpp + .h and application/components/ under that workspace. To fix a bug in yourself: host_read the file, host_write the corrected version, then host_run the build and read the errors.\n"
             "- You physically canNOT touch anything outside the workspace folder -- attempts to escape it are blocked. Never claim you edited files you didn't. Say what you changed and why, plainly.").arg(m_agentRoot);
     }
 
@@ -2596,11 +2685,15 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
     static const QStringList kLoggedTools = {
         QStringLiteral("save_file"), QStringLiteral("make_dir"), QStringLiteral("delete_file"),
         QStringLiteral("rename_file"), QStringLiteral("run_cli"), QStringLiteral("press_button"),
-        QStringLiteral("host_write"), QStringLiteral("host_run"),
         QStringLiteral("remember"), QStringLiteral("forget")
     };
     m_turnRanAnyTool = true;   // a tool is actually executing this turn
-    if (kLoggedTools.contains(name)) {
+    // Anything touching this computer is logged, reads included. With the whole
+    // disk reachable, "what did it look at" is as much a part of the trail as
+    // "what did it change" -- and the trail is the only way to answer that
+    // afterwards.
+    const bool isHost = name.startsWith(QLatin1String("host_"));
+    if (kLoggedTools.contains(name) || isHost) {
         QStringList bits;
         for (auto it = args.begin(); it != args.end(); ++it) {
             QString v = it.value().toVariant().toString().simplified();
@@ -2608,7 +2701,13 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
             if (v.size() > 60) { v = v.left(60) + QStringLiteral("...(%1 chars)").arg(it.value().toString().size()); }
             bits << QStringLiteral("%1=%2").arg(it.key(), v);
         }
-        loteiLogAs(assistantName(), QStringLiteral("%1 %2").arg(name, bits.join(QLatin1String(", "))));
+        const QString line = QStringLiteral("%1 %2").arg(name, bits.join(QLatin1String(", ")));
+        loteiLogAs(assistantName(), line);
+        // Host actions also surface in the chat itself. The log panel is where
+        // you look when something already went wrong; the chat is where you are
+        // actually watching, and an agent with the run of the disk should not be
+        // able to do anything you can only find out about later.
+        if (isHost) { emit hostActionRan(line); }
     }
 
     const QString who = assistantName();
@@ -2621,8 +2720,9 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
     done = logged;
 
     // Host-workspace tools run on THIS computer, not the Flipper -- no device needed.
-    if (name == QLatin1String("host_list") || name == QLatin1String("host_read")
-        || name == QLatin1String("host_write") || name == QLatin1String("host_run")) {
+    // Every host_* tool routes here. Matching on the prefix means a tool added
+    // to runHostTool can't be forgotten in this list and silently 404.
+    if (name.startsWith(QLatin1String("host_"))) {
         runHostTool(name, args, done);
         return;
     }
@@ -2910,50 +3010,69 @@ void LoteiBackend::ensureFlipperDir(const QByteArray &dirPath, std::function<voi
 
 bool LoteiBackend::agentReady() const
 {
-    return m_agentEnabled && !m_agentRoot.isEmpty() && QFileInfo(m_agentRoot).isDir();
+    // The workspace folder used to be a requirement because it was also the
+    // fence. It isn't a fence any more -- it is just where relative paths and
+    // shell commands start from -- so an unset one falls back to home rather
+    // than disabling every host tool.
+    return m_agentEnabled;
 }
 
-// Resolve a workspace-relative path to an absolute one and REFUSE anything that
-// escapes the workspace root (via .., absolute paths or symlinks). Returns an
-// empty string on rejection.
+// Where a bare relative path lands, and the working directory host_run starts
+// in. Never empty: an unconfigured workspace means home, not nowhere.
+QString LoteiBackend::agentBaseDir() const
+{
+    if (!m_agentRoot.isEmpty() && QFileInfo(m_agentRoot).isDir()) { return m_agentRoot; }
+    return QDir::homePath();
+}
+
+// Turn whatever the model said into an absolute path on this computer.
+//
+// This used to refuse anything that left the workspace root. That fence was
+// never real: host_run has always taken an arbitrary shell command and only set
+// the working directory, so "cd ~ && cat secrets" was one call away the whole
+// time. All the containment check achieved was pushing the model off the typed
+// tools and onto `sh -c`, where a mistake is harder to see and impossible to
+// report properly. The access is now what it always effectively was, and it is
+// stated plainly instead of being implied.
+//
+// "~" expands, absolute paths are taken as given, and anything relative lands
+// under the workspace folder (or home, if none is configured).
 QString LoteiBackend::resolveAgentPath(const QString &rel, bool mustExist) const
 {
-    if (m_agentRoot.isEmpty()) { return QString(); }
-    const QString rootCanon = QFileInfo(m_agentRoot).canonicalFilePath();
-    if (rootCanon.isEmpty()) { return QString(); }
-
     QString cleaned = rel.trimmed();
-    if (cleaned == QLatin1String(".") || cleaned.isEmpty()) { cleaned.clear(); }
-    const QString joined = cleaned.isEmpty() ? rootCanon
-                                             : QDir(rootCanon).absoluteFilePath(cleaned);
+    if (cleaned.isEmpty() || cleaned == QLatin1String(".")) { return agentBaseDir(); }
 
-    // For existing paths, canonicalize (resolves symlinks) and check containment.
+    if (cleaned == QLatin1String("~"))          { cleaned = QDir::homePath(); }
+    else if (cleaned.startsWith(QLatin1String("~/"))) { cleaned.replace(0, 1, QDir::homePath()); }
+
+    const QString joined = QDir::isAbsolutePath(cleaned)
+                               ? QDir::cleanPath(cleaned)
+                               : QDir(agentBaseDir()).absoluteFilePath(cleaned);
+
     const QFileInfo fi(joined);
     if (fi.exists()) {
         const QString canon = fi.canonicalFilePath();
-        if (canon != rootCanon && !canon.startsWith(rootCanon + QLatin1Char('/'))) { return QString(); }
-        return canon;
+        return canon.isEmpty() ? joined : canon;   // canonical fails on a broken symlink
     }
     if (mustExist) { return QString(); }
-    // New file: canonicalize the parent, then re-append the leaf.
-    const QString parentCanon = QFileInfo(QFileInfo(joined).absolutePath()).canonicalFilePath();
-    if (parentCanon.isEmpty()) { return QString(); }
-    if (parentCanon != rootCanon && !parentCanon.startsWith(rootCanon + QLatin1Char('/'))) { return QString(); }
-    return parentCanon + QLatin1Char('/') + QFileInfo(joined).fileName();
+    return joined;
 }
 
 void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
                                std::function<void(const QString &)> done)
 {
     if (!agentReady()) {
-        done(QStringLiteral("{\"error\":\"Host workspace tools are off. Turn on Agent mode and pick a "
-                            "workspace folder (your qFlipper source) in setup first.\"}"));
+        done(QStringLiteral("{\"error\":\"Computer tools are off. Turn on Agent mode in setup.\"}"));
         return;
     }
+    // One shared refusal, so every tool below reports a missing path the same way.
+    auto badPath = [](const QString &p) {
+        return QStringLiteral("{\"error\":\"no such path: %1\"}").arg(p);
+    };
 
     if (name == QLatin1String("host_list")) {
         const QString abs = resolveAgentPath(args.value("path").toString(), true);
-        if (abs.isEmpty()) { done(QStringLiteral("{\"error\":\"path is outside the workspace or missing\"}")); return; }
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
         QDir dir(abs);
         if (!dir.exists()) { done(QStringLiteral("{\"error\":\"not a folder\"}")); return; }
         QJsonArray arr;
@@ -2972,7 +3091,7 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
 
     } else if (name == QLatin1String("host_read")) {
         const QString abs = resolveAgentPath(args.value("path").toString(), true);
-        if (abs.isEmpty()) { done(QStringLiteral("{\"error\":\"path is outside the workspace or missing\"}")); return; }
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
         QFile f(abs);
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             done(QStringLiteral("{\"error\":\"can't open %1\"}").arg(f.errorString()));
@@ -2989,7 +3108,7 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
 
     } else if (name == QLatin1String("host_write")) {
         const QString abs = resolveAgentPath(args.value("path").toString(), false);
-        if (abs.isEmpty()) { done(QStringLiteral("{\"error\":\"path is outside the workspace\"}")); return; }
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
         QDir().mkpath(QFileInfo(abs).absolutePath());
         QFile f(abs);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -3000,14 +3119,20 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
         const qint64 n = f.write(bytes);
         f.close();
         if (n < 0) { done(QStringLiteral("{\"error\":\"write failed\"}")); return; }
+        // The absolute path, not a workspace-relative one: with the whole disk in
+        // reach, "wrote: config.json" no longer identifies a file.
         done(QStringLiteral("{\"wrote\":\"%1\",\"bytes\":%2}")
-                 .arg(QDir(m_agentRoot).relativeFilePath(abs)).arg(static_cast<double>(n)));
+                 .arg(abs).arg(static_cast<double>(n)));
 
     } else if (name == QLatin1String("host_run")) {
         const QString cmd = args.value("command").toString().trimmed();
         if (cmd.isEmpty()) { done(QStringLiteral("{\"error\":\"no command\"}")); return; }
         QProcess proc;
-        proc.setWorkingDirectory(m_agentRoot);
+        // An explicit cwd wins; otherwise the workspace, otherwise home.
+        const QString cwd = args.contains(QLatin1String("cwd"))
+                                ? resolveAgentPath(args.value("cwd").toString(), true)
+                                : QString();
+        proc.setWorkingDirectory(cwd.isEmpty() ? agentBaseDir() : cwd);
         proc.setProcessChannelMode(QProcess::MergedChannels);
 #if defined(Q_OS_WIN)
         proc.start(QStringLiteral("cmd"), {QStringLiteral("/c"), cmd});
@@ -3034,6 +3159,64 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
             {"output", out}
         };
         done(QString::fromUtf8(QJsonDocument(res).toJson(QJsonDocument::Compact)));
+
+    } else if (name == QLatin1String("host_mkdir")) {
+        const QString abs = resolveAgentPath(args.value("path").toString(), false);
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
+        if (!QDir().mkpath(abs)) { done(QStringLiteral("{\"error\":\"couldn't create %1\"}").arg(abs)); return; }
+        done(QStringLiteral("{\"created\":\"%1\"}").arg(abs));
+
+    } else if (name == QLatin1String("host_delete")) {
+        const QString abs = resolveAgentPath(args.value("path").toString(), true);
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
+        // Deleting the root of the disk or a home directory is never what was
+        // meant, and is the one mistake with no undo. Everything else goes.
+        const QString canon = QDir::cleanPath(abs);
+        if (canon == QLatin1String("/") || canon == QDir::homePath()
+            || canon.count(QLatin1Char('/')) < 2) {
+            done(QStringLiteral("{\"error\":\"refusing to delete %1 -- name something inside it instead\"}").arg(canon));
+            return;
+        }
+        const QFileInfo fi(canon);
+        const bool ok = fi.isDir() ? QDir(canon).removeRecursively() : QFile::remove(canon);
+        if (!ok) { done(QStringLiteral("{\"error\":\"couldn't delete %1\"}").arg(canon)); return; }
+        done(QStringLiteral("{\"deleted\":\"%1\"}").arg(canon));
+
+    } else if (name == QLatin1String("host_move") || name == QLatin1String("host_copy")) {
+        const bool moving = (name == QLatin1String("host_move"));
+        const QString from = resolveAgentPath(args.value("from").toString(), true);
+        const QString to   = resolveAgentPath(args.value("to").toString(), false);
+        if (from.isEmpty()) { done(badPath(args.value("from").toString())); return; }
+        if (to.isEmpty())   { done(badPath(args.value("to").toString())); return; }
+        QDir().mkpath(QFileInfo(to).absolutePath());
+        // A destination that already exists would make both calls fail silently
+        // in Qt, which reads as "nothing happened" to the model.
+        if (QFileInfo::exists(to) && QFileInfo(to).isFile()) { QFile::remove(to); }
+        const bool ok = moving ? QFile::rename(from, to) : QFile::copy(from, to);
+        if (!ok) {
+            done(QStringLiteral("{\"error\":\"couldn't %1 %2 -> %3\"}")
+                     .arg(moving ? QStringLiteral("move") : QStringLiteral("copy"), from, to));
+            return;
+        }
+        done(QStringLiteral("{\"%1\":\"%2\",\"to\":\"%3\"}")
+                 .arg(moving ? QStringLiteral("moved") : QStringLiteral("copied"), from, to));
+
+    } else if (name == QLatin1String("host_find")) {
+        const QString abs = resolveAgentPath(args.value("path").toString(), true);
+        if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
+        QString pattern = args.value("pattern").toString().trimmed();
+        if (pattern.isEmpty()) { pattern = QStringLiteral("*"); }
+        QJsonArray arr;
+        QDirIterator it(abs, QStringList{pattern},
+                        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+        int shown = 0;
+        while (it.hasNext()) {
+            it.next();
+            if (shown++ >= LOTEI_HOST_FIND_CAP) { break; }
+            arr.append(it.filePath());
+        }
+        done(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
 
     } else {
         done(QStringLiteral("{\"error\":\"unknown host tool '%1'\"}").arg(name));

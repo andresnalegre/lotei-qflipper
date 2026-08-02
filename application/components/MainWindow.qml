@@ -927,18 +927,42 @@ Item {
                         cliTerm.setFollow(true);
                         Cli.send(line);
                     }
-                    // Paste: complete lines run as commands and the tail stays on
-                    // the input line, the way a terminal treats a pasted block.
+                    // Paste. The queue lives in FlipperCli now, so this hands the
+                    // block over whole and stops there.
+                    //
+                    // There used to be a second queue right here, feeding one line
+                    // every 200 ms and polling Cli.busy between them. With a real
+                    // queue on the other side that arrangement only added latency:
+                    // a block of forty commands could not start its last one for
+                    // eight seconds no matter how fast the Flipper answered, and
+                    // every line flickered through the input field on its way out,
+                    // so what you were typing and what was running looked like two
+                    // different runs of the same paste.
+                    //
+                    // Terminal semantics for the split: text with no newline is
+                    // INSERTED at the caret and waits for Enter -- pasting a long
+                    // path into a half-typed command must not execute it. Text with
+                    // newlines runs, with anything already typed prepended to the
+                    // first line, exactly as a terminal would.
                     function pasteText(raw) {
                         if (!raw || raw.length === 0) { return; }
-                        var lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-                                       .replace(/\t/g, " ").split("\n");
-                        for (var i = 0; i < lines.length - 1; i++) {
-                            cliTerm.insertAtCursor(lines[i]);
-                            cliTerm.runLine();
-                        }
-                        cliTerm.insertAtCursor(lines[lines.length - 1]);
+                        var text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\t/g, " ");
                         cliTerm.setFollow(true);
+
+                        if (text.indexOf("\n") < 0) {
+                            cliTerm.insertAtCursor(text);
+                            return;
+                        }
+
+                        var block = cliTerm.inputLine + text;
+                        cliTerm.setLine("", 0);
+                        cliTerm.completeAt = -1;
+                        var lines = block.split("\n");
+                        for (var i = 0; i < lines.length; i++) {
+                            if (lines[i].length > 0) { cliTerm.history.push(lines[i]); }
+                        }
+                        cliTerm.histIdx = cliTerm.history.length;
+                        Cli.send(block);   // FlipperCli splits, queues and paces it
                     }
 
                     // Follow the tail only while the view is already parked at the
@@ -963,9 +987,11 @@ Item {
                     }
                     function setFollow(v) {
                         if (v === cliTerm.follow) { return; }
-                        if (!v) { cliTerm.frozen = cliText.text; }
                         cliTerm.follow = v;
-                        if (v) { cliText.deselect(); Qt.callLater(cliTerm.toBottom); }
+                        // Only re-park at the bottom when re-enabling follow. No
+                        // text swap, no deselect -- the content is stable now, so
+                        // there's nothing to tear.
+                        if (v) { Qt.callLater(cliTerm.toBottom); }
                     }
 
                     Flickable {
@@ -983,9 +1009,15 @@ Item {
                             // twice a second, which re-wrapped the last line and made
                             // the view hop once it was parked at the bottom.
                             textFormat: Cli.colored ? TextEdit.RichText : TextEdit.PlainText
-                            text: cliTerm.follow
-                                  ? (Cli.colored ? cliTerm.html : (Cli.output + cliTerm.inputLine))
-                                  : cliTerm.frozen
+                            // The text is ALWAYS the live output -- never swapped
+                            // for a frozen snapshot. Swapping the text is what tore
+                            // the selection apart: the moment you selected, follow
+                            // went false, the binding re-evaluated to `frozen`, and
+                            // changing a TextEdit's text clears its selection. Now
+                            // scrolling and new output leave the text (and the
+                            // selection) intact; "follow" only controls whether the
+                            // view auto-scrolls to the bottom.
+                            text: Cli.colored ? cliTerm.html : (Cli.output + cliTerm.inputLine)
                             readOnly: true
                             activeFocusOnPress: false
                             selectByMouse: true
@@ -999,7 +1031,11 @@ Item {
                             onHeightChanged: if (cliTerm.follow) { cliTerm.toBottom(); }
                             // Selecting anything detaches, so the next chunk of
                             // output can't tear the selection apart.
-                            onSelectedTextChanged: if (selectedText.length > 0) { cliTerm.setFollow(false); }
+                            // Selecting just stops the auto-scroll so incoming
+                            // output doesn't drag the view (and the selection) off
+                            // screen. The text no longer changes, so the selection
+                            // itself is safe.
+                            onSelectedTextChanged: if (selectedText.length > 0) { cliTerm.follow = false; }
 
                             FontMetrics { id: cliMetrics; font: cliText.font }
 
@@ -1074,6 +1110,9 @@ Item {
                             // a leftover selection -- that's what left `top` running
                             // with no way out.
                             if ((k === Qt.Key_C && ctrlKey) || k === Qt.Key_Escape) {
+                                // Cli.interrupt() drops whatever is still queued on
+                                // the backend as well, so cancelling really does stop
+                                // the rest of a pasted run.
                                 cliTerm.setLine("", 0);
                                 cliTerm.completeAt = -1;
                                 cliTerm.setFollow(true);

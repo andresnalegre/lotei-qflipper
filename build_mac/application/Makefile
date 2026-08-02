@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"8cfe7202\" -DAPP_TIMESTAMP=1785669676 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"48be9ac3\" -DAPP_TIMESTAMP=1785682590 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../application -I. -I../../dfu -I../../backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -1933,6 +1933,7 @@ moc_application.cpp: ../../application/application.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMap \
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSet \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
@@ -1977,6 +1978,7 @@ moc_loteibackend.cpp: ../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
 		/opt/homebrew/lib/QtCore.framework/Headers/QString \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSet \
 		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
@@ -2071,6 +2073,7 @@ application.o: ../../application/application.cpp ../../application/application.h
 		/opt/homebrew/lib/QtCore.framework/Headers/QMap \
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSet \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \
@@ -2154,6 +2157,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QObject \
 		/opt/homebrew/lib/QtCore.framework/Headers/QString \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSet \
 		/opt/homebrew/lib/QtCore.framework/Headers/QByteArray \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
@@ -2186,6 +2190,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtGui.framework/Headers/QClipboard \
 		/opt/homebrew/lib/QtGui.framework/Headers/QDesktopServices \
 		/opt/homebrew/lib/QtSerialPort.framework/Headers/QSerialPort \
+		/opt/homebrew/lib/QtCore.framework/Headers/QPointer \
 		../../backend/applicationbackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QAbstractListModel \
 		../../backend/backenderror.h \
@@ -2247,6 +2252,7 @@ main.o: ../../application/main.cpp ../../application/application.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMap \
 		../../application/loteibackend.h \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringList \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSet \
 		/opt/homebrew/lib/QtGui.framework/Headers/QColor \
 		/opt/homebrew/lib/QtCore.framework/Headers/QDateTime \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonArray \

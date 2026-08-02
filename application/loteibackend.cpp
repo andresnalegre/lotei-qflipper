@@ -36,6 +36,7 @@
 
 #include <QSerialPort>
 #include <QTimer>
+#include <QPointer>
 
 #include "applicationbackend.h"
 #include "backenderror.h"   // BackendError::OperationError
@@ -2257,6 +2258,7 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     m_turnText.clear();
     m_turnWasFileAction = messageIsFileWrite(userText);
     m_turnRanAnyTool = false;
+    m_turnHadToolError = false;
 
     // A file/device action is usually followed by a question about it -- "where
     // did it save?", "what's the name?", "how do I run it?". Those don't trip
@@ -2423,6 +2425,49 @@ void LoteiBackend::finalizeStream()
         return;   // history stays clean -- no fabricated assistant turn recorded
     }
 
+    // Second trap: a tool DID run but returned an error, and the model is still
+    // claiming success. This is the /sdcard/MARIO case -- make_dir rejected the
+    // path, the model said "Created folder" anyway. If the reply sounds like a
+    // success ("created / saved / done / added / removed") while a tool errored
+    // this turn, replace it with the actual tool error so the user sees the
+    // truth (the wrong path, the real reason) instead of a phantom success.
+    if (m_turnHadToolError) {
+        const QString low = text.toLower();
+        static const QStringList successWords = {
+            QStringLiteral("created"), QStringLiteral("saved"), QStringLiteral("done"),
+            QStringLiteral("added"), QStringLiteral("removed"), QStringLiteral("deleted"),
+            QStringLiteral("renamed"), QStringLiteral("wrote"), QStringLiteral("made"),
+            QStringLiteral("success")
+        };
+        bool claimsSuccess = false;
+        for (const QString &w : successWords) { if (low.contains(w)) { claimsSuccess = true; break; } }
+        if (claimsSuccess) {
+            // Pull the human-readable reason out of the last tool error in history.
+            QString reason;
+            for (int i = m_history.size() - 1; i >= 0; --i) {
+                const QJsonObject o = m_history.at(i).toObject();
+                if (o.value("role").toString() != QLatin1String("tool")) { continue; }
+                const QString c = o.value("content").toString();
+                const int e = c.indexOf(QLatin1String("\"error\""));
+                if (e < 0) { continue; }
+                // grab the message between the error value's quotes
+                const int q1 = c.indexOf(QLatin1Char('"'), e + 7);
+                const int q2 = (q1 >= 0) ? c.indexOf(QLatin1Char('"'), q1 + 1) : -1;
+                reason = (q1 >= 0 && q2 > q1) ? c.mid(q1 + 1, q2 - q1 - 1) : c;
+                break;
+            }
+            text = reason.isEmpty()
+                ? QStringLiteral("That didn't go through -- the operation returned an error, so nothing changed.")
+                : QStringLiteral("That didn't go through: %1").arg(reason);
+            setThinking(false);
+            m_currentReply = nullptr;
+            m_lastTurnWasAction = false;
+            if (!m_muted) { speak(text); }
+            emit replyReceived(text);
+            return;   // don't record the false success
+        }
+    }
+
     // Remember, for the NEXT turn's gate, whether this one actually did
     // something to a file or the device.
     m_lastTurnWasAction = m_turnRanAnyTool;
@@ -2531,6 +2576,12 @@ void LoteiBackend::runToolCalls(const QJsonArray &toolCalls, int index)
     const QJsonObject args = fn.value("arguments").toObject();
 
     runOneTool(name, args, [this, toolCalls, index](const QString &result) {
+        // Remember if a tool failed this turn. Small models cheerfully report
+        // "Created folder /sdcard/MARIO" even when make_dir came back with
+        // {"error":"No such path..."} -- the tool did the right thing and
+        // rejected it, but the model narrated success anyway. finalizeStream
+        // uses this to stop relaying a success that didn't happen.
+        if (result.contains(QLatin1String("\"error\""))) { m_turnHadToolError = true; }
         m_history.append(QJsonObject{{"role", "tool"}, {"content", result}});
         runToolCalls(toolCalls, index + 1);
     });
@@ -4989,6 +5040,18 @@ bool cliIsStorageRoot(const QString &p)
         || s.compare(QLatin1String("/any"), Qt::CaseInsensitive) == 0;
 }
 
+// "storage info" answers for a VOLUME, not for a folder inside one. Given any
+// path, hand back the volume it belongs to. Without this, "df" run from
+// /ext/clitest asked the firmware about /ext/clitest, which is not a volume, and
+// got the whole generic "storage" usage text back instead of an answer.
+QString cliVolumeOf(const QString &p)
+{
+    const QString s = QDir::cleanPath(p.isEmpty() ? QStringLiteral("/ext") : p);
+    if (s.startsWith(QLatin1String("/int"), Qt::CaseInsensitive)) { return QStringLiteral("/int"); }
+    if (s.startsWith(QLatin1String("/any"), Qt::CaseInsensitive)) { return QStringLiteral("/any"); }
+    return QStringLiteral("/ext");
+}
+
 // One rule, so a single "cp" can serve both machines: "~..." and absolute paths
 // outside /ext, /int, /any live on this computer. Everything else -- including
 // every bare relative name -- belongs to the Flipper, because that's whose shell
@@ -5042,7 +5105,7 @@ QString cliOneShotTranslate(const QString &cmd)
 
     if (verb == QLatin1String("ls"))    { return QStringLiteral("storage list ") + here(p0); }
     if (verb == QLatin1String("tree"))  { return QStringLiteral("storage tree ") + here(p0); }
-    if (verb == QLatin1String("df"))    { return QStringLiteral("storage info ") + here(p0); }
+    if (verb == QLatin1String("df"))    { return QStringLiteral("storage info ") + cliVolumeOf(here(p0)); }
     if (verb == QLatin1String("cat"))   { return p0.isEmpty() ? cmd : QStringLiteral("storage read ")   + here(p0); }
     if (verb == QLatin1String("stat"))  { return p0.isEmpty() ? cmd : QStringLiteral("storage stat ")   + here(p0); }
     if (verb == QLatin1String("md5"))   { return p0.isEmpty() ? cmd : QStringLiteral("storage md5 ")    + here(p0); }
@@ -5338,10 +5401,26 @@ CliXferStep cliUploadFeed(QByteArray &raw, const QByteArray &chunk,
         r.toWrite = payload;
         r.message = QStringLiteral("[ sent %1 bytes -> %2 ]").arg(payload.size()).arg(label);
         raw.clear();
-    } else if (raw.contains("error") || raw.size() > 4096) {
+    } else if (raw.contains("Storage error") || raw.contains("Usage:") || raw.size() > 4096) {
+        // Deliberately NOT a bare contains("error"): that also matched the
+        // firmware's echo of a path like /ext/logs/error.txt, and -- worse --
+        // any stray reply from a previous command that leaked into this
+        // buffer, which aborted a perfectly good upload while the firmware was
+        // already sitting in write_chunk's Ready state.
         r.done = true;
         r.failed = true;
-        r.message = QStringLiteral("[ upload refused: %1 ]").arg(QString::fromUtf8(raw).trimmed());
+        const QString reply = QString::fromUtf8(raw).trimmed();
+        // "file/dir not exist" on a write_chunk means the PARENT folder is
+        // gone -- write_chunk creates the file itself. Echoing the raw reply
+        // (command line and all) buried that behind text that read like the
+        // file was expected to already be there.
+        if (reply.contains(QLatin1String("file/dir not exist"))) {
+            const QString dir = label.section(QLatin1Char('/'), 0, -2);
+            r.message = QStringLiteral("[ can't write %1: the folder %2 doesn't exist -- mkdir -p %2 first ]")
+                            .arg(label, dir.isEmpty() ? QStringLiteral("/ext") : dir);
+        } else {
+            r.message = QStringLiteral("[ upload refused: %1 ]").arg(reply.section(QLatin1Char('\n'), -1).trimmed());
+        }
         raw.clear();
     }
     return r;
@@ -5356,10 +5435,18 @@ CliXferStep cliDownloadFeed(QByteArray &raw, qint64 &size, const QByteArray &chu
     if (size < 0) {
         const int c = raw.indexOf("Size:");
         if (c < 0) {
-            if (raw.contains("error") || raw.size() > 4096) {
+            if (raw.contains("Storage error") || raw.size() > 4096) {
                 r.done = true;
                 r.failed = true;
-                r.message = QStringLiteral("[ download failed: %1 ]").arg(QString::fromUtf8(raw).trimmed());
+                // Just the error, not the command echo and the prompt around
+                // it: "[ download failed: storage read /ext/a.txt \n Storage
+                // error: file/dir not exist \n\n >: ]" made a one-line problem
+                // look like a malfunction.
+                QString why = QString::fromUtf8(raw);
+                const int e = why.indexOf(QLatin1String("Storage error"));
+                why = (e >= 0) ? why.mid(e).section(QLatin1Char('\n'), 0, 0).trimmed()
+                               : why.trimmed();
+                r.message = QStringLiteral("[ can't read %1: %2 ]").arg(hostDst, why);
                 raw.clear();
             }
             return r;
@@ -5369,9 +5456,29 @@ CliXferStep cliDownloadFeed(QByteArray &raw, qint64 &size, const QByteArray &chu
         size = raw.mid(c + 5, nl - c - 5).trimmed().toLongLong();
         raw = raw.mid(nl + 1);
     }
-    if (raw.size() < size) { return r; }
+    // The text console sends CRLF for every newline the file contains, so the
+    // bytes on the wire always outnumber the bytes in the file. Measuring the
+    // raw stream meant the read was declared finished while the tail of the
+    // body -- and the prompt after it -- were still coming, and left(size) then
+    // returned a truncated body. Every single download failed its md5 that way.
+    //
+    // Worse than the wrong file: the leftovers stayed in the port. The md5
+    // check issued next read THEM instead of its own reply, and the real md5
+    // answer arrived with nothing waiting for it and was printed as raw text in
+    // the middle of whatever came after. That is the whole cascade of spliced
+    // half-commands, from one off-by-CRLF.
+    QByteArray norm = raw;
+    norm.replace("\r\n", "\n");
+    if (norm.size() < size) { return r; }
+
+    // Wait for the prompt too, and only look for it past the body -- a file may
+    // legitimately contain ">:" of its own. Nothing may be left in the port when
+    // this returns.
+    const int pmt = norm.indexOf(">:", int(size));
+    if (pmt < 0) { return r; }
+
     r.done = true;
-    r.body = raw.left(int(size));
+    r.body = norm.left(int(size));
     r.message = QStringLiteral("[ saved %1 bytes -> %2 ]").arg(r.body.size()).arg(hostDst);
     raw.clear();
     return r;
@@ -5493,6 +5600,10 @@ void FlipperCli::connectCli()
 
 void FlipperCli::disconnectCli()
 {
+    // Whatever is still queued was queued for a link that no longer exists.
+    // Leaving it there means it fires at whatever gets connected next.
+    m_pending.clear();
+    if (m_queueStall) { m_queueStall->stop(); }
     resetTransientState();
     if (m_port) {
         m_port->close();
@@ -5602,6 +5713,39 @@ void FlipperCli::finishOneShot(bool ok, const QString &out)
 
 void FlipperCli::send(const QString &cmd)
 {
+    // One conversation at a time. Every mode owns the serial line exclusively,
+    // so a command that arrives mid-operation used to interleave its reply with
+    // the one already in flight.
+    //
+    // Held, not bounced. A pasted block arrives far faster than the firmware
+    // can answer, and rejecting the overflow meant most of the block silently
+    // never ran. Queuing here also means correctness no longer depends on the
+    // panel pacing itself: whatever feeds send(), the serial line still sees
+    // exactly one command at a time.
+    //
+    // This sits above the local-only commands (clear/verbose/colors/tgz) on
+    // purpose. They never touch the port, but they do print into the same view,
+    // and a "tgz" echo landing mid-capture is what spliced a typed command into
+    // the middle of the firmware's help listing.
+    // Depending on how the panel forwards a paste, the whole block can arrive
+    // as a single string with newlines in it. Sent as-is that becomes one
+    // enormous "command" on the wire. Split here so send() is always dealing
+    // with exactly one line, whatever feeds it.
+    if (cmd.contains(QLatin1Char('\n')) || cmd.contains(QLatin1Char('\r'))) {
+        static const QRegularExpression lineSep(QStringLiteral("[\r\n]+"));
+        const QStringList lines = cmd.split(lineSep, Qt::SkipEmptyParts);
+        for (const QString &l : lines) {
+            if (!l.trimmed().isEmpty()) { queuePending(l.trimmed()); }
+        }
+        drainPending();
+        return;
+    }
+
+    if (busy()) {
+        queuePending(cmd);
+        return;
+    }
+
     m_lastTyped = cmd.trimmed();
     if (!m_lastTyped.isEmpty() && m_history.value(m_history.size() - 1) != m_lastTyped) {
         m_history += m_lastTyped;
@@ -5653,6 +5797,15 @@ void FlipperCli::send(const QString &cmd)
                 if (p.startsWith(QLatin1Char('~'))) { p.replace(0, 1, QDir::homePath()); }
                 return QDir::cleanPath(p);
             };
+            // tgz packs a folder on THIS computer. Handed an SD-card path it
+            // used to fail with a bare "no such folder", which reads like the
+            // folder is missing rather than like it is on the wrong machine.
+            if (cliIsDevicePath(tp.at(1))) {
+                appendOutput(cmd.trimmed() + QStringLiteral(
+                    "\n[ %1 is on the Flipper; tgz packs a folder on this computer. "
+                    "Copy it over first: cp -r %1 ~/somewhere ]\n").arg(tp.at(1)) + prompt());
+                return;
+            }
             const QString src = expand(tp.at(1));
             const QString out = tp.size() > 2 ? expand(tp.at(2))
                                               : QFileInfo(src).absolutePath() + QStringLiteral("/bkp.tgz");
@@ -5663,10 +5816,17 @@ void FlipperCli::send(const QString &cmd)
 
             QString msg = cmd.trimmed() + QLatin1Char('\n');
             if (ok) {
-                msg += QStringLiteral("[ %1 -> %2 ]\n[ %3 entr(y/ies)%4, %5 KB ]\n")
+                // Everything under a kilobyte used to report "0 KB", which
+                // reads like the archive came out empty.
+                const qint64 bytes = QFileInfo(out).size();
+                const QString human = bytes >= 1024 * 1024
+                        ? QStringLiteral("%1 MB").arg(bytes / 1048576.0, 0, 'f', 1)
+                        : (bytes >= 1024 ? QStringLiteral("%1 KB").arg(bytes / 1024.0, 0, 'f', 1)
+                                         : QStringLiteral("%1 B").arg(bytes));
+                msg += QStringLiteral("[ %1 -> %2 ]\n[ %3 file%4%5, %6 ]\n")
                        .arg(src, out).arg(packed)
-                       .arg(skipped ? QStringLiteral(", %1 skipped").arg(skipped) : QString())
-                       .arg(QFileInfo(out).size() / 1024);
+                       .arg(packed == 1 ? QString() : QStringLiteral("s"))
+                       .arg(skipped ? QStringLiteral(", %1 skipped").arg(skipped) : QString(), human);
             } else {
                 msg += QStringLiteral("Storage error: %1\n").arg(err);
             }
@@ -5705,14 +5865,6 @@ void FlipperCli::send(const QString &cmd)
         if (cliCommandMutates(canon.isEmpty() ? verb : canon)) {
             cliLog(m_lastTyped);
         }
-    }
-
-    // One conversation at a time. Every mode owns the serial line exclusively,
-    // so a command typed mid-operation used to interleave its reply with the
-    // one already in flight.
-    if (busy()) {
-        appendOutput(m_lastTyped + QStringLiteral("\n[ still working -- Ctrl-C to cancel ]\n") + prompt());
-        return;
     }
 
     // Arm the help collector the moment we ask for it. Sniffing the reply for
@@ -5796,6 +5948,8 @@ void FlipperCli::send(const QString &cmd)
         a.removeAll(QStringLiteral("-l")); a.removeAll(QStringLiteral("-a"));
         a.removeAll(QStringLiteral("-la")); a.removeAll(QStringLiteral("-al"));
         a.removeAll(QStringLiteral("-h")); a.removeAll(QStringLiteral("-f"));
+        const bool flagParents = a.contains(QStringLiteral("-p"));
+        a.removeAll(QStringLiteral("-p"));
 
         // Fold the habit spellings onto their canonical command up front, so the
         // dispatch below only ever deals with one name per behaviour.
@@ -5826,13 +5980,20 @@ void FlipperCli::send(const QString &cmd)
                 appendOutput(typed + prompt());   // prompt() must read the new folder
                 return;
             }
-            // Confirm it's really a folder before moving -- a silent bad cd would
-            // quietly break every relative path typed after it.
-            appendOutput(echo(cmd));
-            m_cdPending = target;
-            m_cdRaw.clear();
-            writeLine(QStringLiteral("storage stat ") + target, false);
-            armGuard();
+            // Update the working directory immediately instead of waiting for a
+            // "storage stat" round trip. The blocking version put the CLI in a
+            // busy state until the device answered; when several commands were
+            // pasted at once, they queued behind it, the stat reply got mixed
+            // into their output, and a perfectly real folder came back as "no
+            // such folder" -- plus every following relative path resolved
+            // against the OLD directory because cwd hadn't moved yet. Moving now
+            // and validating in the background fixes both. A bad path is caught
+            // by the next command that touches the device and reported then.
+            m_cdPrev = m_cwd;
+            m_cwd = target;
+            emit promptChanged();
+            setStatus(QStringLiteral("CLI live -- %1").arg(m_cwd));
+            appendOutput(echo(cmd) + prompt());
             return;
         }
         if (verb == QLatin1String("pwd")) {
@@ -5846,7 +6007,17 @@ void FlipperCli::send(const QString &cmd)
             fw = QStringLiteral("storage tree ") + here(p0);
         } else if (verb == QLatin1String("cat")) {
             if (p0.isEmpty()) { usage(QStringLiteral("cat <file>")); return; }
-            fw = QStringLiteral("storage read ") + here(p0);
+            // Through readDeviceText rather than raw "storage read", so the
+            // "Size: N" header and the CRs the console adds to every line stay
+            // out of the output. cat is supposed to print the file and nothing
+            // else -- and head/tail/wc/grep already parse it exactly this way.
+            const QString target = here(p0);
+            appendOutput(echo(cmd));
+            readDeviceText(target, [this, target](bool ok, const QString &body) {
+                if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(target) + prompt()); return; }
+                appendOutput((body.isEmpty() ? QString() : body + QLatin1Char('\n')) + prompt());
+            });
+            return;
         } else if (verb == QLatin1String("rm")) {
             if (p0.isEmpty()) { usage(QStringLiteral("rm [-r] <path>")); return; }
             const QString target = here(p0);
@@ -5870,11 +6041,55 @@ void FlipperCli::send(const QString &cmd)
             fw = QStringLiteral("storage remove ") + target;
         } else if (verb == QLatin1String("mkdir")) {
             if (p0.isEmpty()) { usage(QStringLiteral("mkdir <path>")); return; }
+            // "-p" is stripped by the generic flag sweep above, so look at the
+            // raw line for it. With it, walk the path creating every missing
+            // parent and treat "already exists" as success -- which is the
+            // whole point of the flag.
+            if (flagParents) {
+                const QString target = here(p0);
+                appendOutput(echo(cmd));
+                ensureDeviceDir(target, [this, target]() {
+                    appendOutput(QStringLiteral("[ %1 ready ]\n").arg(target) + prompt());
+                });
+                return;
+            }
             fw = QStringLiteral("storage mkdir ") + here(p0);
         } else if (verb == QLatin1String("cp")) {
             if (p1.isEmpty()) { usage(QStringLiteral("cp [-r] <source> <destination>   -- works computer <-> Flipper, wildcards ok")); return; }
+            // "cp a.txt b.txt somewhere/" quietly copied a.txt to b.txt and threw
+            // the destination away. Two paths, or say so.
+            if (a.size() > 2) {
+                appendOutput(echo(cmd) + QStringLiteral(
+                    "[ cp takes one source and one destination. For several files use a wildcard: cp *.txt %1 ]\n")
+                    .arg(a.last()) + prompt());
+                return;
+            }
             const bool srcHost = cliIsHostPath(p0);
             const bool dstHost = cliIsHostPath(p1);
+            // A wildcard on this computer's side. The device side has been
+            // expanded for a while; without the matching case here the "*" went
+            // through to QFile verbatim and came back as "no such file", which
+            // reads like the folder is empty rather than like globbing is the
+            // thing that isn't happening.
+            if (srcHost && (p0.contains(QLatin1Char('*')) || p0.contains(QLatin1Char('?')))) {
+                appendOutput(echo(cmd));
+                const QString pat = cliExpandHostPath(p0);
+                const QFileInfo pi(pat);
+                const QStringList names = QDir(pi.absolutePath())
+                                              .entryList(QStringList{pi.fileName()}, QDir::Files, QDir::Name);
+                if (names.isEmpty()) {
+                    appendOutput(QStringLiteral("[ nothing on this computer matches %1 ]\n").arg(pat) + prompt());
+                    return;
+                }
+                if (dstHost) {
+                    appendOutput(QStringLiteral("[ both paths are on this computer -- nothing for the Flipper to do ]\n") + prompt());
+                    return;
+                }
+                QStringList hostFiles;
+                for (const QString &nm : names) { hostFiles += pi.absolutePath() + QLatin1Char('/') + nm; }
+                runUploadQueue(hostFiles, here(p1));
+                return;
+            }
             if (!srcHost && (p0.contains(QLatin1Char('*')) || p0.contains(QLatin1Char('?')))) {
                 const QString devGlob = here(p0);
                 appendOutput(echo(cmd));
@@ -5915,11 +6130,22 @@ void FlipperCli::send(const QString &cmd)
             if (p0.isEmpty()) { usage(QStringLiteral("md5 <file>")); return; }
             fw = QStringLiteral("storage md5 ") + here(p0);
         } else if (verb == QLatin1String("df")) {
-            fw = QStringLiteral("storage info ") + here(p0);
+            // Ask about the volume, never about a folder inside it.
+            fw = QStringLiteral("storage info ") + cliVolumeOf(p0.isEmpty() ? m_cwd : here(p0));
         } else if (verb == QLatin1String("find")) {
             if (p0.isEmpty()) { usage(QStringLiteral("find <pattern> [path]   e.g. find *.sub /ext/subghz")); return; }
+            QString pat = p0;
+            QString root = p1.isEmpty() ? m_cwd : here(p1);
+            // "find /ext/subghz *.sub" is how find(1) is spelled everywhere
+            // else, so accept it: an absolute first argument with no wildcard
+            // in it can only be the root.
+            if (!p1.isEmpty() && p0.startsWith(QLatin1Char('/'))
+                && !p0.contains(QLatin1Char('*')) && !p0.contains(QLatin1Char('?'))) {
+                pat = p1;
+                root = here(p0);
+            }
             appendOutput(echo(cmd));
-            startFind(p1.isEmpty() ? m_cwd : here(p1), p0);
+            startFind(root, pat);
             return;
         } else if (verb == QLatin1String("grep")) {
             if (p1.isEmpty()) { usage(QStringLiteral("grep <text> <file>")); return; }
@@ -6066,6 +6292,48 @@ void FlipperCli::send(const QString &cmd)
             appendOutput(echo(cmd));
             startEdit(here(p0));
             return;
+        } else if (verb == QLatin1String("chmod") || verb == QLatin1String("chown")
+                || verb == QLatin1String("chgrp") || verb == QLatin1String("umask")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ FatFS on the SD card has no owners or permission bits -- there is nothing to set. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("sudo") || verb == QLatin1String("su")
+                || verb == QLatin1String("passwd") || verb == QLatin1String("useradd")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ the Flipper has no users and no privilege levels -- everything here already runs unrestricted. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("kill") || verb == QLatin1String("killall")
+                || verb == QLatin1String("pkill")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ no process table to signal. To stop the running app: 'loader close'. To stop a CLI command: Ctrl-C. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("nano") || verb == QLatin1String("vi")
+                || verb == QLatin1String("vim") || verb == QLatin1String("emacs")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("%1 <file>   (opens the editor panel)").arg(verb)); return; }
+            appendOutput(echo(cmd));
+            // Only promise the panel when the panel is actually going to open.
+            // startEdit turns this down while a pasted block is still draining,
+            // and announcing it first made the refusal that follows read like a
+            // contradiction.
+            if (m_pending.isEmpty()) {
+                appendOutput(QStringLiteral(
+                    "[ no full-screen editor over the serial line -- opening %1 in the editor panel. ]\n").arg(here(p0)));
+            }
+            startEdit(here(p0));
+            return;
+        } else if (verb == QLatin1String("umount") || verb == QLatin1String("fdisk")) {
+            // "mount" is deliberately absent: it is already an alias for df, and
+            // aliases are folded above this chain, so a branch on it here would
+            // never be reached.
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ /int and /ext are always mounted and cannot be changed from here. 'df' shows their space. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("apt") || verb == QLatin1String("apt-get")
+                || verb == QLatin1String("yum") || verb == QLatin1String("brew")
+                || verb == QLatin1String("pacman")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ no package manager. Apps are .fap files: copy one into /ext/apps with 'cp', or fetch it with 'wget <url> /ext/apps/...'. ]\n") + prompt());
+            return;
         } else if (verb == QLatin1String("reboot")) {
             fw = QStringLiteral("power reboot");
         } else if (verb == QLatin1String("shutdown")) {
@@ -6096,13 +6364,30 @@ void FlipperCli::send(const QString &cmd)
             if (verb == QLatin1String("ls")) {
                 m_capture = Capture::Listing;
                 m_captureBuf.clear();
-                armGuard();
             }
+            // Arm the guard for EVERY firmware command, not just ls. busy() folds
+            // in the guard, and the paste queue uses busy() to decide when the
+            // previous command has finished. Without this, cat/stat/md5/mkdir/rm
+            // reported not-busy the instant they were written, so a pasted block
+            // fired the next command before the firmware had answered -- the
+            // commands piled onto the serial link, the device lost sync, and
+            // everything after came back "no reply from the device".
+            armGuard();
             writeLine(fw, false);
             return;
         }
     }
 
+    // Everything that isn't one of ours goes to the firmware verbatim:
+    // device_info, free, uptime, log, top, the whole original command set.
+    //
+    // The guard has to be armed here too. It wasn't, so a raw command reported
+    // idle the instant it was written and the queue fired the next one into the
+    // middle of its output -- which is why "device_info" came back with
+    // "https://gils /ext/clitest" spliced into the middle of a URL, and why
+    // "colors on" arrived as "storagecolors on". Same failure as the original
+    // one, just reached through the one path that never armed anything.
+    armGuard();
     writeLine(cmd.trimmed());
 }
 
@@ -6127,8 +6412,11 @@ void FlipperCli::setColored(bool value)
 // machinery rather than as output.
 void FlipperCli::trace(const QString &what)
 {
+    // Recorded even when the log is off, so traceReply always knows which line
+    // is merely the firmware repeating what we just said.
+    m_lastTraced = what.trimmed();
     if (!m_verbose || m_quiet) { return; }
-    const QString s = what.trimmed();
+    const QString s = m_lastTraced;
     if (s.isEmpty() || s == m_lastTyped) { return; }
     appendOutput(QStringLiteral("  · ") + s + QLatin1Char('\n'));
 }
@@ -6142,24 +6430,124 @@ void FlipperCli::traceReply(const QString &raw)
     s.remove(QLatin1Char('\r'));
     static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
     s.remove(ctrl);
-    // A tree of a big folder can be tens of thousands of characters; the log is
-    // there to follow along, not to replay the whole payload.
-    const int total = s.size();
-    if (total > 2000) { s = s.left(2000) + QStringLiteral("\n… (%1 more characters)").arg(total - 2000); }
+    // The log is there to follow along, not to replay the payload. A character
+    // cap alone wasn't enough: "cat" of a 6 KB file still put 2000 characters of
+    // that file in the log and then the command printed the whole thing again
+    // underneath, and a "storage tree /ext" logged tens of thousands. Cap by
+    // LINES as well, which is what actually makes the trail readable.
+    static const int kMaxLines = 10;
+    static const int kMaxChars = 800;
 
-    QString out;
+    QStringList kept;
+    int dropped = 0;
     for (const QString &line : s.split(QLatin1Char('\n'))) {
         const QString l = line.trimmed();
         if (l.isEmpty() || l.startsWith(QLatin1String(">:"))) { continue; }
         if (l == m_lastTyped) { continue; }
-        out += QStringLiteral("    \u00b7 ") + l + QLatin1Char('\n');
+        // The Flipper echoes every command back before answering it. Printing
+        // that echo made each step appear twice in the log -- indented one
+        // level apart, which reads like the command actually ran twice.
+        if (l == m_lastTraced) { continue; }
+        if (kept.size() >= kMaxLines) { ++dropped; continue; }
+        kept += (l.size() > kMaxChars) ? (l.left(kMaxChars) + QStringLiteral(" …")) : l;
     }
-    if (!out.isEmpty()) { appendOutput(out); }
+    if (kept.isEmpty()) { return; }
+
+    QString out;
+    for (const QString &l : kept) { out += QStringLiteral("    \u00b7 ") + l + QLatin1Char('\n'); }
+    if (dropped > 0) {
+        out += QStringLiteral("    \u00b7 … (%1 more line%2)\n")
+                   .arg(dropped).arg(dropped == 1 ? QString() : QStringLiteral("s"));
+    }
+    appendOutput(out);
+}
+
+// Is the serial line itself mid-exchange? This is the question sendRaw has to
+// ask: a continuation running inside a multi-step operation must be allowed to
+// issue its next command even though the operation as a whole is still busy.
+bool FlipperCli::portBusy() const
+{
+    return m_xfer != Xfer::None || !m_cdPending.isEmpty() || m_capture != Capture::None;
 }
 
 bool FlipperCli::busy() const
 {
-    return m_xfer != Xfer::None || !m_cdPending.isEmpty() || m_capture != Capture::None;
+    // Also busy while an operation guard is armed: commands like ls/cat/sed that
+    // go out as "storage ..." and wait for a reply arm the guard but don't set
+    // m_xfer, so without this the paste queue would fire the next command before
+    // the previous one answered -- the pileup this was meant to prevent.
+    //
+    // m_opDepth covers the gaps the guard cannot: a composite operation (echo >>
+    // = read + remove + write_chunk + md5, cp -r, sed, wget, a host process)
+    // spends real time BETWEEN its steps with no command in flight and the guard
+    // disarmed. Every one of those windows used to read as "idle", the queue
+    // fired the next command into it, and two writers ended up sharing the port.
+    const bool guarded = m_opGuard && m_opGuard->isActive();
+    return portBusy() || guarded || m_opDepth > 0;
+}
+
+// busyChanged is a direct connection: emitting it from inside onReadyRead lets
+// the paste queue call send() synchronously, part-way through a function that
+// has not finished touching the port yet. That is how a queued command reached
+// the firmware before an upload's payload did and got stored as the file's
+// contents. Posting the signal moves it to the next event-loop turn, where the
+// port is in a consistent state.
+void FlipperCli::scheduleBusyChanged()
+{
+    if (m_busyNotifyQueued) { return; }
+    m_busyNotifyQueued = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        m_busyNotifyQueued = false;
+        emit busyChanged();
+        drainPending();
+    }, Qt::QueuedConnection);
+}
+
+// A refcount token for "an operation is still in progress". Capture the returned
+// handle in every lambda of a chain; when the last one is destroyed the count
+// drops and the CLI reports idle. This is deliberately a refcount rather than a
+// flag: uploadToFlipper takes one of its own while running inside cp -r, which
+// already holds one.
+std::shared_ptr<void> FlipperCli::holdBusy()
+{
+    ++m_opDepth;
+    scheduleBusyChanged();
+    QPointer<FlipperCli> self(this);
+    // Stamped with the generation it was issued in. Ctrl-C and the watchdog
+    // zero the count and bump the generation; the abandoned lambdas of the
+    // cancelled operation die some time later, and without this stamp their
+    // deleters would decrement the count belonging to whatever started next.
+    const quint64 gen = m_opGen;
+    return std::shared_ptr<void>(reinterpret_cast<void *>(1), [self, gen](void *) {
+        if (!self || self->m_opGen != gen) { return; }
+        if (self->m_opDepth > 0) { --self->m_opDepth; }
+        self->scheduleBusyChanged();
+    });
+}
+
+// Hold the line idle for a beat. After a Ctrl-C or a forced abort the firmware
+// still has a prompt (and sometimes the tail of a cancelled reply) to push down
+// the wire; sending the next command straight into that stream leaves its reply
+// buffer pre-loaded with someone else's output, which is how one recovered
+// command went on to fail for reasons that had nothing to do with it.
+void FlipperCli::settle(int ms)
+{
+    auto hold = holdBusy();
+    QTimer::singleShot(ms, this, [hold]() { /* releasing the hold is the point */ });
+}
+
+// After "storage write_chunk <path> <n>" the firmware answers "Ready" and then
+// reads exactly n bytes off the wire, with no timeout and no way to say no. If
+// we abandon the upload without sending those bytes, every subsequent command
+// is silently swallowed as file content -- the device looks dead and stays that
+// way until it is unplugged. Ctrl-C is the only way out.
+void FlipperCli::abortPendingChunk()
+{
+    if (!m_port) { return; }
+    m_port->write("\x03");     // cancel the pending write_chunk read loop
+    m_port->write("\r\n");
+    m_port->flush();
+    m_port->clear(QSerialPort::Input);
 }
 
 void FlipperCli::armGuard()
@@ -6171,11 +6559,112 @@ void FlipperCli::armGuard()
         connect(m_opGuard, &QTimer::timeout, this, &FlipperCli::onOpTimeout);
     }
     m_opGuard->start();
+    scheduleBusyChanged();   // busy() now reflects the armed guard
 }
 
 void FlipperCli::disarmGuard()
 {
+    const bool wasActive = m_opGuard && m_opGuard->isActive();
     if (m_opGuard) { m_opGuard->stop(); }
+    // A command just finished (the device's prompt came back). busy() folds in
+    // the guard, so tell listeners it flipped -- this is what lets the paste
+    // queue send the next command the instant this one completes instead of
+    // waiting on a timer, and it's why a long-output command like `locate`
+    // no longer wedges the whole queue behind it.
+    if (wasActive) { scheduleBusyChanged(); }
+}
+
+// Commands typed or pasted while something is running are held here rather than
+// bounced, so a pasted block runs to completion in order no matter how the UI
+// feeds it in. Bounded: a runaway producer must not grow this without limit.
+void FlipperCli::queuePending(const QString &cmd)
+{
+    if (m_pending.size() >= 500) {
+        appendOutput(QStringLiteral("[ queue full -- dropping: %1 ]\n").arg(cmd));
+        return;
+    }
+    m_pending += cmd;
+    armQueueStall();
+}
+
+void FlipperCli::drainPending()
+{
+    if (m_draining || m_pending.isEmpty()) { return; }
+    // Nothing is ever going to run these: the link is gone.
+    if (!m_port || !m_active) { clearPending(); return; }
+    if (busy()) { return; }
+
+    m_draining = true;
+    const QString next = m_pending.takeFirst();
+    send(next);
+    m_draining = false;
+
+    // One command per turn of the event loop, posted rather than looped.
+    //
+    // The loop this replaces ran the whole queue inside a single turn whenever
+    // the commands finished locally (pwd, history, a usage error, the POSIX
+    // stubs). Forty of those meant forty appendOutput passes with no repaint
+    // and no chance to service the serial port in between -- the window locked
+    // up and then every line landed at once, which is what a pasted block felt
+    // like it was doing.
+    //
+    // Posting is also what keeps the queue moving at all: a locally-handled
+    // command never touches the port, so it never produces the busyChanged that
+    // would otherwise pump the next one.
+    if (!m_pending.isEmpty()) {
+        setStatus(QStringLiteral("CLI live -- %1   (%2 queued)").arg(m_cwd).arg(m_pending.size()));
+        armQueueStall();
+        QTimer::singleShot(0, this, [this]() { drainPending(); });
+    } else {
+        if (m_queueStall) { m_queueStall->stop(); }
+        if (m_active) { setStatus(QStringLiteral("CLI live -- %1").arg(m_cwd)); }
+    }
+}
+
+// Last-resort recovery. The op guard only covers a command that is actually in
+// flight; a busy token stranded with nothing on the wire is invisible to it, and
+// that is precisely the state that used to need the panel closed and reopened.
+// This watches the one symptom that is never legitimate: commands waiting, and
+// not one byte from the device for half a minute.
+void FlipperCli::armQueueStall()
+{
+    if (m_pending.isEmpty()) {
+        if (m_queueStall) { m_queueStall->stop(); }
+        return;
+    }
+    if (!m_queueStall) {
+        m_queueStall = new QTimer(this);
+        m_queueStall->setSingleShot(true);
+        m_queueStall->setInterval(30000);
+        connect(m_queueStall, &QTimer::timeout, this, &FlipperCli::onQueueStall);
+    }
+    m_queueStall->start();
+}
+
+void FlipperCli::onQueueStall()
+{
+    if (m_pending.isEmpty()) { return; }
+    if (!busy()) { drainPending(); return; }   // it was only ever a missed nudge
+
+    appendOutput(QStringLiteral("[ nothing has moved for 30s with %1 command%2 waiting -- releasing the line ]\n")
+                     .arg(m_pending.size())
+                     .arg(m_pending.size() == 1 ? QString() : QStringLiteral("s")));
+    // resetTransientState cancels a pending write_chunk, zeroes the operation
+    // count and bumps the generation, so whatever was holding the line lets go
+    // and its orphaned continuations can no longer interfere.
+    resetTransientState();
+    if (m_port) { m_port->clear(); }
+    settle(300);
+}
+
+void FlipperCli::clearPending()
+{
+    if (m_pending.isEmpty()) { return; }
+    const int n = m_pending.size();
+    m_pending.clear();
+    if (m_queueStall) { m_queueStall->stop(); }
+    appendOutput(QStringLiteral("[ dropped %1 queued command%2 ]\n")
+                     .arg(n).arg(n == 1 ? QString() : QStringLiteral("s")));
 }
 
 // Everything that is only true for the duration of one operation. Ctrl-C, the
@@ -6183,7 +6672,17 @@ void FlipperCli::disarmGuard()
 // copies of the list in sync is how one of them ends up missing a field.
 void FlipperCli::resetTransientState()
 {
+    // Order matters: if the firmware is waiting on write_chunk bytes, cancel
+    // that BEFORE clearing m_xfer, otherwise nothing left knows it has to.
+    if (m_xfer == Xfer::UploadReady) { abortPendingChunk(); }
     disarmGuard();
+    // The holds themselves live in lambdas we are about to drop on the floor.
+    // Zero the count so the CLI doesn't report busy forever after one cancelled
+    // operation, and bump the generation so those orphaned deleters, whenever
+    // they finally run, can tell they no longer own anything.
+    m_opDepth = 0;
+    ++m_opGen;
+    scheduleBusyChanged();
     m_cdPending.clear();
     m_cdRaw.clear();
     m_xfer = Xfer::None;
@@ -6197,6 +6696,8 @@ void FlipperCli::resetTransientState()
     m_captureBuf.clear();
     m_echoPending.clear();
     m_escTail.clear();
+    m_dirsEnsured.clear();
+    m_swallowPrompt = false;
     m_quiet = false;
 }
 
@@ -6211,7 +6712,19 @@ void FlipperCli::onOpTimeout()
     m_xferChain = nullptr;
     // A half-arrived listing is still worth showing.
     if (m_capture != Capture::None) { flushCapture(); }
+    // If the timeout caught an upload, the firmware is very likely parked in
+    // write_chunk waiting for bytes. resetTransientState sends the Ctrl-C that
+    // frees it -- without that, this timeout is the LAST thing this session
+    // ever reports, because every command after it becomes file content.
     resetTransientState();
+
+    // Drain whatever half-reply is still sitting in the serial buffer. If the
+    // device recovers, the next command must start from a clean line -- leftover
+    // bytes from the timed-out command would otherwise prepend garbage to it and
+    // desync every command after (which is how one stuck command cascaded into
+    // "no reply" for the whole rest of a pasted run).
+    if (m_port) { m_port->clear(); }
+    settle(300);
 
     // Whoever was waiting has to be told, or a cp -r / rm -r queue simply stops
     // halfway with nothing on screen. The sentinel is worded as a storage error
@@ -6376,11 +6889,19 @@ void FlipperCli::interrupt()
 {
     if (!m_port || !m_active) { return; }
     m_port->write("\x03");   // Ctrl-C
+    m_port->flush();
+
+    // Anything the user queued behind the thing they just cancelled was queued
+    // on the assumption it would run after it, not instead of it. Running it
+    // now against a half-finished state is how a cancelled rm -rf is followed
+    // by a mkdir that reports "already exists".
+    clearPending();
 
     // Drop every half-finished capture. Without this, a Ctrl-C landing in the
     // middle of a help listing or a file transfer leaves the panel buffering
     // forever and nothing reaches the screen again.
     resetTransientState();
+    if (m_port) { m_port->clear(QSerialPort::Input); }
 
     appendOutput(QStringLiteral("^C\n") + prompt());
 }
@@ -6394,6 +6915,7 @@ void FlipperCli::onReadyRead()
     // Bytes arriving mean the device is still talking, so the no-reply
     // watchdog only ever fires on real silence.
     if (m_opGuard && m_opGuard->isActive()) { m_opGuard->start(); }
+    if (m_queueStall && m_queueStall->isActive()) { m_queueStall->start(); }
 
     // ---- raw transfer phases (must not go through the text sanitiser) -------
     if (!m_cdPending.isEmpty()) {
@@ -6431,34 +6953,74 @@ void FlipperCli::onReadyRead()
         if (!s.contains(QLatin1String(">:")) && m_xferRaw.size() < 300000) { return; }
         m_xfer = Xfer::None;
         m_xferRaw.clear();
-        disarmGuard();
+        // Stop the watchdog WITHOUT announcing it. disarmGuard() would post
+        // busyChanged, and the continuation below is usually the next step of a
+        // multi-step operation -- announcing idle first invited the queue to
+        // interleave a command into the middle of it.
+        if (m_opGuard) { m_opGuard->stop(); }
         auto cb = m_rawCb;
         m_rawCb = nullptr;
-        if (cb) { cb(s); }
+        if (cb) { cb(s); }        // may re-arm the guard for its own next step
+        scheduleBusyChanged();
         return;
     }
 
     if (m_xfer == Xfer::UploadReady) {
         const CliXferStep st = cliUploadFeed(m_xferRaw, chunk, m_xferPayload, m_xferLabel);
         if (!st.done) { return; }
-        disarmGuard();
         if (st.failed) {
+            // The write_chunk line already went out and the firmware may
+            // already be counting down n bytes. Cancel it before anything else
+            // is allowed near the port.
+            abortPendingChunk();
             m_xfer = Xfer::None;
             m_xferPayload.clear();
+            disarmGuard();
+            settle(300);   // let the Ctrl-C's prompt land before the next command
             finishXfer(false, st.message);
             return;
         }
-        if (!st.toWrite.isEmpty()) { m_port->write(st.toWrite); }
+        // The payload goes out FIRST, before m_xfer is cleared and before the
+        // guard is disarmed. Both of those make the CLI look idle, and a
+        // command that reached the port ahead of these bytes was read by the
+        // firmware as the file's contents -- which is exactly how a file
+        // written by `echo hello world > a.txt` ended up containing the text
+        // of the next command instead.
+        if (!st.toWrite.isEmpty()) {
+            m_port->write(st.toWrite);
+            m_port->flush();
+        }
+        // Having answered "Ready" the firmware prints a fresh prompt once the
+        // chunk is done. It arrives before the verification has even been sent,
+        // so on screen the command looked finished while its own check was
+        // still to come. Drop that one prompt; finishXfer prints the real one.
+        // Set unconditionally: a zero-byte file writes no payload at all but
+        // still gets the prompt, which is why `touch` kept leaking one.
+        m_swallowPrompt = true;
+        // write_chunk gives no per-byte ack, so "storage md5" against a local
+        // hash is the only real proof the bytes weren't clipped on the wire.
+        // The hold keeps the CLI busy across that round trip.
+        auto hold = holdBusy();
         m_xfer = Xfer::None;
-        // The payload is now in flight to the firmware. write_chunk gives no
-        // per-byte ack, so "storage md5" against a local hash is the only real
-        // proof the bytes weren't clipped or corrupted on the wire.
+        disarmGuard();
         const QByteArray payload = m_xferPayload;
         m_xferPayload.clear();
         const QString devPath = m_xferDevPath;
         const QString baseMsg = st.message;
-        QTimer::singleShot(150, this, [this, payload, devPath, baseMsg]() {
-            sendRaw(QStringLiteral("storage md5 ") + devPath, [this, payload, baseMsg](const QString &raw) {
+        QTimer::singleShot(150, this, [this, payload, devPath, baseMsg, hold]() {
+            // An empty file has no meaningful md5 round trip on some firmware
+            // builds ("storage md5" on a zero-byte file answers with an error
+            // or a blank line), which is what reported a perfectly good `touch`
+            // as a corrupt transfer. Confirm it exists and is zero bytes.
+            if (payload.isEmpty()) {
+                sendRaw(QStringLiteral("storage stat ") + devPath, [this, baseMsg, hold](const QString &raw) {
+                    const bool ok = !raw.contains(QLatin1String("Storage error"));
+                    finishXfer(ok, ok ? baseMsg + QStringLiteral(" [empty file created]")
+                                      : baseMsg + QStringLiteral(" [the file was not created]"));
+                });
+                return;
+            }
+            sendRaw(QStringLiteral("storage md5 ") + devPath, [this, payload, baseMsg, hold](const QString &raw) {
                 const QString got = cliExtractMd5(raw);
                 const QString want = QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Md5).toHex());
                 const bool ok = !got.isEmpty() && got == want;
@@ -6474,12 +7036,35 @@ void FlipperCli::onReadyRead()
         if (!st.done) { return; }
         disarmGuard();
         m_xfer = Xfer::None;
-        if (st.failed) { finishXfer(false, st.message); return; }
+        if (st.failed) {
+            // Whatever is still in the buffer belongs to the command that just
+            // failed. Left there it becomes the next command's reply.
+            if (m_port) { m_port->clear(QSerialPort::Input); }
+            settle(200);
+            finishXfer(false, st.message);
+            return;
+        }
 
         const QByteArray body = st.body;
         const QString devPath = m_xferDevPath;
         const QString hostDst = m_xferHostDst;
-        sendRaw(QStringLiteral("storage md5 ") + devPath, [this, body, hostDst](const QString &raw) {
+
+        // An empty file has no meaningful md5 round trip on this firmware -- the
+        // same thing that reported every `touch` as a corrupt transfer. There is
+        // also nothing to verify: zero bytes either arrived or they didn't.
+        if (body.isEmpty()) {
+            QFile out(hostDst);
+            if (!out.open(QIODevice::WriteOnly)) {
+                finishXfer(false, QStringLiteral("[ can't write %1: %2 ]").arg(hostDst, out.errorString()));
+                return;
+            }
+            out.close();
+            finishXfer(true, QStringLiteral("[ saved 0 bytes -> %1 ]").arg(hostDst));
+            return;
+        }
+
+        auto hold = holdBusy();   // keeps the CLI busy across the md5 round trip
+        sendRaw(QStringLiteral("storage md5 ") + devPath, [this, body, hostDst, hold](const QString &raw) {
             const QString got = cliExtractMd5(raw);
             const QString want = QString::fromLatin1(QCryptographicHash::hash(body, QCryptographicHash::Md5).toHex());
             if (got.isEmpty() || got != want) {
@@ -6528,6 +7113,17 @@ void FlipperCli::onReadyRead()
     // firmware emits next to the prompt.
     static const QRegularExpression ctrl(QStringLiteral("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]"));
     text.remove(ctrl);
+
+    // One bare prompt owed to us from an upload's payload (see Xfer::UploadReady).
+    if (m_swallowPrompt) {
+        const QString t = text.trimmed();
+        if (t.isEmpty() || t == QLatin1String(">:")) {
+            if (!t.isEmpty()) { m_swallowPrompt = false; }
+            return;
+        }
+        m_swallowPrompt = false;
+    }
+
     // Eat the echo of a translated command, character by character so a chunk
     // boundary in the middle of it doesn't leak the translation onto the screen.
     if (!m_echoPending.isEmpty()) {
@@ -6592,6 +7188,13 @@ void FlipperCli::onReadyRead()
         }
     }
 
+    // A non-captured command finished when the prompt comes back in its output.
+    // Disarm here so busy() clears immediately (the paste queue advances) rather
+    // than waiting out the 8s watchdog. Captured commands disarm in flushCapture.
+    if (m_capture == Capture::None && text.contains(prompt())) {
+        disarmGuard();
+    }
+
     appendOutput(text);
 }
 
@@ -6611,6 +7214,23 @@ void FlipperCli::flushCapture()
 
     const QString buf = m_captureBuf;
     m_captureBuf.clear();
+
+    // A listing that errors ends the capture on the error text, which arrives
+    // BEFORE the firmware's prompt does -- so the flush printed the error and
+    // no prompt, and the next command's echo ran straight onto the same line.
+    // Print our own prompt and eat the real one when it turns up.
+    const bool sawPrompt = buf.contains(prompt().trimmed());
+    if (!sawPrompt && buf.contains(QLatin1String("Storage error"))) {
+        const QString err = buf.section(QLatin1String("Storage error"), 1, 1)
+                               .section(QLatin1Char('\n'), 0, 0)
+                               .section(QLatin1Char(':'), 1).trimmed();
+        // Same framing cat and the rest use, instead of the bare firmware line.
+        appendOutput(QStringLiteral("[ %1 ]\n").arg(err.isEmpty() ? QStringLiteral("can't read that path") : err)
+                     + prompt());
+        m_swallowPrompt = true;
+        return;
+    }
+
     appendOutput(what == Capture::Help ? cliFormatHelp(buf, prompt().trimmed())
                                       : cliFormatListing(buf));
 }
@@ -6664,9 +7284,22 @@ void FlipperCli::uploadToFlipper(const QString &hostPath, const QString &devPath
     // (FSOM_OPEN_APPEND), so a repeat "cp" would otherwise leave the file with
     // old and new content concatenated. Clear any previous copy first -- "not
     // found" here is expected and harmless.
-    sendRaw(QStringLiteral("storage remove ") + dst, [this, data, dst](const QString &) {
+    //
+    // The hold spans the gap between the remove finishing and write_chunk going
+    // out. That gap is a few milliseconds of a completely idle-looking CLI, and
+    // it is where a queued command used to land -- ahead of the write_chunk, or
+    // worse, ahead of the payload.
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage remove ") + dst, [this, data, dst, hold](const QString &pre) {
         if (!m_port || !m_active) {
             finishXfer(false, QStringLiteral("[ the CLI link dropped mid-upload ]"));
+            return;
+        }
+        // sendRaw answers with this instead of running the command when the
+        // line is already in use. Writing write_chunk anyway would put the
+        // firmware into its byte-counting mode behind another command's back.
+        if (pre.contains(QLatin1String("the CLI is busy"))) {
+            finishXfer(false, QStringLiteral("[ the CLI line was busy -- upload not started ]"));
             return;
         }
         m_xfer = Xfer::UploadReady;
@@ -6710,6 +7343,8 @@ void FlipperCli::downloadFromFlipper(const QString &devPath, const QString &host
 // in which case the batch driver decides when the prompt finally comes back.
 void FlipperCli::finishXfer(bool ok, const QString &message)
 {
+    m_xfer = Xfer::None;   // the transfer is over; busy() should reflect that
+    m_swallowPrompt = false;
     if (!message.isEmpty()) {
         if (ok) { cliLog(message); } else { cliLogFail(message); }
     }
@@ -6718,9 +7353,11 @@ void FlipperCli::finishXfer(bool ok, const QString &message)
         m_xferChain = nullptr;
         appendOutput(message + QLatin1Char('\n'));
         cb(ok);
+        scheduleBusyChanged();
         return;
     }
     appendOutput(message + QLatin1Char('\n') + prompt());
+    scheduleBusyChanged();
 }
 
 // Generic one-shot command on the interactive port -- see the Xfer::Raw branch
@@ -6728,7 +7365,10 @@ void FlipperCli::finishXfer(bool ok, const QString &message)
 // flight rather than silently clobbering it.
 void FlipperCli::sendRaw(const QString &cmd, std::function<void(const QString &)> onDone)
 {
-    if (!m_port || !m_active || busy()) {
+    // portBusy(), not busy(): every step of a composite operation runs while
+    // that operation holds a busy token, and gating on busy() here would make
+    // each of them refuse its own next step.
+    if (!m_port || !m_active || portBusy()) {
         // Not an empty string: continuations test for failure with
         // contains("error"), so "" used to be read as a clean success.
         if (onDone) { onDone(QStringLiteral("Storage error: the CLI is busy")); }
@@ -6757,13 +7397,38 @@ void FlipperCli::ensureDeviceDir(const QString &path, std::function<void()> done
     const QStringList segs = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     for (const QString &s : segs) {
         acc += QLatin1Char('/') + s;
+        // /ext and /int always exist and cannot be created; asking anyway put an
+        // "already exist" error at the top of every single mkdir -p.
+        if (cliIsStorageRoot(acc)) { continue; }
+        // Already created during this batch. A cp -r of 30 files into one folder
+        // re-issued the same mkdir 30 times and collected 30 "already exist"
+        // errors -- two wasted round trips per file, and a log where the real
+        // work was buried in noise.
+        if (m_dirsEnsured.contains(acc)) { continue; }
         *queue += acc;
     }
+    auto hold = holdBusy();
     auto step = std::make_shared<std::function<void()>>();
-    *step = [this, queue, done, step]() {
-        if (queue->isEmpty()) { if (done) { done(); } return; }
+    *step = [this, queue, done, step, hold]() {
+        if (queue->isEmpty()) {
+            if (done) { done(); }
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
+            return;
+        }
         const QString dir = queue->takeFirst();
-        sendRaw(QStringLiteral("storage mkdir ") + dir, [step](const QString &) { (*step)(); });
+        sendRaw(QStringLiteral("storage mkdir ") + dir, [this, step, dir](const QString &) {
+            // Recorded whether it was created or already there -- both mean it
+            // exists now, which is all the next file needs to know.
+            m_dirsEnsured.insert(dir);
+            (*step)();
+        });
     };
     (*step)();
 }
@@ -6774,6 +7439,7 @@ void FlipperCli::ensureDeviceDir(const QString &path, std::function<void()> done
 // else -- chained one at a time via m_xferChain so the port is never shared.
 void FlipperCli::startCopyUpTree(const QString &hostRoot, const QString &devRoot)
 {
+    m_dirsEnsured.clear();
     const QFileInfo fi(hostRoot);
     if (!fi.exists()) {
         appendOutput(QStringLiteral("[ no such file or folder on this computer: %1 ]\n").arg(hostRoot) + prompt());
@@ -6797,10 +7463,19 @@ void FlipperCli::startCopyUpTree(const QString &hostRoot, const QString &devRoot
     auto queue = std::make_shared<QStringList>(files);
     auto ok = std::make_shared<int>(0);
     auto fail = std::make_shared<int>(0);
+    auto hold = holdBusy();
     auto step = std::make_shared<std::function<void()>>();
-    *step = [this, queue, ok, fail, base, devRoot, step]() {
+    *step = [this, queue, ok, fail, base, devRoot, step, hold]() {
         if (queue->isEmpty()) {
             appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
             return;
         }
         const QString hostFile = queue->takeFirst();
@@ -6823,7 +7498,8 @@ void FlipperCli::startCopyUpTree(const QString &hostRoot, const QString &devRoot
 void FlipperCli::startCopyDownTree(const QString &devRoot, const QString &hostRoot)
 {
     appendOutput(QStringLiteral("[ scanning %1... ]\n").arg(devRoot));
-    sendRaw(QStringLiteral("storage tree ") + devRoot, [this, devRoot, hostRoot](const QString &raw) {
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage tree ") + devRoot, [this, devRoot, hostRoot, hold](const QString &raw) {
         if (raw.contains(QLatin1String("Storage error"))) {
             appendOutput(QStringLiteral("[ can't read %1 on the Flipper ]\n").arg(devRoot) + prompt());
             return;
@@ -6841,9 +7517,17 @@ void FlipperCli::startCopyDownTree(const QString &devRoot, const QString &hostRo
         auto ok = std::make_shared<int>(0);
         auto fail = std::make_shared<int>(0);
         auto step = std::make_shared<std::function<void()>>();
-        *step = [this, queue, ok, fail, devRoot, hostRoot, step]() {
+        *step = [this, queue, ok, fail, devRoot, hostRoot, step, hold]() {
             if (queue->isEmpty()) {
                 appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
                 return;
             }
             const QString devFile = queue->takeFirst();
@@ -6867,13 +7551,31 @@ void FlipperCli::startCopyDownTree(const QString &devRoot, const QString &hostRo
 // folder) without a scan. Children are removed before parents: files first,
 // then directories in reverse listing order (tree lists a folder before its
 // contents, so reversing guarantees every child is gone before its parent).
-void FlipperCli::removeTreeCore(const QString &path, std::function<void(bool)> done)
+// done(ok, existed): the two failures read very differently to a person. A
+// folder that resisted deletion is a problem; a path that was never there is
+// usually just a script being tidy, and reporting it as "some items could not
+// be removed" made a no-op look like a partial failure on real data.
+void FlipperCli::removeTreeCore(const QString &path, std::function<void(bool, bool)> done)
 {
-    sendRaw(QStringLiteral("storage tree ") + path, [this, path, done](const QString &raw) {
+    m_dirsEnsured.clear();   // anything cached may be about to stop existing
+    // Try the plain remove FIRST. It already covers a file or an empty folder,
+    // which is the overwhelming majority of what gets deleted, in one command.
+    // Scanning first meant every file in an "rm *.txt" paid for a "storage
+    // tree" that could only ever fail -- three files, three bogus "file/dir
+    // not exist" lines in the log before anything was actually removed.
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage remove ") + path, [this, path, done, hold](const QString &first) {
+        if (!first.contains(QLatin1String("error"), Qt::CaseInsensitive)) {
+            if (done) { done(true, true); }
+            return;
+        }
+        // It failed: either the path is gone, or it is a folder with contents.
+        // Only the second case is worth a recursive walk.
+        sendRaw(QStringLiteral("storage tree ") + path, [this, path, done, hold](const QString &raw) {
         if (raw.contains(QLatin1String("Storage error"))) {
-            sendRaw(QStringLiteral("storage remove ") + path, [done](const QString &raw2) {
-                if (done) { done(!raw2.contains(QLatin1String("error"), Qt::CaseInsensitive)); }
-            });
+            // Both commands said no such path, so there was nothing to remove.
+            const bool existed = !raw.contains(QLatin1String("not exist"));
+            if (done) { done(false, existed); }
             return;
         }
         const auto entries = cliParseTree(raw);
@@ -6888,8 +7590,19 @@ void FlipperCli::removeTreeCore(const QString &path, std::function<void(bool)> d
         auto queue = std::make_shared<QStringList>(targets);
         auto allOk = std::make_shared<bool>(true);
         auto step = std::make_shared<std::function<void()>>();
-        *step = [this, queue, allOk, done, step]() {
-            if (queue->isEmpty()) { if (done) { done(*allOk); } return; }
+        *step = [this, queue, allOk, done, step, hold]() {
+            if (queue->isEmpty()) {
+                if (done) { done(*allOk, true); }
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
+                return;
+            }
             const QString t = queue->takeFirst();
             sendRaw(QStringLiteral("storage remove ") + t, [allOk, step](const QString &raw3) {
                 if (raw3.contains(QLatin1String("error"), Qt::CaseInsensitive)) { *allOk = false; }
@@ -6897,16 +7610,35 @@ void FlipperCli::removeTreeCore(const QString &path, std::function<void(bool)> d
             });
         };
         (*step)();
+        });
     });
 }
 
 void FlipperCli::startRemoveTree(const QString &path)
 {
     appendOutput(QStringLiteral("[ removing %1... ]\n").arg(path));
-    removeTreeCore(path, [this, path](bool ok) {
+    removeTreeCore(path, [this, path](bool ok, bool existed) {
+        if (!ok && !existed) {
+            appendOutput(QStringLiteral("[ no such path: %1 ]\n").arg(path) + prompt());
+            return;
+        }
+        QString note;
+        // Standing inside what was just deleted leaves the prompt pointing at a
+        // folder that no longer exists, and every relative path after it
+        // resolves against nothing. Step out to the nearest surviving parent --
+        // which is what a real shell would have forced you to do beforehand.
+        if (ok && (m_cwd == path || m_cwd.startsWith(path + QLatin1Char('/')))) {
+            QString up = path.section(QLatin1Char('/'), 0, -2);
+            if (up.isEmpty()) { up = QStringLiteral("/ext"); }
+            m_cdPrev = m_cwd;
+            m_cwd = up;
+            emit promptChanged();
+            setStatus(QStringLiteral("CLI live -- %1").arg(m_cwd));
+            note = QStringLiteral("[ that was the current folder -- moved to %1 ]\n").arg(up);
+        }
         appendOutput((ok ? QStringLiteral("[ removed %1 ]\n").arg(path)
                           : QStringLiteral("[ some items under %1 could not be removed ]\n").arg(path))
-                     + prompt());
+                     + note + prompt());
     });
 }
 
@@ -6917,14 +7649,23 @@ void FlipperCli::runRemoveQueue(const QStringList &targets)
     auto queue = std::make_shared<QStringList>(targets);
     auto ok = std::make_shared<int>(0);
     auto fail = std::make_shared<int>(0);
+    auto hold = holdBusy();
     auto step = std::make_shared<std::function<void()>>();
-    *step = [this, queue, ok, fail, step]() {
+    *step = [this, queue, ok, fail, step, hold]() {
         if (queue->isEmpty()) {
             appendOutput(QStringLiteral("[ done -- %1 removed, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
             return;
         }
         const QString t = queue->takeFirst();
-        removeTreeCore(t, [ok, fail, step](bool success) {
+        removeTreeCore(t, [ok, fail, step](bool success, bool) {
             if (success) { ++(*ok); } else { ++(*fail); }
             (*step)();
         });
@@ -6942,7 +7683,8 @@ void FlipperCli::expandDeviceGlob(const QString &pattern, std::function<void(con
     static const QRegularExpression rowRe(QStringLiteral("^\\[([DF])\\]\\s+(.*?)(?:\\s+(\\d+)b)?$"));
     const QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(glob),
                                 QRegularExpression::CaseInsensitiveOption);
-    sendRaw(QStringLiteral("storage list ") + dir, [dir, rx, done](const QString &raw) {
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage list ") + dir, [dir, rx, done, hold](const QString &raw) {
         QStringList out;
         for (const QString &line : raw.split(QLatin1Char('\n'))) {
             const auto m = rowRe.match(line.trimmed());
@@ -6954,6 +7696,37 @@ void FlipperCli::expandDeviceGlob(const QString &pattern, std::function<void(con
     });
 }
 
+// The mirror image of runCopyQueue: a set of files on THIS computer, uploaded
+// one at a time to one folder on the Flipper. Chained through m_xferChain like
+// every other batch, so the port is never shared.
+void FlipperCli::runUploadQueue(const QStringList &hostFiles, const QString &devDir)
+{
+    m_dirsEnsured.clear();
+    QString dir = devDir;
+    while (dir.size() > 1 && dir.endsWith(QLatin1Char('/'))) { dir.chop(1); }
+    appendOutput(QStringLiteral("[ copying %1 file(s) -> %2 ]\n").arg(hostFiles.size()).arg(dir));
+
+    auto hold = holdBusy();
+    auto queue = std::make_shared<QStringList>(hostFiles);
+    auto ok = std::make_shared<int>(0);
+    auto fail = std::make_shared<int>(0);
+    auto step = std::make_shared<std::function<void()>>();
+    *step = [this, queue, ok, fail, dir, step, hold]() {
+        if (queue->isEmpty()) {
+            appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });   // break the self-reference
+            return;
+        }
+        const QString hostFile = queue->takeFirst();
+        m_xferChain = [ok, fail, step](bool success) {
+            if (success) { ++(*ok); } else { ++(*fail); }
+            (*step)();
+        };
+        uploadToFlipper(hostFile, dir + QLatin1Char('/'));
+    };
+    (*step)();
+}
+
 // Copies a set of wildcard matches (device paths) to one destination -- either
 // this computer (dstHost) or another spot on the Flipper.
 void FlipperCli::runCopyQueue(const QStringList &devMatches, const QString &dst, bool dstHost)
@@ -6961,10 +7734,19 @@ void FlipperCli::runCopyQueue(const QStringList &devMatches, const QString &dst,
     auto queue = std::make_shared<QStringList>(devMatches);
     auto ok = std::make_shared<int>(0);
     auto fail = std::make_shared<int>(0);
+    auto hold = holdBusy();
     auto step = std::make_shared<std::function<void()>>();
-    *step = [this, queue, ok, fail, dst, dstHost, step]() {
+    *step = [this, queue, ok, fail, dst, dstHost, step, hold]() {
         if (queue->isEmpty()) {
             appendOutput(QStringLiteral("[ done -- %1 ok, %2 failed ]\n").arg(*ok).arg(*fail) + prompt());
+            // Break the self-reference. *step captures the shared_ptr that owns
+            // it, so the chain keeps itself alive forever -- harmless when it
+            // only leaked a few bytes, fatal now that the same lambda also
+            // carries the busy token: the token was never destroyed, busy()
+            // stayed true, and the command queue behind it stopped dead.
+            // Deferred, because assigning to a std::function that is mid-call
+            // would destroy the frame currently executing.
+            QTimer::singleShot(0, this, [step]() { *step = nullptr; });
             return;
         }
         const QString devFile = queue->takeFirst();
@@ -6990,7 +7772,16 @@ void FlipperCli::startFind(const QString &root, const QString &pattern)
 {
     const QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(pattern),
                                 QRegularExpression::CaseInsensitiveOption);
-    sendRaw(QStringLiteral("storage tree ") + root, [this, rx](const QString &raw) {
+    // Second matcher for the whole-path fallback. In the default conversion "*"
+    // stops at a path separator, so "*clitest*" never matched
+    // /ext/clitest/a.txt and the fallback was dead code -- locate found the
+    // folder and nothing inside it.
+    const QRegularExpression rxPath(
+        QRegularExpression::wildcardToRegularExpression(
+            pattern, QRegularExpression::NonPathWildcardConversion),
+        QRegularExpression::CaseInsensitiveOption);
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage tree ") + root, [this, rx, rxPath, hold](const QString &raw) {
         if (raw.contains(QLatin1String("Storage error"))) {
             appendOutput(QStringLiteral("[ can't read that path ]\n") + prompt());
             return;
@@ -6998,7 +7789,7 @@ void FlipperCli::startFind(const QString &root, const QString &pattern)
         QStringList hits;
         for (const auto &e : cliParseTree(raw)) {
             const QString name = e.path.section(QLatin1Char('/'), -1);
-            if (rx.match(name).hasMatch() || rx.match(e.path).hasMatch()) { hits += e.path; }
+            if (rx.match(name).hasMatch() || rxPath.match(e.path).hasMatch()) { hits += e.path; }
         }
         appendOutput((hits.isEmpty() ? QStringLiteral("[ no matches ]\n") : hits.join(QLatin1Char('\n')) + QLatin1Char('\n'))
                      + prompt());
@@ -7011,6 +7802,20 @@ void FlipperCli::startFind(const QString &root, const QString &pattern)
 // useful with nothing connected to that signal.
 void FlipperCli::startEdit(const QString &path)
 {
+    // An editor panel is modal and takes the keyboard. Popping one open halfway
+    // through a pasted block hijacks focus while the rest of the block is still
+    // running, and whatever is left in that buffer then belongs to a file the
+    // later commands may well have deleted -- which is exactly how a save landed
+    // on a path that no longer existed.
+    if (!m_pending.isEmpty()) {
+        appendOutput(QStringLiteral("[ editor not opened: %1 command%2 still queued. "
+                                    "The panel takes the keyboard, and the rest of the block would run behind it. "
+                                    "Run 'edit %3' on its own. ]\n")
+                         .arg(m_pending.size())
+                         .arg(m_pending.size() == 1 ? QString() : QStringLiteral("s"), path)
+                     + prompt());
+        return;
+    }
     sendRaw(QStringLiteral("storage read ") + path, [this, path](const QString &raw) {
         if (raw.contains(QLatin1String("Storage error"))) {
             appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt());
@@ -7054,6 +7859,13 @@ void FlipperCli::readDeviceText(const QString &path, std::function<void(bool, co
         }
         const int p = body.lastIndexOf(QLatin1String(">:"));
         if (p >= 0) { body = body.left(p); }
+        // The serial console ends every line with CR+LF and may leave a trailing
+        // CR before the prompt. Left in, each split('\n') line keeps a stray \r,
+        // which is why wc counted 7 "lines" for a 2-line file and head printed
+        // phantom blank lines. Normalise to \n and trim the trailing whitespace.
+        body.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+        body.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+        while (body.endsWith(QLatin1Char('\n')) || body.endsWith(QLatin1Char(' '))) { body.chop(1); }
         done(true, body);
     });
 }
@@ -7092,15 +7904,39 @@ void FlipperCli::startHeadTail(const QString &path, int n, bool head)
 
 void FlipperCli::startWc(const QString &path)
 {
-    readDeviceText(path, [this, path](bool ok, const QString &body) {
-        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
-        const QStringList lines = body.split(QLatin1Char('\n'));
+    // Straight to storage read rather than through readDeviceText, because the
+    // byte count has to come from the firmware's own "Size:" header. Counting
+    // the parsed buffer was one byte short on every file ending in a newline --
+    // readDeviceText trims it, deliberately -- so wc said 23 for a file that
+    // ls and stat both called 24.
+    auto hold = holdBusy();
+    sendRaw(QStringLiteral("storage read ") + path, [this, path, hold](const QString &raw) {
+        if (raw.contains(QLatin1String("Storage error"))) {
+            appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt());
+            return;
+        }
+        qint64 bytes = -1;
+        QString body = raw;
+        const int c = raw.indexOf(QLatin1String("Size:"));
+        if (c >= 0) {
+            const int nl = raw.indexOf(QLatin1Char('\n'), c);
+            bytes = raw.mid(c + 5, (nl >= 0 ? nl : raw.size()) - c - 5).trimmed().toLongLong();
+            body = (nl >= 0) ? raw.mid(nl + 1) : QString();
+        }
+        const int p = body.lastIndexOf(QLatin1String(">:"));
+        if (p >= 0) { body = body.left(p); }
+        body.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+        body.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+        while (body.endsWith(QLatin1Char('\n')) || body.endsWith(QLatin1Char(' '))) { body.chop(1); }
+
+        const QStringList lines = body.isEmpty() ? QStringList() : body.split(QLatin1Char('\n'));
         int words = 0;
         for (const QString &l : lines) {
             words += l.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts).size();
         }
+        if (bytes < 0) { bytes = body.toUtf8().size(); }
         appendOutput(QStringLiteral("%1 lines  %2 words  %3 bytes  %4\n")
-                         .arg(lines.size()).arg(words).arg(body.toUtf8().size()).arg(path)
+                         .arg(lines.size()).arg(words).arg(bytes).arg(path)
                      + prompt());
     });
 }
@@ -7180,7 +8016,8 @@ void FlipperCli::writeTextToDevice(const QString &text, const QString &devPath, 
         // ">>" has to read first: storage write_chunk appends, but the upload
         // deliberately removes the file beforehand so a repeated cp can't
         // concatenate. Merging here keeps that rule in one place.
-        readDeviceText(devPath, [this, text, devPath](bool ok, const QString &body) {
+        auto hold = holdBusy();   // spans the read and the write that follows it
+        readDeviceText(devPath, [this, text, devPath, hold](bool ok, const QString &body) {
             QString merged = ok ? body : QString();
             if (!merged.isEmpty() && !merged.endsWith(QLatin1Char('\n'))) { merged += QLatin1Char('\n'); }
             merged += text;
@@ -7229,7 +8066,8 @@ void FlipperCli::startSed(const QString &expr, const QString &path)
     const bool global = parts.value(2).contains(QLatin1Char('g'));
     if (pat.isEmpty()) { appendOutput(QStringLiteral("[ empty pattern ]\n") + prompt()); return; }
 
-    readDeviceText(path, [this, path, pat, rep, global](bool ok, const QString &body) {
+    auto hold = holdBusy();   // spans the read and the write-back
+    readDeviceText(path, [this, path, pat, rep, global, hold](bool ok, const QString &body) {
         if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
         QString out = body;
         const QRegularExpression re(pat);
@@ -7243,10 +8081,17 @@ void FlipperCli::startSed(const QString &expr, const QString &path)
             const QRegularExpressionMatch m = re.match(out);
             if (m.hasMatch()) { out.replace(m.capturedStart(), m.capturedLength(), rep); count = 1; }
         }
+        // Nothing matched: say so and stop. Rewriting the file anyway meant a
+        // no-op sed still did a remove + write_chunk + md5 round trip, putting
+        // the file briefly at risk for no reason at all.
+        if (count == 0) {
+            appendOutput(QStringLiteral("[ sed: no matches in %1 -- file unchanged ]\n").arg(path) + prompt());
+            return;
+        }
         // Overwrite the file with the edited text; report how many it changed.
-        writeTextToDevice(out, path, false);
         appendOutput(QStringLiteral("[ sed: %1 replacement%2 in %3 ]\n")
                          .arg(count).arg(count == 1 ? QString() : QStringLiteral("s"), path));
+        writeTextToDevice(out, path, false);
         // writeTextToDevice prints its own prompt on completion.
     });
 }
@@ -7255,9 +8100,10 @@ void FlipperCli::startSed(const QString &expr, const QString &path)
 // +/- markers; enough to see what changed between two configs or scripts.
 void FlipperCli::startDiff(const QString &pathA, const QString &pathB)
 {
-    readDeviceText(pathA, [this, pathA, pathB](bool okA, const QString &bodyA) {
+    auto hold = holdBusy();   // spans both reads
+    readDeviceText(pathA, [this, pathA, pathB, hold](bool okA, const QString &bodyA) {
         if (!okA) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(pathA) + prompt()); return; }
-        readDeviceText(pathB, [this, pathA, pathB, bodyA](bool okB, const QString &bodyB) {
+        readDeviceText(pathB, [this, pathA, pathB, bodyA, hold](bool okB, const QString &bodyB) {
             if (!okB) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(pathB) + prompt()); return; }
             const QStringList la = bodyA.split(QLatin1Char('\n'));
             const QStringList lb = bodyB.split(QLatin1Char('\n'));
@@ -7351,22 +8197,35 @@ void FlipperCli::runHostProgram(const QString &label, const QString &program,
     }
     appendOutput(QStringLiteral("[ %1 -- running on this computer, not the Flipper ]\n").arg(label));
 
+    // These never touch the serial line, but they do stream into the same view
+    // for seconds at a time. Holding the CLI busy keeps a pasted block from
+    // printing its results in the middle of a ping's output.
+    auto hold = holdBusy();
     auto *proc = new QProcess(this);
     proc->setProcessChannelMode(QProcess::MergedChannels);
     auto *guard = new QTimer(this);
     guard->setSingleShot(true);
     guard->setInterval(timeoutMs);
 
-    connect(guard, &QTimer::timeout, this, [proc]() {
-        if (proc->state() != QProcess::NotRunning) { proc->kill(); }
+    QPointer<QProcess> procRef(proc);
+    connect(guard, &QTimer::timeout, this, [procRef]() {
+        // QPointer: the process may already have finished and been queued for
+        // deletion, and dereferencing it then is a crash, not a missed kill.
+        if (procRef && procRef->state() != QProcess::NotRunning) { procRef->kill(); }
     });
     connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc]() {
         appendOutput(QString::fromUtf8(proc->readAll()));
     });
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, proc, guard](int, QProcess::ExitStatus) {
+            [this, proc, guard, hold](int, QProcess::ExitStatus) {
         appendOutput(QString::fromUtf8(proc->readAll()));
         appendOutput(prompt());
+        guard->deleteLater();
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc, guard, hold](QProcess::ProcessError e) {
+        if (e != QProcess::FailedToStart) { return; }   // the rest still reach finished()
+        appendOutput(QStringLiteral("[ couldn't start %1 ]\n").arg(proc->program()) + prompt());
         guard->deleteLater();
         proc->deleteLater();
     });
@@ -7384,12 +8243,20 @@ void FlipperCli::startWget(const QString &url, const QString &devPath, bool exac
     }
 
     appendOutput(QStringLiteral("[ downloading %1 ]\n").arg(u.toString()));
+    // Held across the whole fetch. The Flipper is idle while this runs, but the
+    // CLI is not free: the bytes are on their way to an upload that owns the
+    // serial line the moment they land.
+    auto hold = holdBusy();
     QNetworkRequest req(u);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("lotei-cli"));
+    // Without this a stalled connection never emits finished(), the busy token
+    // it holds is never released, and the CLI refuses every later command with
+    // no visible reason why.
+    req.setTransferTimeout(30000);
 
     QNetworkReply *reply = m_dl.get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, devPath, exactDest]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, devPath, exactDest, hold]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             appendOutput(QStringLiteral("[ download failed: %1 ]\n").arg(reply->errorString()) + prompt());

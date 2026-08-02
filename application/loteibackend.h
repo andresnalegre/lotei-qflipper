@@ -1,10 +1,12 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 #include <QByteArray>
 #include <QColor>
 #include <QDateTime>
@@ -254,6 +256,7 @@ private:
     // Anti-hallucination bookkeeping (see finalizeStream) + "edit the same file":
     bool       m_turnWasFileAction = false;  // this user turn asked to save/create/write a file
     bool       m_turnRanAnyTool    = false;  // at least one tool actually executed this turn
+    bool       m_turnHadToolError  = false;  // a tool returned {"error":...} this turn
     bool       m_lastTurnWasAction = false;  // the PREVIOUS turn did a file/device action
                                              // -> keep read tools on for the follow-up question
     QString    m_lastSavedPath;              // path of the most recent save_file this session,
@@ -540,6 +543,9 @@ class FlipperCli : public QObject
     Q_PROPERTY(bool verbose READ verbose WRITE setVerbose NOTIFY verboseChanged)
     Q_PROPERTY(bool colored READ colored WRITE setColored NOTIFY coloredChanged)
     Q_PROPERTY(QString promptText READ promptText NOTIFY promptChanged)
+    // True while a command is in flight (transfer, cd stat, capture, or an armed
+    // op guard). The paste queue watches this to send one command at a time.
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 
 public:
     explicit FlipperCli(QObject *parent = nullptr);
@@ -584,6 +590,7 @@ signals:
     void verboseChanged();
     void coloredChanged();
     void promptChanged();
+    void busyChanged();
     // Tab completion result: the replacement for the text left of the caret.
     void completion(const QString &line);
     // "edit <path>" fetched the file -- whatever panel does host-side text
@@ -625,6 +632,54 @@ private:
     // one may start -- the checks used to be spelled out per call site, which
     // is how "cd" in flight and a raw command could eat each other's replies.
     bool busy() const;
+
+    // busy() is the question the UI and the command queue ask: "is the whole
+    // operation still running?" portBusy() is the question the plumbing asks:
+    // "is the wire itself mid-exchange right now?" They have to be separate.
+    // Every step of a composite operation (echo >> = read + remove +
+    // write_chunk + md5) runs while that operation still holds busy(), so a
+    // step gating on busy() would refuse its own continuation.
+    bool portBusy() const;
+
+    // busyChanged is a direct connection: emitting it from inside onReadyRead
+    // let the queue call send() synchronously, part-way through a function that
+    // had not finished touching the port. That is how a queued command reached
+    // the firmware ahead of an upload's payload and got stored as the file's
+    // contents. This posts the signal to the next event-loop turn instead.
+    void scheduleBusyChanged();
+
+    // Refcount token for "an operation is still in progress". Capture the
+    // handle in every lambda of a chain; when the last copy dies, the CLI
+    // reports idle again. A refcount and not a flag, because uploadToFlipper
+    // takes one of its own while running inside a cp -r that already holds one.
+    std::shared_ptr<void> holdBusy();
+
+    // "storage write_chunk <path> <n>" makes the firmware read exactly n bytes
+    // off the wire with no timeout and no way to say no. Abandoning an upload
+    // without sending them leaves every later command being swallowed as file
+    // content -- the device looks dead until it is unplugged. Ctrl-C is the
+    // only way out, and this is it.
+    void abortPendingChunk();
+
+    // Holds the line idle for a beat after a forced recovery, so the next
+    // command doesn't start with the tail of a cancelled reply in its buffer.
+    void settle(int ms);
+
+    // Commands that arrive while something is running are held here rather than
+    // bounced. A pasted block arrives far faster than the firmware can answer,
+    // and rejecting the overflow meant most of the block silently never ran.
+    void queuePending(const QString &cmd);
+    void drainPending();
+    void clearPending();
+
+    // Last-resort recovery. The op guard only covers a command that is actually
+    // in flight; a busy token stranded with nothing on the wire is invisible to
+    // it, and that is exactly the state that used to need the panel closed and
+    // reopened. This watches the one symptom that is never legitimate: commands
+    // waiting, and not one byte from the device for half a minute.
+    void armQueueStall();
+    void onQueueStall();
+    QTimer *m_queueStall = nullptr;
 
     // No-reply watchdog for the interactive path. Every step that waits on the
     // device arms it; every completion disarms it; incoming bytes restart it,
@@ -668,10 +723,13 @@ private:
     void ensureDeviceDir(const QString &path, std::function<void()> done);         // mkdir -p
     void startCopyUpTree(const QString &hostRoot, const QString &devRoot);         // cp -r host -> device
     void startCopyDownTree(const QString &devRoot, const QString &hostRoot);       // cp -r device -> host
-    void removeTreeCore(const QString &path, std::function<void(bool)> done);      // no printing; used by both below
+    // done(ok, existed): "it fought back" and "it was never there" are not the
+    // same answer, and only one of them is worth alarming the user about.
+    void removeTreeCore(const QString &path, std::function<void(bool, bool)> done);   // no printing; used by both below
     void startRemoveTree(const QString &path);                                     // rm -r, single target
     void runRemoveQueue(const QStringList &targets);                              // rm of a wildcard match set
     void expandDeviceGlob(const QString &pattern, std::function<void(const QStringList &)> done);
+    void runUploadQueue(const QStringList &hostFiles, const QString &devDir);   // cp <host glob> -> Flipper
     void runCopyQueue(const QStringList &devMatches, const QString &dst, bool dstHost); // cp of a wildcard match set
     void startFind(const QString &root, const QString &pattern);                   // find
     void startEdit(const QString &path);                                           // edit
@@ -722,6 +780,15 @@ private:
     QString m_devName;                           // the Flipper's own name
     QString m_cwd = QStringLiteral("/ext");
     QString m_cdPrev = QStringLiteral("/ext");   // for "cd -"
+    // Composite operations in flight (see holdBusy). m_opGen invalidates the
+    // tokens of an operation that Ctrl-C or the watchdog already tore down, so
+    // their deleters can't decrement a count that now belongs to something else.
+    int         m_opDepth = 0;
+    quint64     m_opGen = 0;
+    bool        m_busyNotifyQueued = false;
+    bool        m_draining = false;   // reentrancy guard for drainPending
+    QStringList m_pending;            // commands waiting for the line
+
     QString m_cdPending;                         // folder awaiting confirmation
     QByteArray m_cdRaw;
 
@@ -735,13 +802,27 @@ private:
     // the rest of it arrives so it can be stripped as one piece.
     QString m_escTail;
 
+    // One bare prompt owed to us: after an upload's payload the firmware prints
+    // a prompt before the md5 verification has even been sent, so the command
+    // looked finished while it was still being checked.
+    bool m_swallowPrompt = false;
+
     // Echo of a translated command still to be swallowed ("storage list /ext"
     // when the user typed "ls").
+    // Folders confirmed to exist during the current batch. Without it a cp -r
+    // re-ran the same mkdir for every single file it copied.
+    QSet<QString> m_dirsEnsured;
+
     QString m_echoPending;
 
     // What the user actually typed this turn. The verbose log skips it: the
     // panel already printed it, and the firmware echoes it back too.
     QString m_lastTyped;
+
+    // The last command written to the wire. The firmware echoes each one back,
+    // and the verbose log has to recognise that echo to avoid printing every
+    // step twice.
+    QString m_lastTraced;
 
     // Stops a firmware error split across serial chunks from logging twice.
     QString m_lastLoggedError;

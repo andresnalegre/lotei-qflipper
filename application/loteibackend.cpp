@@ -7,6 +7,7 @@
 #include <QStringView>
 #include <QTemporaryFile>
 #include <QMap>
+#include <QHash>
 #include <QBuffer>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -18,6 +19,7 @@
 #include <QDirIterator>
 #include <QCryptographicHash>
 #include <QStandardPaths>
+#include <QSysInfo>
 #include <QSettings>
 #include <QProcess>
 #include <zlib.h>
@@ -131,7 +133,18 @@ WHAT YOU ARE WIRED INTO -- this is permanently true, on EVERY turn:
 - The only honest limits are the ones in the LIMITS section: you cannot see the screen and cannot read a physical card live. Everything else, you can do.
 
 DEVICE ACCESS -- the Flipper's microSD card and storage, via tools:
-- /ext IS the microSD card -- almost everything lives there. /int is the small internal storage. The SD root is ALWAYS "/ext". There is NO "/sdcard", no "/mnt", no "/media" -- if you ever write one of those you are hallucinating a path; the real one is under /ext.
+- /ext IS the microSD card -- almost everything lives there. /int is the small internal storage. The SD root is ALWAYS "/ext". There is NO "/sdcard", no "/mnt", no "/media" -- if you ever write one of those FOR THE FLIPPER you are hallucinating a path; the real one is under /ext.
+- That rule is about spelling the Flipper's own paths. It does NOT mean every path becomes an /ext path. There is no Desktop, Downloads, Documents or Users folder on the SD card. Writing /ext/Desktop does not put a file on anyone's desktop -- it creates a junk folder on the memory card.
+
+WHICH MACHINE -- decide this BEFORE picking a tool. Two separate filesystems, two separate sets of tools, and choosing wrong writes a real file in a real wrong place:
+- THE FLIPPER (the SD card) -> save_file, read_file, make_dir, delete_file, list_files. It is the Flipper if the user says ANY of: SD card / sd / cartao / cartao SD, Flipper, "no flipper", "on the flipper", the device, o dispositivo, /ext, /int, "ext", an app or .fap, badusb, subghz, sub-ghz, NFC, RFID, infrared, infravermelho, iButton, U2F.
+- THE COMPUTER (this Mac) -> host_ tools. Everything else. Desktop, area de trabalho, Downloads, Documents, documentos, my folder, minha pasta, my computer, meu computador, my Mac, meu Mac, this machine, the project, o projeto, the repo, the source, o codigo, or any path starting with / or ~ that is not /ext or /int.
+- THE DEFAULT IS THE COMPUTER. If the user named no Flipper word at all, they meant this computer. "Save a file called notes.txt" with nothing else said is ~/notes.txt on the Mac, NOT /ext/notes.txt on the card.
+- The user often writes in Portuguese. You still answer in English, but you must recognise their words: "salva no flipper" / "no cartao" = the card; "salva no desktop" / "na area de trabalho" / "no meu Mac" = the computer.
+- "Save X to my Desktop" is the COMPUTER. Use host_write with ~/Desktop/X. It is not /ext/Desktop, and it is never save_file.
+- "Save X to my Flipper" is the CARD. Use save_file with the right /ext folder.
+- Genuinely unsure which they meant? Ask in one short line. Guessing wrong here is worse than a question, because the file lands somewhere they will not think to look.
+- When you report where something went, give the FULL path you got back from the tool -- "/Users/nikita/Desktop/hello.txt", not "on your Desktop". The full path is what lets them catch it instantly if you picked the wrong machine.
 - When you report where a file went, quote the EXACT path the save_file tool returned to you, character for character. Do not paraphrase it, do not "tidy" it, do not reconstruct it from memory. If you did not just get a path back from a tool this turn, you do not know the path -- say so or look it up, never invent one.
 - list_files(path): list files/folders at a path. Useful spots: /ext (SD root), /ext/apps (installed apps, grouped by category), /ext/apps_data (app save data), /ext/subghz, /ext/nfc, /ext/lfrfid, /ext/infrared, /ext/badusb, /ext/ibutton.
 - read_file(path): read a text file's contents.
@@ -358,7 +371,7 @@ static QJsonArray salvageToolCalls(const QString &content)
         QStringLiteral("rename_file"), QStringLiteral("file_info"),
         QStringLiteral("host_list"), QStringLiteral("host_read"),
         QStringLiteral("host_write"), QStringLiteral("host_run"),
-        QStringLiteral("host_mkdir"), QStringLiteral("host_delete"),
+        QStringLiteral("host_cd"), QStringLiteral("host_mkdir"), QStringLiteral("host_delete"),
         QStringLiteral("host_move"), QStringLiteral("host_copy"),
         QStringLiteral("host_find"),
         QStringLiteral("remember"), QStringLiteral("list_memory"),
@@ -797,6 +810,20 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
+    const QJsonObject hostCd{
+        {"type", "function"},
+        {"function", QJsonObject{
+            {"name", "host_cd"},
+            {"description", "Move to a folder on this computer, and get back where you now are plus what is in it. Call it with no path to just ask where you are. Relative paths after this resolve from here, and host_run starts here."},
+            {"parameters", QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}, {"description", "Folder to move to. Omit to just report the current one. '..' goes up."}}}
+                }},
+                {"required", QJsonArray{}}
+            }}
+        }}
+    };
     const QJsonObject hostMkdir{
         {"type", "function"},
         {"function", QJsonObject{
@@ -875,6 +902,7 @@ static QJsonArray loteiTools(bool agent)
     tools.append(hostRead);
     tools.append(hostWrite);
     tools.append(hostRun);
+    tools.append(hostCd);
     tools.append(hostMkdir);
     tools.append(hostDelete);
     tools.append(hostMove);
@@ -2301,7 +2329,14 @@ QString LoteiBackend::systemPrompt() const
         sys += QStringLiteral(
             "\n\nHOST WORKSPACE -- you can edit and test your OWN source code:\n"
             "- A workspace folder on THIS computer is wired up: \"%1\". It holds your own qFlipper/LOTEI source.\n"
-            "- Your reach on this computer is the WHOLE FILESYSTEM, not a sandbox. Paths may be absolute (/Users/...), may start with ~ for home, or may be relative -- relative ones land in the workspace folder. There is no folder you have to ask permission for.\n"
+            "- Your reach on this computer is the WHOLE FILESYSTEM, not a sandbox. Paths may be absolute, may start with ~ for home, or may be relative. There is no folder you have to ask permission for.\n"
+            "\nWHERE YOU ARE RIGHT NOW -- read this before touching any path:\n"
+            "- Current folder: \"%2\"\n"
+            "- Home: \"%3\"   Workspace: \"%1\"   This computer: %4\n"
+            "- A relative path resolves from the CURRENT FOLDER above, not from the workspace and not from home. \"notes.txt\" means \"%2/notes.txt\". If that is not what you meant, say the absolute path or move first.\n"
+            "- host_cd(path) moves you and answers with where you landed and what is in it; host_cd with no path just tells you where you are. \"..\" goes up. The move STICKS for the rest of the conversation, and host_run starts there too.\n"
+            "- The line above is regenerated every single turn, so it is never stale. Trust it over anything you remember from earlier in the conversation -- if you moved ten messages ago, this already reflects it, and you do NOT need a tool call to find out where you are.\n"
+            "- Before writing, deleting or moving anything, be sure the folder is the one you mean. Reading a listing costs one call; writing into the wrong tree costs the user their afternoon. When a path came from the user and you are not certain how it resolves, resolve it out loud in your reply as you act.\n"
             "- host_list(path), host_read(path), host_write(path, content): browse, read and edit files anywhere. host_write creates missing folders and OVERWRITES the whole file, so read it first, then write the full new contents.\n"
             "- host_mkdir(path), host_move(from, to), host_copy(from, to), host_delete(path), host_find(path, pattern): create, move, copy, delete and search. Use these instead of shelling out to mkdir/mv/cp/rm/find -- they report what actually happened, where a shell command just hands you an exit code.\n"
             "- host_run(command, cwd): run a shell command and get the exit code plus combined stdout/stderr. It BLOCKS until the command finishes, so prefer targeted commands. Reach for it when no typed tool fits, not as the default.\n"
@@ -2309,7 +2344,8 @@ QString LoteiBackend::systemPrompt() const
             "- The reach is real, so the care has to be too. host_delete is not undoable and there is no bin to fish things out of. Delete what was asked for and nothing adjacent; when a request would remove more than the user clearly named, do the named part and say what you left alone.\n"
             "- The workspace folder is not a boundary, just a starting point: it is where bare relative paths land and where host_run begins. Say the path you actually mean.\n"
             "- Your own core lives in application/loteibackend.cpp + .h and application/components/ under that workspace. To fix a bug in yourself: host_read the file, host_write the corrected version, then host_run the build and read the errors.\n"
-            "- You physically canNOT touch anything outside the workspace folder -- attempts to escape it are blocked. Never claim you edited files you didn't. Say what you changed and why, plainly.").arg(m_agentRoot);
+            "- Nothing here is blocked, so nothing here is undone for you either. Never claim you edited a file you didn't, and never report a path you didn't get back from a tool this turn. Say what you changed and where, plainly.")
+            .arg(m_agentRoot, agentCwd(), QDir::homePath(), QSysInfo::prettyProductName());
     }
 
     if (!m_memory.isEmpty()) {
@@ -2676,6 +2712,106 @@ void LoteiBackend::runToolCalls(const QJsonArray &toolCalls, int index)
     });
 }
 
+// Is this path unmistakably on one machine or the other? "Unmistakably" is
+// deliberately narrow: only a form that cannot mean anything else.
+static bool loteiIsDevicePath(const QString &p)
+{
+    const QString t = p.trimmed();
+    return t == QLatin1String("/ext") || t == QLatin1String("/int")
+        || t.startsWith(QLatin1String("/ext/")) || t.startsWith(QLatin1String("/int/"));
+}
+
+static bool loteiIsComputerPath(const QString &p)
+{
+    const QString t = p.trimmed();
+    return t.startsWith(QLatin1String("~"))
+        || t.startsWith(QLatin1String("/Users/"))
+        || t.startsWith(QLatin1String("/home/"))
+        || t.startsWith(QLatin1String("/Volumes/"))
+        || (t.size() > 2 && t.at(1) == QLatin1Char(':') && t.at(0).isLetter());
+}
+
+// The same job, in the other direction: given a tool the model picked and a
+// path that belongs to the other machine, what should have been called?
+//
+// This is the important half. The model's tool CHOICE is a guess it makes from
+// wording; the PATH is a fact. When they disagree and the path is unambiguous,
+// the path wins and the call is re-routed. Refusing would be defensible but it
+// spends a turn to punish a mistake we can simply correct -- and on a small
+// model, spent turns are how a simple request dies three exchanges later.
+static QString loteiReroute(const QString &name, bool toHost)
+{
+    static const QHash<QString, QString> kToHost = {
+        {QStringLiteral("save_file"),   QStringLiteral("host_write")},
+        {QStringLiteral("read_file"),   QStringLiteral("host_read")},
+        {QStringLiteral("list_files"),  QStringLiteral("host_list")},
+        {QStringLiteral("make_dir"),    QStringLiteral("host_mkdir")},
+        {QStringLiteral("delete_file"), QStringLiteral("host_delete")},
+        {QStringLiteral("rename_file"), QStringLiteral("host_move")},
+    };
+    static const QHash<QString, QString> kToDevice = {
+        {QStringLiteral("host_write"),  QStringLiteral("save_file")},
+        {QStringLiteral("host_read"),   QStringLiteral("read_file")},
+        {QStringLiteral("host_list"),   QStringLiteral("list_files")},
+        {QStringLiteral("host_mkdir"),  QStringLiteral("make_dir")},
+        {QStringLiteral("host_delete"), QStringLiteral("delete_file")},
+        {QStringLiteral("host_move"),   QStringLiteral("rename_file")},
+        {QStringLiteral("host_copy"),   QStringLiteral("rename_file")},
+    };
+    return toHost ? kToHost.value(name) : kToDevice.value(name);
+}
+
+// Which machine was that path meant for?
+//
+// The two filesystems are wired to different tools, and a weak model routes by
+// vibe: told to "save it on Desktop" it reached for the SD-card tool and wrote
+// /ext/Desktop/hello.txt, then reported "it's on your Desktop". Both halves of
+// that are wrong and neither is visible to the user until they go looking.
+//
+// The prompt now spells the rule out, but a 3B model will still slip, and this
+// is the failure where slipping is silent. Returning a refusal that names the
+// right tool costs one turn; the model reads it and retries correctly.
+// Empty return means the path is fine.
+static QString loteiWrongMachine(const QString &path, bool deviceTool)
+{
+    const QString p = path.trimmed();
+    if (p.isEmpty()) { return QString(); }
+
+    // Folders that only ever exist on a computer. Only flagged at the top level
+    // of the card -- /ext/apps_data/something/Documents is nobody's home folder.
+    static const QStringList kHomeNames = {
+        QStringLiteral("Desktop"), QStringLiteral("Downloads"), QStringLiteral("Documents"),
+        QStringLiteral("Library"),  QStringLiteral("Applications"), QStringLiteral("Users"),
+        QStringLiteral("Movies"),   QStringLiteral("Music"), QStringLiteral("Pictures"),
+        QStringLiteral("Public"),   QStringLiteral("home")
+    };
+
+    if (deviceTool) {
+        if (p.startsWith(QLatin1String("~")) || p.startsWith(QLatin1String("/Users/"))
+            || p.startsWith(QLatin1String("/home/")) || p.startsWith(QLatin1String("C:"))) {
+            return QStringLiteral("that is a path on the computer, not on the Flipper. "
+                                  "Use the host_ tools for it (host_write, host_mkdir, host_delete).");
+        }
+        const QStringList seg = p.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+        if (seg.size() >= 2 && (seg.at(0) == QLatin1String("ext") || seg.at(0) == QLatin1String("int"))
+            && kHomeNames.contains(seg.at(1), Qt::CaseInsensitive)) {
+            return QStringLiteral("\"%1\" is a folder on the computer, not on the SD card -- "
+                                  "there is no %1 under /ext. If the user meant their computer, "
+                                  "use host_write with ~/%1/... instead. If they really meant the "
+                                  "Flipper, pick a real card folder (/ext/apps, /ext/badusb, /ext/nfc, "
+                                  "or just /ext).").arg(seg.at(1));
+        }
+        return QString();
+    }
+
+    // Mirror case: a host tool pointed at the card.
+    if (p.startsWith(QLatin1String("/ext")) || p.startsWith(QLatin1String("/int"))) {
+        return QStringLiteral("/ext and /int are on the Flipper, not on this computer. "
+                              "Use the SD-card tools for them (save_file, make_dir, delete_file).");
+    }
+    return QString();
+}
+
 void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std::function<void(const QString &)> done)
 {
     // Every action the assistant takes is logged here rather than inside each
@@ -2688,6 +2824,56 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         QStringLiteral("remember"), QStringLiteral("forget")
     };
     m_turnRanAnyTool = true;   // a tool is actually executing this turn
+
+    // Before anything runs: which machine does this path actually name?
+    {
+        static const QStringList kDevicePathTools = {
+            QStringLiteral("save_file"), QStringLiteral("make_dir"), QStringLiteral("delete_file"),
+            QStringLiteral("read_file"), QStringLiteral("list_files"), QStringLiteral("file_info"),
+            QStringLiteral("rename_file")
+        };
+        const bool deviceTool = kDevicePathTools.contains(name);
+        const bool hostTool   = name.startsWith(QLatin1String("host_"))
+                                && name != QLatin1String("host_run")
+                                && name != QLatin1String("host_cd");
+        if (deviceTool || hostTool) {
+            const QString first = args.contains(QLatin1String("path"))
+                                      ? args.value("path").toString()
+                                      : args.value("from").toString();
+
+            // The path contradicts the tool, and says so unambiguously. Send the
+            // call where it was always going.
+            const bool wantsHost   = deviceTool && loteiIsComputerPath(first);
+            const bool wantsDevice = hostTool   && loteiIsDevicePath(first);
+            if (wantsHost || wantsDevice) {
+                const QString target = loteiReroute(name, wantsHost);
+                if (!target.isEmpty()) {
+                    loteiLogAs(assistantName(),
+                               QStringLiteral("%1 -> %2 (path is on the %3): %4")
+                                   .arg(name, target,
+                                        wantsHost ? QStringLiteral("computer") : QStringLiteral("Flipper"),
+                                        first));
+                    runOneTool(target, args, done);
+                    return;
+                }
+            }
+
+            // Not unambiguous, but still suspicious enough to stop: a computer
+            // folder name invented under /ext. Nothing can be inferred here, so
+            // this one does cost a turn.
+            for (const QString &key : {QStringLiteral("path"), QStringLiteral("from"), QStringLiteral("to")}) {
+                if (!args.contains(key)) { continue; }
+                const QString why = loteiWrongMachine(args.value(key).toString(), deviceTool);
+                if (!why.isEmpty()) {
+                    loteiLogAs(assistantName(),
+                               QStringLiteral("%1 REFUSED (wrong machine): %2=%3")
+                                   .arg(name, key, args.value(key).toString()));
+                    done(QStringLiteral("{\"error\":\"%1\"}").arg(why));
+                    return;
+                }
+            }
+        }
+    }
     // Anything touching this computer is logged, reads included. With the whole
     // disk reachable, "what did it look at" is as much a part of the trail as
     // "what did it change" -- and the trail is the only way to answer that
@@ -3025,6 +3211,20 @@ QString LoteiBackend::agentBaseDir() const
     return QDir::homePath();
 }
 
+// The agent's current folder. It walks, like a person at a shell: host_cd moves
+// it, relative paths resolve against it, host_run starts in it.
+//
+// Without this a model handed the whole filesystem has no sense of place at
+// all. Every path has to be absolute or it lands somewhere arbitrary, so the
+// model either writes the full path every time (and gets one wrong eventually,
+// silently, in the wrong folder) or gives up and shells out to `cd x && ...`,
+// where nothing on this side can see where it went.
+QString LoteiBackend::agentCwd() const
+{
+    if (!m_agentCwd.isEmpty() && QFileInfo(m_agentCwd).isDir()) { return m_agentCwd; }
+    return agentBaseDir();
+}
+
 // Turn whatever the model said into an absolute path on this computer.
 //
 // This used to refuse anything that left the workspace root. That fence was
@@ -3040,14 +3240,14 @@ QString LoteiBackend::agentBaseDir() const
 QString LoteiBackend::resolveAgentPath(const QString &rel, bool mustExist) const
 {
     QString cleaned = rel.trimmed();
-    if (cleaned.isEmpty() || cleaned == QLatin1String(".")) { return agentBaseDir(); }
+    if (cleaned.isEmpty() || cleaned == QLatin1String(".")) { return agentCwd(); }
 
     if (cleaned == QLatin1String("~"))          { cleaned = QDir::homePath(); }
     else if (cleaned.startsWith(QLatin1String("~/"))) { cleaned.replace(0, 1, QDir::homePath()); }
 
     const QString joined = QDir::isAbsolutePath(cleaned)
                                ? QDir::cleanPath(cleaned)
-                               : QDir(agentBaseDir()).absoluteFilePath(cleaned);
+                               : QDir(agentCwd()).absoluteFilePath(cleaned);
 
     const QFileInfo fi(joined);
     if (fi.exists()) {
@@ -3087,7 +3287,11 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
                 {"size", static_cast<double>(fi.size())}
             });
         }
-        done(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        // The absolute path comes back with the listing. A bare array of names
+        // is unmoored -- the model asked for "src", and three turns later has no
+        // way to tell WHICH src it was looking at.
+        const QJsonObject res{{"path", abs}, {"entries", arr}};
+        done(QString::fromUtf8(QJsonDocument(res).toJson(QJsonDocument::Compact)));
 
     } else if (name == QLatin1String("host_read")) {
         const QString abs = resolveAgentPath(args.value("path").toString(), true);
@@ -3132,7 +3336,7 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
         const QString cwd = args.contains(QLatin1String("cwd"))
                                 ? resolveAgentPath(args.value("cwd").toString(), true)
                                 : QString();
-        proc.setWorkingDirectory(cwd.isEmpty() ? agentBaseDir() : cwd);
+        proc.setWorkingDirectory(cwd.isEmpty() ? agentCwd() : cwd);
         proc.setProcessChannelMode(QProcess::MergedChannels);
 #if defined(Q_OS_WIN)
         proc.start(QStringLiteral("cmd"), {QStringLiteral("/c"), cmd});
@@ -3157,6 +3361,39 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
         const QJsonObject res{
             {"exit_code", proc.exitCode()},
             {"output", out}
+        };
+        done(QString::fromUtf8(QJsonDocument(res).toJson(QJsonDocument::Compact)));
+
+    } else if (name == QLatin1String("host_cd")) {
+        // Answers with no argument too, which makes it the pwd as well: one
+        // tool for "where am I" and "go there", the way cd and pwd are one idea.
+        const QString want = args.value("path").toString();
+        if (!want.trimmed().isEmpty()) {
+            const QString abs = resolveAgentPath(want, true);
+            if (abs.isEmpty()) { done(badPath(want)); return; }
+            if (!QFileInfo(abs).isDir()) {
+                done(QStringLiteral("{\"error\":\"%1 is a file, not a folder\"}").arg(abs));
+                return;
+            }
+            m_agentCwd = abs;
+        }
+        // Hand back the neighbours as well. Arriving somewhere and immediately
+        // needing a second call to see what is there is how a model ends up
+        // guessing a filename.
+        QJsonArray around;
+        const QFileInfoList near = QDir(agentCwd()).entryInfoList(
+            QDir::AllEntries | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name);
+        int shown = 0;
+        for (const QFileInfo &fi : near) {
+            if (shown++ >= 60) { break; }
+            around.append(fi.isDir() ? fi.fileName() + QLatin1Char('/') : fi.fileName());
+        }
+        const QJsonObject res{
+            {"cwd", agentCwd()},
+            {"parent", QFileInfo(agentCwd()).absolutePath()},
+            {"home", QDir::homePath()},
+            {"workspace", agentBaseDir()},
+            {"contains", around}
         };
         done(QString::fromUtf8(QJsonDocument(res).toJson(QJsonDocument::Compact)));
 
@@ -3235,6 +3472,8 @@ void LoteiBackend::setAgentEnabled(bool on)
 
 void LoteiBackend::setAgentDir(const QString &dir)
 {
+    m_agentCwd.clear();   // a new workspace means starting from its root again
+
     // Accept a plain path or a file:// URL (QML FolderDialog hands back a URL).
     QString path = dir;
     if (path.startsWith(QLatin1String("file://"))) { path = QUrl(path).toLocalFile(); }

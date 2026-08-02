@@ -14,7 +14,7 @@ EQ            = =
 
 CC            = /Library/Developer/CommandLineTools/usr/bin/clang
 CXX           = /Library/Developer/CommandLineTools/usr/bin/clang++
-DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"a302a6b6\" -DAPP_TIMESTAMP=1785708680 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
+DEFINES       = -DUSB_BACKEND_LIBUSB -DAPP_NAME=\"qFlipper\" -DAPP_VERSION=\"unknown\" -DAPP_COMMIT=\"7c9033a9\" -DAPP_TIMESTAMP=1785709502 -DPB_ENABLE_MALLOC -DDISABLE_APPLICATION_UPDATES -DQT_NO_DEBUG -DQT_QUICKCONTROLS2_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_WIDGETS_LIB -DQT_SVG_LIB -DQT_GUI_LIB -DQT_QML_LIB -DQT_QMLINTEGRATION_LIB -DQT_NETWORK_LIB -DQT_SERIALPORT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 CXXFLAGS      = -pipe -stdlib=libc++ -O2 -std=gnu++1z $(EXPORT_ARCH_ARGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=14.0 -Wall -Wextra $(DEFINES)
 INCPATH       = -I../../application -I. -I../../dfu -I../../backend -I/opt/homebrew/Cellar/libusb_universal/1.0.24/include/libusb-1.0 -I/opt/homebrew/lib/QtQuickControls2.framework/Headers -I/opt/homebrew/lib/QtQuick.framework/Headers -I/opt/homebrew/lib/QtOpenGL.framework/Headers -I/opt/homebrew/lib/QtWidgets.framework/Headers -I/opt/homebrew/lib/QtSvg.framework/Headers -I/opt/homebrew/lib/QtGui.framework/Headers -I/opt/homebrew/lib/QtQml.framework/Headers -I/opt/homebrew/include -I/opt/homebrew/include/QtQmlIntegration -I/opt/homebrew/lib/QtNetwork.framework/Headers -I/opt/homebrew/lib/QtSerialPort.framework/Headers -I/opt/homebrew/lib/QtCore5Compat.framework/Headers -I/opt/homebrew/lib/QtCore.framework/Headers -I. -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework/Headers -I/opt/homebrew/share/qt/mkspecs/macx-clang -F/opt/homebrew/lib
@@ -2170,6 +2170,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QStringView \
 		/opt/homebrew/lib/QtCore.framework/Headers/QTemporaryFile \
 		/opt/homebrew/lib/QtCore.framework/Headers/QMap \
+		/opt/homebrew/lib/QtCore.framework/Headers/QHash \
 		/opt/homebrew/lib/QtCore.framework/Headers/QBuffer \
 		/opt/homebrew/lib/QtCore.framework/Headers/QJsonDocument \
 		/opt/homebrew/lib/QtNetwork.framework/Headers/QNetworkRequest \
@@ -2180,6 +2181,7 @@ loteibackend.o: ../../application/loteibackend.cpp ../../application/loteibacken
 		/opt/homebrew/lib/QtCore.framework/Headers/QDirIterator \
 		/opt/homebrew/lib/QtCore.framework/Headers/QCryptographicHash \
 		/opt/homebrew/lib/QtCore.framework/Headers/QStandardPaths \
+		/opt/homebrew/lib/QtCore.framework/Headers/QSysInfo \
 		/opt/homebrew/lib/QtCore.framework/Headers/QSettings \
 		/opt/homebrew/lib/QtCore.framework/Headers/QProcess \
 		/opt/homebrew/lib/QtCore.framework/Headers/QFileInfo \

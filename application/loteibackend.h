@@ -238,11 +238,17 @@ private:
     void ensureFlipperDir(const QByteArray &dirPath,
                           std::function<void()> done);           // mkdir -p on the SD card
 
-    // Host agent: edit/build/test LOTEI's own source, hard-sandboxed to a folder.
-    bool agentReady() const;                                     // enabled + valid workspace
+    // Host agent: full access to this computer, plus the Flipper.
+    bool agentReady() const;                                     // agent mode is on
     QString resolveAgentPath(const QString &rel, bool mustExist) const;
-    // Where relative paths land and where host_run starts. Never empty.
-    QString agentBaseDir() const; // contain to workspace
+    // Where relative paths land when nothing else says otherwise. Never empty:
+    // an unconfigured workspace means home.
+    QString agentBaseDir() const;
+    // The folder the agent is standing in. host_cd walks it, it survives the
+    // whole conversation, and every turn's prompt states it -- so the model
+    // never has to spend a call asking where it is.
+    QString agentCwd() const;
+    QString m_agentCwd;
     void runHostTool(const QString &name, const QJsonObject &args,
                      std::function<void(const QString &)> done);
     void rememberFact(const QString &fact);   // append a durable fact to memory

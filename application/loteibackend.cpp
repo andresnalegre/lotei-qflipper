@@ -129,7 +129,8 @@ WHAT YOU ARE WIRED INTO -- this is permanently true, on EVERY turn:
 - The only honest limits are the ones in the LIMITS section: you cannot see the screen and cannot read a physical card live. Everything else, you can do.
 
 DEVICE ACCESS -- the Flipper's microSD card and storage, via tools:
-- /ext IS the microSD card -- almost everything lives there. /int is the small internal storage.
+- /ext IS the microSD card -- almost everything lives there. /int is the small internal storage. The SD root is ALWAYS "/ext". There is NO "/sdcard", no "/mnt", no "/media" -- if you ever write one of those you are hallucinating a path; the real one is under /ext.
+- When you report where a file went, quote the EXACT path the save_file tool returned to you, character for character. Do not paraphrase it, do not "tidy" it, do not reconstruct it from memory. If you did not just get a path back from a tool this turn, you do not know the path -- say so or look it up, never invent one.
 - list_files(path): list files/folders at a path. Useful spots: /ext (SD root), /ext/apps (installed apps, grouped by category), /ext/apps_data (app save data), /ext/subghz, /ext/nfc, /ext/lfrfid, /ext/infrared, /ext/badusb, /ext/ibutton.
 - read_file(path): read a text file's contents.
 - save_file(path, content): write/save a file to the SD card (e.g. a script you generated). Folder by type: BadUSB -> /ext/badusb/NAME.txt, Sub-GHz -> /ext/subghz/NAME.sub, Infrared -> /ext/infrared/NAME.ir, NFC -> /ext/nfc/NAME.nfc, else /ext/. Missing parent folders are created for you automatically -- just pick the right path and save.
@@ -138,6 +139,7 @@ DEVICE ACCESS -- the Flipper's microSD card and storage, via tools:
 - rename_file(from, to): rename or MOVE a file/folder on the SD card (same tool does both).
 - file_info(path): check whether a path exists, and whether it's a file or a dir plus its size -- cheaper than list_files for a single "does this exist?" question.
 - ALWAYS use these tools whenever the user mentions the SD card, files, apps, folders, saves, or "what's on my Flipper" -- never answer from memory or guess. To explore "everything", start at /ext (or /ext/apps), then list DEEPER into the folders that matter, step by step, until you've found what they asked for.
+- run_cli, save_file, list_files and the rest are YOUR internal machinery, not commands the user can type. NEVER tell the user to "run run_cli ...", never hand them a tool name as if it were a Flipper command, never say "run with run_cli scripts/...". If they ask how to run something, answer in terms of what THEY do (open the app on the Flipper, plug in the BadUSB, etc.) or offer to do it yourself with the tool -- the tool name never appears in your reply.
 - CALL tools, do not TYPE them: invoke a tool through your tool channel and write nothing else that turn -- NEVER paste the tool-call JSON like {"name":"read_file",...} into the chat, never narrate or "show" the call. One call, wait for its result, then react. If you print the JSON yourself it never runs and you look broken.
 - Device facts are NOT files, and NOT something to hunt for on the screen. Firmware version, hardware model, radio/BLE stack version, region, serial, SD free space and battery are ALL in the "Live Flipper device diagnostics" block below -- read your answer STRAIGHT from there (firmware shows as a name, e.g. "mntm-dev (commit ...)" for Momentum, or a number for stock). If a fact genuinely isn't in that block, say so plainly. NEVER read_file to find it (storage is only /int and /ext; there is no /etc or version.txt), and NEVER press buttons to "go check" it.
 
@@ -157,6 +159,7 @@ ACT, DON'T EXPLAIN -- THIS IS THE MOST IMPORTANT RULE ABOUT HOW YOU WORK:
 - BANNED: announcing a tool instead of using it. NEVER write things like "Let's save this using the save_file tool", "Step 1: create...", "Step 2: Use the save_file tool", "Here's what the script looks like: ...", or any numbered how-to. If you catch yourself about to write the WORD of a tool or a "Step N", STOP and just make the tool call instead. Talking about calling a tool is a failure; calling it is the job.
 - When a turn needs a tool, emit ONLY the tool call that turn -- zero prose, zero preamble, zero code blocks. React AFTER the result comes back.
 - "make/create/write/save a script (BadUSB, Sub-GHz, IR, NFC, ...)" means: call save_file and actually write it onto the Flipper right now. Pick the correct path yourself (BadUSB -> /ext/badusb/NAME.txt, etc.). Folders are auto-created, so never stop to ask about folders.
+- ITERATING on a file you just made -- "make it fancy", "add a delay", "change the message", "now also do X" -- means EDIT THE SAME FILE: call save_file with the exact same path you used before and write the full updated contents (overwrite). Do NOT create a second file with a new name for a variation of the same thing; that just litters the SD card with duplicates. A fresh filename is only for a genuinely different artifact.
 - "list / show / what's in / read / delete / rename / move / check" a file or folder -> call the matching tool immediately. "fix / edit / build / test your own code" (if the host workspace is on) -> use the host_ tools immediately.
 - Only explain first when the user EXPLICITLY asks you to explain/teach, or when doing the action needs a decision only they can make -- then ask ONE short question and act on the answer. A vague request is NOT a reason to explain; make a reasonable choice and do it, and say what you assumed.
 - After acting, if it makes sense to keep going (e.g. save the script, then offer to run/verify), take the next obvious step or offer it in one line -- like a partner would.
@@ -289,7 +292,8 @@ static bool cliCommandMutates(const QString &verb)
         QStringLiteral("free"), QStringLiteral("log"), QStringLiteral("top"),
         QStringLiteral("ps"), QStringLiteral("date"), QStringLiteral("history"),
         QStringLiteral("grep"), QStringLiteral("head"), QStringLiteral("tail"),
-        QStringLiteral("wc"), QStringLiteral("du")
+        QStringLiteral("wc"), QStringLiteral("du"), QStringLiteral("diff"),
+        QStringLiteral("file"), QStringLiteral("locate")
     };
     return !verb.isEmpty() && !readOnly.contains(verb);
 }
@@ -804,6 +808,43 @@ static QJsonArray loteiTools(bool agent)
 // Intent router: decide whether a user message is an ACTION (touch a file or the
 // device -> needs tools) or plain CONVERSATION (-> send WITHOUT tools so a weak
 // tool-caller like phi3.5 can't dump pseudo-code instead of talking).
+// True when the turn is an explicit request to WRITE something to a file --
+// save/create/write/build/generate/make + a file-ish noun. Narrower than
+// messageNeedsTools: this is the set where finishing WITHOUT a tool call means
+// the model lied about having done it. "list/read/show" are excluded because a
+// zero-tool answer to those is a different failure, handled by the gate, not a
+// false claim of having written a file.
+static bool messageIsFileWrite(const QString &text)
+{
+    const QString t = text.toLower();
+    static const QStringList writeVerbs = {
+        QStringLiteral("save"), QStringLiteral("create"), QStringLiteral("write"),
+        QStringLiteral("build"), QStringLiteral("generate"), QStringLiteral("make"),
+        QStringLiteral("develop"), QStringLiteral("craft")
+    };
+    bool verb = false;
+    for (const QString &w : writeVerbs) {
+        int i = t.indexOf(w);
+        while (i >= 0) {
+            if (i == 0 || !t.at(i - 1).isLetter()) { verb = true; break; }
+            i = t.indexOf(w, i + 1);
+        }
+        if (verb) { break; }
+    }
+    if (!verb) { return false; }
+    static const QStringList fileNouns = {
+        QStringLiteral("script"), QStringLiteral("payload"), QStringLiteral("file"),
+        QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
+        QStringLiteral("sub-ghz"), QStringLiteral("nfc"), QStringLiteral("rfid"),
+        QStringLiteral("infrared"), QStringLiteral(".txt"), QStringLiteral(".sub"),
+        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral("/ext")
+    };
+    for (const QString &n : fileNouns) {
+        if (t.contains(n)) { return true; }
+    }
+    return false;
+}
+
 static bool messageNeedsTools(const QString &text)
 {
     const QString t = text.toLower();
@@ -2133,6 +2174,23 @@ QString LoteiBackend::systemPrompt() const
                               "run something themselves.");
     }
 
+    // Anchor the most recently saved file so an edit ("make it fancy", "add X",
+    // "change the delay") rewrites THAT file instead of inventing a new name.
+    // Weak models otherwise treat every refinement as a brand-new artifact, and
+    // the SD card fills with near-duplicate scripts doing the same thing.
+    if (m_turnNeedsTools && !m_lastSavedPath.isEmpty()) {
+        sys += QStringLiteral(
+            "\n\nMOST RECENT FILE you saved this session: \"%1\".\n"
+            "- If this message asks you to CHANGE, improve, fix, extend, restyle or "
+            "otherwise iterate on what you just made (\"make it fancy\", \"add a delay\", "
+            "\"now do X too\"), call save_file with THIS SAME path and write the full updated "
+            "contents. Overwriting is correct -- it is the same artifact, one file.\n"
+            "- Do NOT invent a new filename for a variation of the same thing. A new name "
+            "is only for a genuinely DIFFERENT artifact the user asked for.\n"
+            "- Keep the name stable across edits: \"fancy_\", \"v2_\", \"final_\" prefixes are "
+            "clutter. Same purpose -> same file.").arg(m_lastSavedPath);
+    }
+
     // Optional personality chosen in the setup wizard (fresh users). If unset,
     // the built-in personality above stands -- a hand-edited LOTEI_SYSTEM is
     // never overridden unless someone deliberately picks a preset.
@@ -2191,7 +2249,21 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     }
     m_deviceContext = deviceContext;
     m_toolRounds = 0;
-    m_turnNeedsTools = messageNeedsTools(userText);   // action -> tools; talk -> no tools
+    // Prose the model emits ALONGSIDE a tool call, accumulated across every
+    // round of this turn. dispatchToOllama() wipes m_streamContent at the top of
+    // each round, so without this the script/explanation written in the round
+    // that also triggered save_file was gone by the time the (often empty) final
+    // round finalized -- and that empty final round tripped the fallback line.
+    m_turnText.clear();
+    m_turnWasFileAction = messageIsFileWrite(userText);
+    m_turnRanAnyTool = false;
+
+    // A file/device action is usually followed by a question about it -- "where
+    // did it save?", "what's the name?", "how do I run it?". Those don't trip
+    // the gate on their own (no verb+noun), so the model used to answer them
+    // from memory and invent a path. When the previous turn DID act, keep tools
+    // on for this one so it can look instead of guess.
+    m_turnNeedsTools = messageNeedsTools(userText) || m_lastTurnWasAction;
     m_history.append(QJsonObject{{"role", "user"}, {"content", userText}});
     setThinking(true);
     dispatchToOllama();
@@ -2297,6 +2369,13 @@ void LoteiBackend::finalizeStream()
     // Prefer the structured tool_calls; if none came through, salvage any calls
     // the model leaked as plain text (phi3.5 does this when narrating a batch)
     // so they run instead of being printed at the user.
+    // Keep the best prose seen so far this turn: later rounds tend to be a short
+    // confirmation or empty, so last-non-empty-wins preserves the substantial
+    // answer (the script, the explanation) instead of a curt final round.
+    if (!m_streamContent.trimmed().isEmpty()) {
+        m_turnText = m_streamContent;
+    }
+
     QJsonArray toolCalls = m_streamTools;
     if (toolCalls.isEmpty()) {
         toolCalls = salvageToolCalls(m_streamContent);
@@ -2315,10 +2394,39 @@ void LoteiBackend::finalizeStream()
 
     m_currentReply = nullptr;
     setThinking(false);
+    // Prefer this round's prose; fall back to the best prose from earlier rounds
+    // of the same turn (the text-plus-tool-call case). Only if BOTH are empty
+    // does the model genuinely have nothing to say.
     QString text = stripNonEnglish(m_streamContent);
-    if (text.isEmpty()) {
-        text = QStringLiteral("...(LOTEI flicks his tail; nothing to say)");
+    if (text.trimmed().isEmpty()) {
+        text = stripNonEnglish(m_turnText);
     }
+    if (text.trimmed().isEmpty()) {
+        text = QStringLiteral("Done.");   // in the assistant's own voice
+    }
+
+    // Anti-hallucination trap. The turn asked to WRITE a file, the model is now
+    // ending the turn, and NOT ONE tool ran -- so any "done / saved / created"
+    // is a claim about something that never happened (the /sdcard + run_cli
+    // invention chains off exactly this). Don't relay the lie. Replace it with
+    // an honest line and DON'T record the false claim in history, so the next
+    // turn isn't reasoning on top of a fabricated save.
+    const bool falseClaim = m_turnWasFileAction && !m_turnRanAnyTool;
+    if (falseClaim) {
+        text = QStringLiteral("I didn't actually write anything that time -- tell me the exact "
+                              "thing you want and I'll save it to the Flipper for real.");
+        setThinking(false);
+        m_currentReply = nullptr;
+        m_lastTurnWasAction = false;
+        if (!m_muted) { speak(text); }
+        emit replyReceived(text);
+        return;   // history stays clean -- no fabricated assistant turn recorded
+    }
+
+    // Remember, for the NEXT turn's gate, whether this one actually did
+    // something to a file or the device.
+    m_lastTurnWasAction = m_turnRanAnyTool;
+
     m_history.append(QJsonObject{{"role", "assistant"}, {"content", text}});
     saveHistory();
     if (!m_muted) { speak(text); }
@@ -2395,7 +2503,7 @@ void LoteiBackend::onStreamFinished(QNetworkReply *reply)
     if (netErr != QNetworkReply::NoError) {
         QString msg;
         if (netErr == QNetworkReply::ConnectionRefusedError || netErr == QNetworkReply::HostNotFoundError) {
-            msg = QStringLiteral("my brain (Ollama) isn't awake. Launch me with the LOTEI shortcut.");
+            msg = QStringLiteral("my brain (Ollama) isn't awake. Start the Ollama app, then try again.");
         } else {
             // Ollama's actual reason is in the body, not in Qt's status line.
             msg = friendlyOllamaError(errBody, m_model, netErrStr);
@@ -2407,7 +2515,7 @@ void LoteiBackend::onStreamFinished(QNetworkReply *reply)
         saveHistory();
         emit replyReceived(text);
     } else {
-        emit errorOccurred(QStringLiteral("...(LOTEI lost his train of thought)"));
+        emit errorOccurred(QStringLiteral("...(%1 lost the thread there. Say that again?)").arg(assistantName()));
     }
 }
 
@@ -2440,6 +2548,7 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         QStringLiteral("host_write"), QStringLiteral("host_run"),
         QStringLiteral("remember"), QStringLiteral("forget")
     };
+    m_turnRanAnyTool = true;   // a tool is actually executing this turn
     if (kLoggedTools.contains(name)) {
         QStringList bits;
         for (auto it = args.begin(); it != args.end(); ++it) {
@@ -2637,12 +2746,13 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
             buf->setData(content.toUtf8());
             buf->open(QIODevice::ReadOnly);
             auto *op = dev->rpc()->storageWrite(path, buf);
-            connect(op, &AbstractOperation::finished, this, [op, buf, path, done]() {
+            connect(op, &AbstractOperation::finished, this, [this, op, buf, path, done]() {
                 QString result;
                 if (op->isError()) {
                     result = QStringLiteral("{\"error\":\"%1\"}").arg(op->errorString());
                 } else {
                     result = QStringLiteral("{\"saved\":\"%1\"}").arg(QString::fromUtf8(path));
+                    m_lastSavedPath = QString::fromUtf8(path);   // anchor for "edit the same file"
                 }
                 buf->deleteLater();
                 done(result);
@@ -4741,6 +4851,24 @@ const CliCmd kCliCommands[] = {
     { "touch",    "Creates an empty file on the Flipper." },
     { "wc",       "Counts the lines, words and bytes in a file." },
     { "wget",     "Downloads a URL on this computer and saves it straight onto the Flipper: wget <url> [destination]. The Flipper has no network of its own." },
+    { "sed",      "Find-and-replace inside a file: sed s/old/new/g <file>. Overwrites the file with the result." },
+    { "diff",     "Shows what differs between two files, line by line: diff <a> <b>." },
+    { "file",     "Identifies what a file is from its contents: file <path>." },
+    { "locate",   "Searches the whole SD card for a name: locate <text>. (find rooted at /ext.)" },
+    { "ping",     "Pings a host FROM THIS COMPUTER (the Flipper has no network): ping <host>." },
+    { "ip",       "Shows THIS COMPUTER's network interfaces (the Flipper has none)." },
+    { "uname",    "Shows THIS COMPUTER's system info. For the Flipper's own, use device_info." },
+    { "pm3",      "Runs a Proxmark3 command via the pm3 client on THIS computer (Proxmark must be plugged into the Mac): pm3 hf search, pm3 lf search, etc." },
+    { "time",      "Explains why a device command can't be timed meaningfully (points at uptime)." },
+    { "zip",       "Packing a folder: use tgz (a .tgz on this computer). Raw .zip isn't supported." },
+    { "tar",       "Same as zip here -- use tgz to pack a folder into a .tgz." },
+    { "unzip",     "Unpacking isn't wired up yet -- pull the archive to this computer and unpack it there." },
+    { "nano",      "No in-terminal editor; opens the file in an editor on this computer instead (same as edit)." },
+    { "kill",      "The Flipper runs one thing at a time and has no process list -- use the app's Back button or reboot." },
+    { "sudo",      "The Flipper has no users, root or permissions -- there's nothing to elevate." },
+    { "chmod",     "The Flipper has no file permissions -- nothing to change." },
+    { "chown",     "The Flipper has no file owners -- nothing to change." },
+    { "passwd",    "The Flipper has no user accounts or passwords." },
     { "verbose",  "Shows or hides the wire-level log of everything a command runs: verbose on | off." },
 };
 
@@ -5662,9 +5790,19 @@ void FlipperCli::send(const QString &cmd)
         QStringList a = parts.mid(1);
         // "-r" actually changes behaviour for cp/rm, so read it before the
         // generic flag-stripping below throws it away.
-        const bool flagRecursive = a.contains(QStringLiteral("-r")) || a.contains(QStringLiteral("-R"));
+        // "-r" and "-f" change behaviour (rm), and the combined "-rf"/"-fr"
+        // spelling arrives as one token -- so detect all of that before the
+        // generic flag-stripping below discards it.
+        const bool flagRecursive = a.contains(QStringLiteral("-r")) || a.contains(QStringLiteral("-R"))
+                                 || a.contains(QStringLiteral("-rf")) || a.contains(QStringLiteral("-fr"))
+                                 || a.contains(QStringLiteral("-rF")) || a.contains(QStringLiteral("-Rf"));
+        const bool flagForce     = a.contains(QStringLiteral("-f")) || a.contains(QStringLiteral("-rf"))
+                                 || a.contains(QStringLiteral("-fr")) || a.contains(QStringLiteral("-rF"))
+                                 || a.contains(QStringLiteral("-Rf"));
         // strip common flags (we accept them for familiarity)
         a.removeAll(QStringLiteral("-r")); a.removeAll(QStringLiteral("-R"));
+        a.removeAll(QStringLiteral("-rf")); a.removeAll(QStringLiteral("-fr"));
+        a.removeAll(QStringLiteral("-rF")); a.removeAll(QStringLiteral("-Rf"));
         a.removeAll(QStringLiteral("-l")); a.removeAll(QStringLiteral("-a"));
         a.removeAll(QStringLiteral("-la")); a.removeAll(QStringLiteral("-al"));
         a.removeAll(QStringLiteral("-h")); a.removeAll(QStringLiteral("-f"));
@@ -5732,6 +5870,10 @@ void FlipperCli::send(const QString &cmd)
             }
             if (flagRecursive) {
                 appendOutput(echo(cmd));
+                // -f means don't stop to confirm. startRemoveTree already just
+                // does it; the force flag exists so "rm -rf" reads normally and
+                // so a future confirm-prompt for "rm -r" wouldn't apply here.
+                Q_UNUSED(flagForce);
                 startRemoveTree(target);
                 return;
             }
@@ -5842,6 +5984,127 @@ void FlipperCli::send(const QString &cmd)
                 dst = here(p1);
             }
             startWget(p0, dst, true);
+            return;
+        } else if (verb == QLatin1String("sed")) {
+            if (p1.isEmpty()) { usage(QStringLiteral("sed s/old/new/[g] <file>")); return; }
+            appendOutput(echo(cmd));
+            startSed(p0, here(p1));
+            return;
+        } else if (verb == QLatin1String("diff")) {
+            if (p1.isEmpty()) { usage(QStringLiteral("diff <fileA> <fileB>")); return; }
+            appendOutput(echo(cmd));
+            startDiff(here(p0), here(p1));
+            return;
+        } else if (verb == QLatin1String("file")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("file <path>")); return; }
+            appendOutput(echo(cmd));
+            startFileType(here(p0));
+            return;
+        } else if (verb == QLatin1String("locate")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("locate <name>")); return; }
+            appendOutput(echo(cmd));
+            startLocate(p0);
+            return;
+        } else if (verb == QLatin1String("zip") || verb == QLatin1String("tar")) {
+            // Packaging a Flipper folder = the existing tgz path (gzip tar). A
+            // real .zip needs a zip lib the app doesn't link; tgz is the honest
+            // one-liner and round-trips with untar below.
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ use 'tgz <folder> [archive.tgz]' -- it packs a folder into a .tgz on this "
+                "computer. A raw .zip isn't supported; .tgz is the same idea and unpacks with untar. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("unzip") || verb == QLatin1String("untar")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ not wired up yet -- for now pull the archive to this computer with "
+                "'cp /ext/path/archive.tgz ~/' and unpack it here. ]\n") + prompt());
+            return;
+
+        // ---- host-side system / network tools (run on THIS computer) --------
+        } else if (verb == QLatin1String("pm3") || verb == QLatin1String("proxmark3")
+                || verb == QLatin1String("proxmark")) {
+            // The Proxmark3 is a SEPARATE device on this computer's USB, driven by
+            // its own client. It is not something the Flipper runs -- so this is
+            // the pm3 client executing on this Mac, output piped back here.
+            //
+            // pm3 is normally interactive (it opens its own "[usb] pm3 -->"
+            // prompt); a one-command-per-line terminal can't drive that, so we
+            // use its batch form: `pm3 -c "<command>"` runs one command and exits.
+            // "pm3 hf search" here becomes `pm3 -c "hf search"` on the Mac.
+            if (a.isEmpty()) {
+                appendOutput(echo(cmd) + QStringLiteral(
+                    "[ usage: pm3 <proxmark command>   e.g. pm3 hf search, pm3 lf search, pm3 hf mf autopwn.\n"
+                    "  Runs the pm3 client on THIS computer -- the Proxmark3 must be plugged in here. ]\n") + prompt());
+                return;
+            }
+            appendOutput(echo(cmd));
+            const QString pmCmd = a.join(QLatin1Char(' '));
+            // -c runs one command and exits. pm3 auto-detects the port; if the
+            // user needs a specific one they can pass it: pm3 -p /dev/... (we
+            // pass their args through after -c's command untouched isn't
+            // possible with -c, so a bare command is the supported path).
+            runHostProgram(QStringLiteral("pm3 -c \"%1\"").arg(pmCmd),
+                           QStringLiteral("pm3"),
+                           {QStringLiteral("-c"), pmCmd},
+                           60000);   // Proxmark ops (autopwn, dictionary attacks) run long
+            return;
+        } else if (verb == QLatin1String("ping")) {
+            if (p0.isEmpty()) { usage(QStringLiteral("ping <host>")); return; }
+            appendOutput(echo(cmd));
+            // -c 4 on Unix; the Flipper has no network so this is your Mac pinging.
+            runHostProgram(QStringLiteral("ping %1").arg(p0), QStringLiteral("ping"),
+                           {QStringLiteral("-c"), QStringLiteral("4"), p0}, 12000);
+            return;
+        } else if (verb == QLatin1String("ip") || verb == QLatin1String("ifconfig")) {
+            appendOutput(echo(cmd));
+            // The Flipper has no IP interfaces; show this computer's, which is
+            // the only networking in the picture. `ip addr` on Linux, `ifconfig`
+            // on macOS (no `ip` there by default).
+            if (!QStandardPaths::findExecutable(QStringLiteral("ip")).isEmpty()) {
+                runHostProgram(QStringLiteral("ip addr"), QStringLiteral("ip"), {QStringLiteral("addr")});
+            } else {
+                runHostProgram(QStringLiteral("ifconfig"), QStringLiteral("ifconfig"), {});
+            }
+            return;
+        } else if (verb == QLatin1String("uname")) {
+            // Linux prints the kernel here. The Flipper equivalent is its own
+            // firmware/hardware identity -- read from the CLI, not invented.
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ the Flipper has no kernel; its firmware/hardware identity is 'device_info' "
+                "or 'neofetch'. Showing this computer's uname: ]\n"));
+            runHostProgram(QStringLiteral("uname -a"), QStringLiteral("uname"), {QStringLiteral("-a")});
+            return;
+        } else if (verb == QLatin1String("time")) {
+            // Timing a Flipper command means timing the USB round trip, which is
+            // this computer's serial latency, not the device doing work -- so it
+            // would measure the cable, not the Flipper. Point at the honest tool.
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ can't time device commands meaningfully -- it measures USB latency, not the "
+                "Flipper. For how long the Flipper has been on, use 'uptime'. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("sudo") || verb == QLatin1String("chmod")
+                || verb == QLatin1String("chown") || verb == QLatin1String("passwd")
+                || verb == QLatin1String("whoiam")) {
+            // The Flipper has no users, no permissions, no root -- so none of
+            // these have anything to act on. Say so once, plainly, instead of a
+            // bare "command not found" that looks like a typo.
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ the Flipper has no user accounts or file permissions -- there's no root, no "
+                "owners, no passwords. Everything you can do here, you can already do. "
+                "(Did you mean 'whoami'? That prints the device name.) ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("kill")) {
+            appendOutput(echo(cmd) + QStringLiteral(
+                "[ the Flipper runs one thing at a time and has no process list -- nothing to "
+                "kill. To stop the running app, use its Back button, or 'reboot'. ]\n") + prompt());
+            return;
+        } else if (verb == QLatin1String("nano") || verb == QLatin1String("vi")
+                || verb == QLatin1String("vim")) {
+            // No interactive full-screen editor over an append-only terminal.
+            // But 'edit' opens the file in a real editor on the host, which is
+            // strictly better -- point there instead of failing.
+            if (p0.isEmpty()) { usage(QStringLiteral("edit <file>   (opens it on this computer)")); return; }
+            appendOutput(echo(cmd) + QStringLiteral("[ no in-terminal editor; opening it on this computer instead ]\n"));
+            startEdit(here(p0));
             return;
         } else if (verb == QLatin1String("history")) {
             appendOutput(echo(cmd));
@@ -6832,7 +7095,7 @@ void FlipperCli::startEdit(const QString &path)
 // is the same trade the rest of this panel already makes for find and cp -r.
 void FlipperCli::readDeviceText(const QString &path, std::function<void(bool, const QString &)> done)
 {
-    sendRaw(QStringLiteral("storage read ") + path, [this, path, done](const QString &raw) {
+    sendRaw(QStringLiteral("storage read ") + path, [path, done](const QString &raw) {
         if (raw.contains(QLatin1String("Storage error"))) { done(false, QString()); return; }
         // "storage read" prints a "Size: N" header before the body and the
         // prompt after it; neither belongs to the file.
@@ -6972,6 +7235,174 @@ void FlipperCli::writeTextToDevice(const QString &text, const QString &devPath, 
 // at all -- and the result lands on the SD card. That is the honest version of
 // "install something from the internet onto the Flipper": .fap apps, IR and
 // Sub-GHz databases, wordlists, anything that is just a file.
+// sed s/PATTERN/REPLACEMENT/[g] -- the only form worth having on a Flipper.
+// Reads the file over the wire, edits on this computer, writes it back. Without
+// a trailing target it prints the transformed text instead of saving (like sed
+// to stdout); with one it overwrites (like sed -i), because on a device round-
+// tripping a file just to NOT save it is rarely what anyone means.
+void FlipperCli::startSed(const QString &expr, const QString &path)
+{
+    // Parse s/a/b/ or s/a/b/g. Any delimiter after the "s".
+    if (expr.size() < 4 || !expr.startsWith(QLatin1Char('s'))) {
+        appendOutput(QStringLiteral("[ only s/pattern/replacement/[g] is supported ]\n") + prompt());
+        return;
+    }
+    const QChar delim = expr.at(1);
+    const QStringList parts = expr.mid(2).split(delim);
+    if (parts.size() < 2) {
+        appendOutput(QStringLiteral("[ malformed sed expression ]\n") + prompt());
+        return;
+    }
+    const QString pat = parts.value(0);
+    const QString rep = parts.value(1);
+    const bool global = parts.value(2).contains(QLatin1Char('g'));
+    if (pat.isEmpty()) { appendOutput(QStringLiteral("[ empty pattern ]\n") + prompt()); return; }
+
+    readDeviceText(path, [this, path, pat, rep, global](bool ok, const QString &body) {
+        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
+        QString out = body;
+        const QRegularExpression re(pat);
+        if (!re.isValid()) { appendOutput(QStringLiteral("[ bad pattern: %1 ]\n").arg(re.errorString()) + prompt()); return; }
+        int count = 0;
+        if (global) {
+            const QString before = out;
+            out.replace(re, rep);
+            count = before.count(re);
+        } else {
+            const QRegularExpressionMatch m = re.match(out);
+            if (m.hasMatch()) { out.replace(m.capturedStart(), m.capturedLength(), rep); count = 1; }
+        }
+        // Overwrite the file with the edited text; report how many it changed.
+        writeTextToDevice(out, path, false);
+        appendOutput(QStringLiteral("[ sed: %1 replacement%2 in %3 ]\n")
+                         .arg(count).arg(count == 1 ? QString() : QStringLiteral("s"), path));
+        // writeTextToDevice prints its own prompt on completion.
+    });
+}
+
+// diff A B -- both files fetched, compared here. A plain line-level diff with
+// +/- markers; enough to see what changed between two configs or scripts.
+void FlipperCli::startDiff(const QString &pathA, const QString &pathB)
+{
+    readDeviceText(pathA, [this, pathA, pathB](bool okA, const QString &bodyA) {
+        if (!okA) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(pathA) + prompt()); return; }
+        readDeviceText(pathB, [this, pathA, pathB, bodyA](bool okB, const QString &bodyB) {
+            if (!okB) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(pathB) + prompt()); return; }
+            const QStringList la = bodyA.split(QLatin1Char('\n'));
+            const QStringList lb = bodyB.split(QLatin1Char('\n'));
+            // Simplest useful diff: walk both, mark lines that differ. Not an
+            // LCS, but on a Flipper's small config files that reads fine and
+            // keeps the code tiny.
+            QStringList out;
+            const int n = qMax(la.size(), lb.size());
+            int diffs = 0;
+            for (int i = 0; i < n; ++i) {
+                const QString a = i < la.size() ? la.at(i) : QString();
+                const QString b = i < lb.size() ? lb.at(i) : QString();
+                if (a == b) { continue; }
+                ++diffs;
+                if (i < la.size()) { out += QStringLiteral("- %1").arg(a); }
+                if (i < lb.size()) { out += QStringLiteral("+ %1").arg(b); }
+            }
+            if (diffs == 0) { appendOutput(QStringLiteral("[ files are identical ]\n") + prompt()); return; }
+            appendOutput(out.join(QLatin1Char('\n')) + QLatin1Char('\n') + prompt());
+        });
+    });
+}
+
+// file -- identify a file by its leading bytes (magic numbers), the way Unix's
+// file(1) does. The Flipper's own formats are text with a "Filetype:" header,
+// so check that too -- it is more useful here than libmagic would be.
+void FlipperCli::startFileType(const QString &path)
+{
+    readDeviceText(path, [this, path](bool ok, const QString &body) {
+        if (!ok) { appendOutput(QStringLiteral("[ no such file: %1 ]\n").arg(path) + prompt()); return; }
+        QString verdict;
+        const QByteArray head = body.left(16).toUtf8();
+        auto starts = [&](const char *sig) { return head.startsWith(sig); };
+        if (body.startsWith(QLatin1String("Filetype:"))) {
+            // Flipper's own asset format -- the second token names it.
+            const QString first = body.section(QLatin1Char('\n'), 0, 0);
+            verdict = QStringLiteral("Flipper asset (%1)").arg(first.section(QLatin1Char(':'), 1).trimmed());
+        } else if (starts("\x89PNG"))            { verdict = QStringLiteral("PNG image"); }
+        else if (starts("\xFF\xD8\xFF"))          { verdict = QStringLiteral("JPEG image"); }
+        else if (starts("PK\x03\x04"))            { verdict = QStringLiteral("ZIP archive"); }
+        else if (starts("\x1F\x8B"))              { verdict = QStringLiteral("gzip archive"); }
+        else if (starts("%PDF"))                  { verdict = QStringLiteral("PDF document"); }
+        else if (body.startsWith(QLatin1String("#!")))       { verdict = QStringLiteral("script (shebang)"); }
+        else {
+            bool binary = false;
+            for (const QChar c : body.left(512)) {
+                if (c.unicode() == 0 || (c.unicode() < 9)) { binary = true; break; }
+            }
+            verdict = binary ? QStringLiteral("binary data") : QStringLiteral("ASCII text");
+        }
+        appendOutput(QStringLiteral("%1: %2\n").arg(path, verdict) + prompt());
+    });
+}
+
+// locate -- Linux locate reads a prebuilt index (updatedb); there is none here,
+// so this is find rooted at /ext, i.e. "search the whole card". Same result,
+// honest mechanism.
+void FlipperCli::startLocate(const QString &pattern)
+{
+    QString pat = pattern;
+    if (!pat.contains(QLatin1Char('*')) && !pat.contains(QLatin1Char('?'))) {
+        pat = QLatin1Char('*') + pat + QLatin1Char('*');   // substring match, like real locate
+    }
+    startFind(QStringLiteral("/ext"), pat);
+}
+
+// Host programs. The Flipper has no OS, no processes and no network stack, so
+// ping/ip/uname/time can't run ON it -- but they can run on THIS computer and
+// have their output piped into the terminal, which is what the user actually
+// wants to see. Every one of these prints where it ran so nobody mistakes it
+// for the Flipper answering.
+void FlipperCli::runHostProgram(const QString &label, const QString &program,
+                                const QStringList &args, int timeoutMs)
+{
+    const QStringList extraDirs = {
+        QStringLiteral("/sbin"), QStringLiteral("/usr/sbin"),
+        QStringLiteral("/bin"), QStringLiteral("/usr/bin"),
+        // Homebrew (Apple silicon + Intel) -- where pm3 and friends usually land.
+        QStringLiteral("/opt/homebrew/bin"), QStringLiteral("/usr/local/bin")
+    };
+    QString exe = QStandardPaths::findExecutable(program);
+    if (exe.isEmpty()) { exe = QStandardPaths::findExecutable(program, extraDirs); }
+    // pm3 is sometimes installed under its long name.
+    if (exe.isEmpty() && program == QLatin1String("pm3")) {
+        exe = QStandardPaths::findExecutable(QStringLiteral("proxmark3"), extraDirs);
+    }
+    if (exe.isEmpty()) {
+        appendOutput(QStringLiteral("[ %1 isn't installed on this computer (looked on PATH, "
+                                    "Homebrew and the system dirs) ]\n").arg(program) + prompt());
+        return;
+    }
+    appendOutput(QStringLiteral("[ %1 -- running on this computer, not the Flipper ]\n").arg(label));
+
+    auto *proc = new QProcess(this);
+    proc->setProcessChannelMode(QProcess::MergedChannels);
+    auto *guard = new QTimer(this);
+    guard->setSingleShot(true);
+    guard->setInterval(timeoutMs);
+
+    connect(guard, &QTimer::timeout, this, [proc]() {
+        if (proc->state() != QProcess::NotRunning) { proc->kill(); }
+    });
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc]() {
+        appendOutput(QString::fromUtf8(proc->readAll()));
+    });
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc, guard](int, QProcess::ExitStatus) {
+        appendOutput(QString::fromUtf8(proc->readAll()));
+        appendOutput(prompt());
+        guard->deleteLater();
+        proc->deleteLater();
+    });
+    proc->start(exe, args);
+    guard->start();
+}
+
 void FlipperCli::startWget(const QString &url, const QString &devPath, bool exactDest)
 {
     QUrl u(url);

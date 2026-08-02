@@ -250,6 +250,14 @@ private:
     QJsonArray m_history;        // running messages (user / assistant / tool)
     QString    m_deviceContext;  // latest diagnostics snapshot from QML
     int        m_toolRounds = 0;
+    // Anti-hallucination bookkeeping (see finalizeStream):
+    bool       m_turnWasFileAction = false;  // this user turn asked to save/create/write a file
+    bool       m_turnRanAnyTool    = false;  // at least one tool actually executed this turn
+    bool       m_lastTurnWasAction = false;  // the PREVIOUS turn did a file/device action
+                                             // -> keep read tools on for the follow-up question
+    QString    m_lastSavedPath;              // path of the most recent save_file this session,
+                                             // injected into the prompt so "make it fancy" edits
+                                             // the SAME file instead of spawning a new one
     bool       m_turnNeedsTools = false;   // set per turn by the intent router
     bool       m_thinking = false;
     bool       m_muted = false;
@@ -315,7 +323,8 @@ private:
     int           m_voiceSeq = 0;
 
     QByteArray m_streamBuf;       // buffer for partial streamed lines
-    QString    m_streamContent;   // accumulated reply text this response
+    QString    m_streamContent;   // accumulated reply text this response (one round)
+    QString    m_turnText;        // best prose across all rounds of the turn (survives round resets)
     QJsonArray m_streamTools;     // accumulated tool calls this response
     QNetworkReply *m_currentReply = nullptr;
 
@@ -670,6 +679,17 @@ private:
     // Writing: both go out as a normal upload, so they inherit its MD5 check.
     void writeTextToDevice(const QString &text, const QString &devPath, bool append);
     void startWget(const QString &url, const QString &devPath, bool exactDest);    // wget
+
+    // More text utilities over "storage read", same host-does-the-work model.
+    void startSed(const QString &expr, const QString &path);                       // sed s/a/b/g
+    void startDiff(const QString &pathA, const QString &pathB);                    // diff A B
+    void startFileType(const QString &path);                                       // file (magic sniff)
+    void startLocate(const QString &pattern);                                      // locate = find from /ext
+
+    // Host-side programs run on THIS computer (the Flipper has no OS/network),
+    // their output piped into the terminal. Honest about where they ran.
+    void runHostProgram(const QString &label, const QString &program,
+                        const QStringList &args, int timeoutMs = 8000);
 
     ApplicationBackend *m_appBackend = nullptr;
     QSerialPort *m_port = nullptr;

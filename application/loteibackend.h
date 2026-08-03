@@ -82,6 +82,10 @@ public:
     Q_INVOKABLE void writeFile(const QString &path, const QString &content); // save edits back
 
     Q_INVOKABLE void send(const QString &userText, const QString &deviceContext);
+    // Called from the chat when the user says whether the last action actually
+    // worked. Their eyes beat any check this code can run: a file can be
+    // written, verified, and still be the wrong file in the wrong place.
+    Q_INVOKABLE void rateLastAction(bool worked);
     Q_INVOKABLE void reset();
     Q_INVOKABLE void cycleVoice();
     Q_INVOKABLE void cycleModel();                    // switch to the next installed Ollama model
@@ -270,6 +274,20 @@ private:
     // A turn gets one forced retry: when the model answers a write request in
     // prose instead of calling anything, it is asked again with a single tool.
     bool       m_forcedRetry = false;
+    // Set when a turn was supposed to act and didn't. The next message is then
+    // armed with tools no matter how it is phrased, because that next message
+    // is almost always "no, you didn't actually do it".
+    bool       m_lastTurnMissed = false;
+
+    // Proven moves: one verified example per tool, shown to the model as its own
+    // track record. Kept out of m_memory because that list is facts about the
+    // USER; this is evidence about what this assistant has already pulled off.
+    QStringList m_skills;
+    QString     m_lastUserText;     // phrasing the current turn gets filed under
+    QString     m_lastProvenTool;   // learned this turn, so it can be unlearned
+    void recordProvenMove(const QString &tool, const QJsonObject &args);
+    void saveProvenMoves() const;
+    void loadProvenMoves();
     QString    forcedToolName() const;
     // Anti-hallucination bookkeeping (see finalizeStream) + "edit the same file":
     bool       m_turnWasFileAction = false;  // this user turn asked to save/create/write a file

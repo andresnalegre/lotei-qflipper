@@ -70,7 +70,14 @@
 // about what's on their machine.
 static const char *LOTEI_MODEL = "";
 static const char *LOTEI_URL   = "http://localhost:11434/api/chat";
-static const int   LOTEI_NUM_CTX = 8192;
+// The system prompt alone measures 7688 tokens (Ollama reports it as
+// prompt_eval_count). At 8192 that left 504 tokens of headroom, and the prompt
+// grows with every tool result inside a turn. Ollama does not warn when it runs
+// out -- it truncates from the FRONT, silently dropping the system prompt that
+// says which machine is which and where this user's folders are. A model that
+// has lost those instructions mid-conversation is a model that starts making
+// things up, which is the likeliest cause of the occasional hallucination.
+static const int   LOTEI_NUM_CTX = 16384;
 static const int   LOTEI_MAX_TOOL_ROUNDS = 12;   // more headroom for multi-step agent work
 static const int   LOTEI_READ_CAP = 8000;
 static const int   LOTEI_MAX_PRESSES = 12;
@@ -1020,10 +1027,20 @@ static QJsonArray loteiTools(bool agent, int focus = FocusBoth)
 static bool messageIsFileWrite(const QString &text)
 {
     const QString t = text.toLower();
+    // "Write" is the wrong name for this list -- it decides whether the turn was
+    // supposed to CHANGE something, and deleting changes something. Without the
+    // removal verbs, "remove the folder ANDRESLINDO" was not treated as an
+    // action at all: no retry fired, and "The folder has been removed" went out
+    // with nothing behind it.
     static const QStringList writeVerbs = {
         QStringLiteral("save"), QStringLiteral("create"), QStringLiteral("write"),
         QStringLiteral("build"), QStringLiteral("generate"), QStringLiteral("make"),
-        QStringLiteral("develop"), QStringLiteral("craft")
+        QStringLiteral("develop"), QStringLiteral("craft"),
+        QStringLiteral("delete"), QStringLiteral("remove"), QStringLiteral("erase"),
+        QStringLiteral("rename"), QStringLiteral("move"), QStringLiteral("copy"),
+        QStringLiteral("apaga"), QStringLiteral("deleta"), QStringLiteral("remova"),
+        QStringLiteral("cria"), QStringLiteral("salva"), QStringLiteral("escreve"),
+        QStringLiteral("renomeia"), QStringLiteral("mova"), QStringLiteral("copia")
     };
     bool verb = false;
     for (const QString &w : writeVerbs) {
@@ -1039,7 +1056,13 @@ static bool messageIsFileWrite(const QString &text)
         QStringLiteral("script"), QStringLiteral("payload"), QStringLiteral("file"),
         QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
         QStringLiteral("sub-ghz"), QStringLiteral("nfc"), QStringLiteral("rfid"),
-        QStringLiteral("infrared"), QStringLiteral("/ext"), QStringLiteral("arquivo")
+        QStringLiteral("infrared"), QStringLiteral("/ext"), QStringLiteral("arquivo"),
+        // "create a folder named PAULA" is a write request with no file in it.
+        // The list had no word for a directory, so the turn was never marked as
+        // an action, the retry never fired, and "The folder PAULA has been
+        // created" went out with nothing behind it.
+        QStringLiteral("folder"), QStringLiteral("directory"), QStringLiteral("pasta"),
+        QStringLiteral("diretorio"), QStringLiteral("dir ")
     };
     for (const QString &n : fileNouns) {
         if (t.contains(n)) { return true; }
@@ -1377,7 +1400,11 @@ void LoteiBackend::loadPortableMemory()
     QBuffer *buf = new QBuffer(this);
     buf->open(QIODevice::ReadWrite);
     auto *op = dev->rpc()->storageRead("/ext/lotei/memory.txt", buf);
-    connect(op, &AbstractOperation::finished, this, [this, op, buf]() {
+    // dev captured by QPointer: the chained read below runs later, and the
+    // device can be unplugged between the two.
+    QPointer<Flipper::FlipperZero> devRef(dev);
+    connect(op, &AbstractOperation::finished, this, [this, op, buf, devRef]() {
+        Flipper::FlipperZero *dev = devRef.data();
         if (op->isError()) {
             loteiLog(QStringLiteral("memory.txt could not be read from the card: %1")
                      .arg(op->errorString()));
@@ -1391,6 +1418,35 @@ void LoteiBackend::loadPortableMemory()
             applyMemoryText(body, QStringLiteral("memory.txt on the SD card"));
         }
         buf->deleteLater();
+
+        // Chained, not fired alongside. Two storageRead operations issued
+        // back-to-back on one RPC session raced, and the second one's answer
+        // came back unmatched -- "Cannot match message with id 3" in the log.
+        // The track record travels with the Flipper too: plug the same device
+        // into another machine and it should arrive knowing not just what it
+        // knows about you, but what it has already proven it can do.
+        if (!dev) { return; }
+        QBuffer *abuf = new QBuffer(this);
+        abuf->open(QIODevice::ReadWrite);
+        auto *aop = dev->rpc()->storageRead("/ext/lotei/actions-memory.txt", abuf);
+        connect(aop, &AbstractOperation::finished, this, [this, aop, abuf]() {
+            // Missing is the normal state until the first lesson is learned.
+            // Nothing is wrong and nothing needs saying.
+            if (!aop->isError()) {
+                const QStringList lines = QString::fromUtf8(abuf->data())
+                                              .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                // The card wins, same as memory.txt: it is the portable brain,
+                // the local file is only a cache of it.
+                if (!lines.isEmpty()) {
+                    m_skills = lines;
+                    while (m_skills.size() > 24) { m_skills.removeFirst(); }
+                    saveProvenMoves();
+                    loteiLog(QStringLiteral("actions-memory.txt read from the card: %1 proven move(s)")
+                                 .arg(m_skills.size()));
+                }
+            }
+            abuf->deleteLater();
+        });
     });
 }
 
@@ -1405,12 +1461,25 @@ void LoteiBackend::syncMemoryToFlipper()
     if (!ready) { return; }
 
     const QString memBody = m_memory;
-    ensureFlipperDir("/ext/lotei", [this, dev, memBody]() {
+    const QString actBody = m_skills.join(QLatin1Char('\n'));
+    ensureFlipperDir("/ext/lotei", [this, dev, memBody, actBody]() {
         QBuffer *buf = new QBuffer(this);
         buf->setData(memBody.toUtf8());
         buf->open(QIODevice::ReadOnly);
         auto *op = dev->rpc()->storageWrite("/ext/lotei/memory.txt", buf);
         connect(op, &AbstractOperation::finished, this, [buf]() { buf->deleteLater(); });
+
+        // Only ever write something. An empty list means "not loaded yet", not
+        // "the user has no history" -- and a truncating write of nothing is
+        // indistinguishable from deliberate erasure once it reaches the card.
+        // Forgetting is what rateLastAction and a hand-edit of the file are for.
+        if (!actBody.isEmpty()) {
+            QBuffer *abuf = new QBuffer(this);
+            abuf->setData(actBody.toUtf8());
+            abuf->open(QIODevice::ReadOnly);
+            auto *aop = dev->rpc()->storageWrite("/ext/lotei/actions-memory.txt", abuf);
+            connect(aop, &AbstractOperation::finished, this, [abuf]() { abuf->deleteLater(); });
+        }
     });
 }
 
@@ -2297,6 +2366,124 @@ static QString loteiMemoryPath()
     return dir + QStringLiteral("/lotei-memory.txt");
 }
 
+// Proven moves live apart from memory.txt on purpose. memory.txt holds facts
+// ABOUT the user and is presented that way; this holds evidence of what this
+// assistant has already managed to DO, and it is presented as worked examples.
+// Mixing them would file "deleted a file once" among durable truths about a
+// person, and would bury the demonstration where the model reads it as trivia
+// instead of as a pattern to copy.
+static QString loteiSkillsPath()
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dir.isEmpty()) { dir = QDir::tempPath(); }
+    QDir().mkpath(dir);
+    return dir + QStringLiteral("/actions-memory.txt");
+}
+
+// Did this tool result actually prove anything?
+//
+// Only an unambiguous yes counts. A result carrying an "error", a delete that
+// reports existed:false, a write whose verified flag is false -- those are
+// exactly the cases that must NOT be learned. Recording a failed shape would
+// teach the model that it is the right shape, and it would then repeat it with
+// confidence. A wrong lesson is worse than no lesson.
+static bool loteiResultProves(const QString &result)
+{
+    const QJsonObject o = QJsonDocument::fromJson(result.toUtf8()).object();
+    if (o.isEmpty() || o.contains(QStringLiteral("error"))) { return false; }
+    if (o.contains(QStringLiteral("verified")) && !o.value("verified").toBool()) { return false; }
+    if (o.contains(QStringLiteral("deleted"))  && !o.value("deleted").toBool())  { return false; }
+    if (o.contains(QStringLiteral("moved"))    && !o.value("moved").toBool())    { return false; }
+    if (o.contains(QStringLiteral("copied"))   && !o.value("copied").toBool())   { return false; }
+    return true;
+}
+
+
+// One proven move per tool, most recent wins.
+//
+// Bounded on purpose. Twenty examples of host_write teach nothing that one
+// teaches, and every line competes for a context window that already carries a
+// 7,700-token system prompt. One demonstration per tool is what few-shot
+// prompting actually needs.
+void LoteiBackend::recordProvenMove(const QString &tool, const QJsonObject &args)
+{
+    const QString ask = m_lastUserText.simplified().left(120);
+    if (ask.isEmpty() || tool.isEmpty()) { return; }
+
+    QString shape;
+    for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
+        QString v = it.value().toVariant().toString().simplified();
+        // The path is the lesson; the file's contents are not. Storing a whole
+        // DuckyScript here would blow up the prompt to teach nothing.
+        if (v.size() > 80) { v = v.left(77) + QStringLiteral("..."); }
+        shape += QStringLiteral("%1=%2 ").arg(it.key(), v);
+    }
+
+    const QString line = QStringLiteral("%1\t%2\t%3").arg(tool, ask, shape.trimmed());
+
+    // Accumulate, don't replace.
+    //
+    // This used to drop every previous entry for the tool, so a second
+    // host_write erased the first and the file never grew past a handful of
+    // lines -- it looked like it wasn't storing anything at all. Several
+    // examples of the same tool are worth keeping: "save to Desktop" and "save
+    // to /ext/badusb" are the same call with genuinely different shapes, and a
+    // small model generalises better from two than from one.
+    //
+    // What still gets dropped is a true duplicate: same tool, same phrasing,
+    // same arguments. Repeating a request should not fill the list with copies.
+    m_skills.removeAll(line);
+
+    // Bounded per tool as well as overall, so one busy tool cannot crowd the
+    // others out of a context window that is already tight.
+    int sameTool = 0;
+    for (int i = m_skills.size() - 1; i >= 0; --i) {
+        if (m_skills.at(i).section('\t', 0, 0) != tool) { continue; }
+        if (++sameTool >= 3) { m_skills.removeAt(i); }
+    }
+
+    m_skills.append(line);
+    while (m_skills.size() > 24) { m_skills.removeFirst(); }
+    m_lastProvenTool = tool;
+    saveProvenMoves();
+    syncMemoryToFlipper();   // straight to the card, like a learned fact
+    loteiLogAs(assistantName(), QStringLiteral("learned: %1 works for \"%2\"").arg(tool, ask));
+}
+
+void LoteiBackend::saveProvenMoves() const
+{
+    // Same reasoning as the card: never truncate the local copy to nothing.
+    if (m_skills.isEmpty()) { return; }
+    QFile f(loteiSkillsPath());
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) { return; }
+    f.write(m_skills.join(QLatin1Char('\n')).toUtf8());
+    f.close();
+}
+
+void LoteiBackend::loadProvenMoves()
+{
+    QFile f(loteiSkillsPath());
+    if (!f.open(QIODevice::ReadOnly)) { return; }
+    m_skills = QString::fromUtf8(f.readAll())
+                   .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    f.close();
+}
+
+// The user says it didn't actually work. Their eyes beat any check this code can
+// run -- a file can be written, verified, and still be the wrong file in the
+// wrong place. Drop the lesson rather than keep teaching it.
+void LoteiBackend::rateLastAction(bool worked)
+{
+    if (m_lastProvenTool.isEmpty()) { return; }
+    if (!worked) {
+        const QString tool = m_lastProvenTool;
+        m_skills.removeIf([&tool](const QString &l) { return l.section('\t', 0, 0) == tool; });
+        saveProvenMoves();
+        syncMemoryToFlipper();   // the card must forget it too
+        loteiLogAs(assistantName(), QStringLiteral("unlearned: %1 (you said it didn't work)").arg(tool));
+    }
+    m_lastProvenTool.clear();
+}
 
 void LoteiBackend::loadHistory()
 {
@@ -2487,6 +2674,26 @@ QString LoteiBackend::systemPrompt() const
                  loteiWellKnownDir(QStringLiteral("documents")));
     }
 
+    // Evidence, placed last so it is the freshest thing in the window.
+    //
+    // This is the part that answers "sometimes it just doesn't feel sure".
+    // Instructions tell a small model what it may do; a demonstration tells it
+    // what it HAS done, and the second is far more persuasive. Every line here
+    // is a call that ran and was verified afterwards -- so the model is not
+    // being asked to trust a rule, it is being shown its own track record.
+    if (!m_skills.isEmpty()) {
+        sys += QStringLiteral("\n\nMOVES YOU HAVE ALREADY PULLED OFF, on this machine, verified "
+                              "afterwards. These are not suggestions -- they happened, and each one "
+                              "worked:\n");
+        for (const QString &l : m_skills) {
+            sys += QStringLiteral("- The user said \"%1\" -> you called %2(%3). It worked.\n")
+                       .arg(l.section('\t', 1, 1), l.section('\t', 0, 0), l.section('\t', 2, 2));
+        }
+        sys += QStringLiteral("When the next request has the shape of one of these, make the same "
+                              "call. You have done it before and it went through. Hesitating now "
+                              "leaves the user with nothing, and nothing is not the safe option.\n");
+    }
+
     if (!m_memory.isEmpty()) {
         sys += QStringLiteral("\n\nWHAT YOU REMEMBER about this user. This list is COMPLETE and "
             "AUTHORITATIVE: it is every durable fact you hold, nothing more. Use these without being "
@@ -2529,11 +2736,21 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     // the gate on their own (no verb+noun), so the model used to answer them
     // from memory and invent a path. When the previous turn DID act, keep tools
     // on for this one so it can look instead of guess.
-    m_turnNeedsTools = messageNeedsTools(userText) || m_lastTurnWasAction;
+    // The third clause is the one that matters here.
+    //
+    // "no, you didn't delete it. you must delete it" contains no verb+noun the
+    // gate recognises and no Flipper word, so it arrived with the three memory
+    // tools and nothing else -- the model could not have acted even if it had
+    // wanted to, and it answered by repeating its claim more confidently. A
+    // turn that was supposed to act and didn't leaves the NEXT turn armed,
+    // because that next turn is almost always the user pointing out the miss.
+    m_turnNeedsTools = messageNeedsTools(userText) || m_lastTurnWasAction || m_lastTurnMissed;
     // Which machine this turn is about, decided here for the same reason
     // m_turnNeedsTools is: dispatchToOllama() runs later and has no access to
     // the message that started the turn.
     m_turnFocus = loteiMessageFocus(userText);
+    m_lastUserText = userText;      // the phrasing a proven move gets filed under
+    m_lastProvenTool.clear();
     m_forcedRetry = false;   // one forced retry is allowed per turn, not per round
     m_history.append(QJsonObject{{"role", "user"}, {"content", userText}});
     setThinking(true);
@@ -2587,14 +2804,42 @@ void LoteiBackend::dispatchToOllama()
         // with a single entry there is nothing to choose, and "call this" is a
         // much smaller ask than "decide what to call".
         if (m_forcedRetry) {
-            const QString only = forcedToolName();
-            QJsonArray one;
-            for (const QJsonValue &t : offered) {
-                if (t.toObject().value("function").toObject().value("name").toString() == only) {
-                    one.append(t);
+            // Every action tool for this machine, with the best guess first --
+            // not the guess alone.
+            //
+            // A single tool works beautifully when forcedToolName() guesses
+            // right and fails absolutely when it guesses wrong: "remove the
+            // folder X" retried with host_mkdir, and no amount of insisting
+            // could have produced a delete, because delete was not on the table.
+            // That guess comes from a hand-written list of verbs, and a list of
+            // verbs is never finished -- there is always one more word, in one
+            // more language, that nobody thought of.
+            //
+            // So the guess now orders the list instead of being the list. Five
+            // entries is still a fraction of the thirteen that made the model
+            // give up, and the right tool is present even when the keyword that
+            // would have named it is missing.
+            const QString first = forcedToolName();
+            const bool host = (m_turnFocus == 2);
+            QStringList wanted = host
+                ? QStringList{QStringLiteral("host_write"), QStringLiteral("host_mkdir"),
+                              QStringLiteral("host_delete"), QStringLiteral("host_move"),
+                              QStringLiteral("host_copy")}
+                : QStringList{QStringLiteral("save_file"), QStringLiteral("make_dir"),
+                              QStringLiteral("delete_file"), QStringLiteral("rename_file")};
+            wanted.removeAll(first);
+            wanted.prepend(first);
+
+            QJsonArray few;
+            for (const QString &want : wanted) {
+                for (const QJsonValue &t : offered) {
+                    if (t.toObject().value("function").toObject().value("name").toString() == want) {
+                        few.append(t);
+                        break;
+                    }
                 }
             }
-            if (!one.isEmpty()) { offered = one; }
+            if (!few.isEmpty()) { offered = few; }
         }
         body["tools"] = offered;
 
@@ -2657,7 +2902,19 @@ void LoteiBackend::onStreamData(QNetworkReply *reply)
         const QString delta = msg.value("content").toString();
         if (!delta.isEmpty()) {
             m_streamContent += delta;
-            emit partialReceived(m_streamContent);   // live typing
+            // Live typing, except on the first round of a turn that was asked to
+            // DO something and hasn't done it yet.
+            //
+            // That first round is where the model narrates a result it has not
+            // produced -- "The folder PAULA has been created" arrives on screen
+            // letter by letter while the folder does not exist, and only some
+            // seconds later does the retry run and the text get replaced. For
+            // those seconds the user has been told something false and may act
+            // on it. Once a tool has actually run, there is nothing left to
+            // invent and the typing resumes.
+            if (!m_turnWasFileAction || m_turnRanAnyTool) {
+                emit partialReceived(m_streamContent);
+            }
         }
         const QJsonArray tc = msg.value("tool_calls").toArray();
         for (const QJsonValue &v : tc) { m_streamTools.append(v); }
@@ -2674,7 +2931,43 @@ void LoteiBackend::onStreamData(QNetworkReply *reply)
 // more reliable than asking the model to make it again.
 QString LoteiBackend::forcedToolName() const
 {
-    return (m_turnFocus == 2) ? QStringLiteral("host_write") : QStringLiteral("save_file");
+    // Which tool the retry offers. A fixed answer of "write" meant a retry on
+    // "create a folder" pushed host_write, and a retry on "delete X" pushed
+    // host_write as well -- the second attempt could not succeed no matter how
+    // firmly it was asked, because it was being asked for the wrong thing.
+    const QString t = m_lastUserText.toLower();
+    const bool host = (m_turnFocus == 2);
+
+    auto any = [&t](std::initializer_list<const char *> words) {
+        for (const char *w : words) { if (t.contains(QString::fromLatin1(w))) { return true; } }
+        return false;
+    };
+
+    // Verb before noun, always.
+    //
+    // "folder" was tested first, so "remove the folder ANDRESLINDO" retried
+    // with host_mkdir -- asking to CREATE the thing the user asked to destroy.
+    // The noun says what the request is about; only the verb says what to do
+    // with it, and when the two point different ways the verb is the one that
+    // carries the instruction.
+    if (any({"delete", "remove", "erase", "apaga", "deleta", "remova", "exclui"})) {
+        return host ? QStringLiteral("host_delete") : QStringLiteral("delete_file");
+    }
+    if (any({"rename", "renomeia", "renomear"})) {
+        return host ? QStringLiteral("host_move") : QStringLiteral("rename_file");
+    }
+    if (any({"move ", "mover", "mova"})) {
+        return host ? QStringLiteral("host_move") : QStringLiteral("rename_file");
+    }
+    if (any({"copy", "copia", "copiar", "duplica"})) {
+        return host ? QStringLiteral("host_copy") : QStringLiteral("rename_file");
+    }
+    // Only now does "folder" mean anything: nothing above claimed the request,
+    // so it is a folder being made rather than one being acted on.
+    if (any({"folder", "directory", "pasta", "diretorio"})) {
+        return host ? QStringLiteral("host_mkdir") : QStringLiteral("make_dir");
+    }
+    return host ? QStringLiteral("host_write") : QStringLiteral("save_file");
 }
 
 void LoteiBackend::finalizeStream()
@@ -2752,15 +3045,21 @@ void LoteiBackend::finalizeStream()
     // assistant that reports the problem and one that gets the job done.
     if (falseClaim && !m_forcedRetry) {
         m_forcedRetry = true;
+        // The chat has shown nothing at all this turn (live typing was held
+        // back), so say what is happening rather than leaving a blank pane
+        // through a second round of inference.
+        emit partialReceived(QStringLiteral("working on it..."));
         const QString only = forcedToolName();
         loteiLogAs(assistantName(),
                    QStringLiteral("no call -- retrying with %1 as the only tool").arg(only));
         m_history.append(QJsonObject{
             {"role", "user"},
             {"content", QStringLiteral(
-                "You answered in words but called no tool, so nothing happened and the file "
-                "does not exist. Call %1 now. Only the call -- no explanation, no apology, no "
-                "code block. Give it the full path and the complete file contents.").arg(only)}
+                "You answered in words but called no tool, so nothing happened -- what you "
+                "described did not occur. Call a tool now, this message. %1 is most likely the "
+                "right one, but pick whichever actually matches what was asked: if they said "
+                "delete, delete; if they said create, create. Only the call -- no explanation, "
+                "no apology, no code block. Give it the full path.").arg(only)}
         });
         m_streamContent.clear();
         m_turnText.clear();
@@ -2771,8 +3070,10 @@ void LoteiBackend::finalizeStream()
     }
 
     if (falseClaim) {
-        text = QStringLiteral("I didn't actually write anything that time -- tell me the exact "
-                              "thing you want and I'll save it to the Flipper for real.");
+        // Was wrong twice over on a delete: nothing was written, and the Flipper
+        // had nothing to do with it. Say only what is true of any failed action.
+        text = QStringLiteral("That didn't go through -- I ran nothing, so nothing changed. "
+                              "Say it once more with the exact path and I'll do it.");
         setThinking(false);
         m_currentReply = nullptr;
         m_lastTurnWasAction = false;
@@ -2827,6 +3128,9 @@ void LoteiBackend::finalizeStream()
     // Remember, for the NEXT turn's gate, whether this one actually did
     // something to a file or the device.
     m_lastTurnWasAction = m_turnRanAnyTool;
+    // Remembered across the turn boundary so the follow-up is armed. Cleared
+    // the moment something actually runs.
+    m_lastTurnMissed = m_turnWasFileAction && !m_turnRanAnyTool;
 
     m_history.append(QJsonObject{{"role", "assistant"}, {"content", text}});
     saveHistory();
@@ -3126,9 +3430,13 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         // attempted is half the story; the other half is whether the tool came
         // back with a path or with an error, and that half was invisible.
         auto inner = done;
-        done = [this, name, inner](const QString &result) {
+        const QJsonObject learnArgs = args;
+        done = [this, name, learnArgs, inner](const QString &result) {
             loteiLogAs(assistantName(),
                        QStringLiteral("  -> %1: %2").arg(name, result.left(300)));
+            // Learn only from proof. The tool already reports whether the thing
+            // actually happened; that report is the teacher.
+            if (loteiResultProves(result)) { recordProvenMove(name, learnArgs); }
             if (inner) { inner(result); }
         };
         // Host actions also surface in the chat itself. The log panel is where
@@ -3626,10 +3934,18 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
         const qint64 n = f.write(bytes);
         f.close();
         if (n < 0) { done(QStringLiteral("{\"error\":\"write failed\"}")); return; }
+        // Read back what landed. n is what QFile claims it wrote; the file's own
+        // size is what is actually on disk. A write that reports success on
+        // bytes that never arrived is the same lie as a delete that reports
+        // success on a file that was never there.
+        const QFileInfo after(abs);
+        const bool sizeOk = after.exists() && after.size() == static_cast<qint64>(bytes.size());
         // The absolute path, not a workspace-relative one: with the whole disk in
         // reach, "wrote: config.json" no longer identifies a file.
-        done(QStringLiteral("{\"wrote\":\"%1\",\"bytes\":%2}")
-                 .arg(abs).arg(static_cast<double>(n)));
+        done(QStringLiteral("{\"wrote\":\"%1\",\"bytes\":%2,\"verified\":%3}")
+                 .arg(abs)
+                 .arg(static_cast<double>(after.exists() ? after.size() : 0))
+                 .arg(sizeOk ? QStringLiteral("true") : QStringLiteral("false")));
 
     } else if (name == QLatin1String("host_run")) {
         const QString cmd = args.value("command").toString().trimmed();
@@ -3703,12 +4019,31 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
     } else if (name == QLatin1String("host_mkdir")) {
         const QString abs = resolveAgentPath(args.value("path").toString(), false);
         if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
-        if (!QDir().mkpath(abs)) { done(QStringLiteral("{\"error\":\"couldn't create %1\"}").arg(abs)); return; }
-        done(QStringLiteral("{\"created\":\"%1\"}").arg(abs));
+        const bool already = QFileInfo(abs).isDir();
+        // Checked on disk, like the others: mkpath's return value is not proof
+        // the folder is there, and "created" answering with a path told the
+        // model nothing about whether it had to be made or was already sitting
+        // there.
+        if (!QDir().mkpath(abs) || !QFileInfo(abs).isDir()) {
+            done(QStringLiteral("{\"error\":\"couldn't create %1\"}").arg(abs));
+            return;
+        }
+        done(QStringLiteral("{\"path\":\"%1\",\"created\":%2,\"exists\":true}")
+                 .arg(abs, already ? QStringLiteral("false") : QStringLiteral("true")));
 
     } else if (name == QLatin1String("host_delete")) {
-        const QString abs = resolveAgentPath(args.value("path").toString(), true);
+        // Resolved WITHOUT requiring existence, so a missing file comes back as
+        // missing rather than as a bad path. They are different answers: a
+        // delete that found nothing is not a delete, and there is no way for the
+        // model to say so honestly unless the tool distinguishes them.
+        const QString abs = resolveAgentPath(args.value("path").toString(), false);
         if (abs.isEmpty()) { done(badPath(args.value("path").toString())); return; }
+        if (!QFileInfo::exists(abs)) {
+            done(QStringLiteral("{\"deleted\":false,\"existed\":false,\"path\":\"%1\","
+                                "\"note\":\"nothing was there -- tell the user the file did not exist, "
+                                "do NOT say it was deleted\"}").arg(abs));
+            return;
+        }
         // Deleting the root of the disk or a home directory is never what was
         // meant, and is the one mistake with no undo. Everything else goes.
         const QString canon = QDir::cleanPath(abs);
@@ -3719,8 +4054,15 @@ void LoteiBackend::runHostTool(const QString &name, const QJsonObject &args,
         }
         const QFileInfo fi(canon);
         const bool ok = fi.isDir() ? QDir(canon).removeRecursively() : QFile::remove(canon);
-        if (!ok) { done(QStringLiteral("{\"error\":\"couldn't delete %1\"}").arg(canon)); return; }
-        done(QStringLiteral("{\"deleted\":\"%1\"}").arg(canon));
+        // Checked on disk rather than trusted: removeRecursively can answer
+        // false having emptied most of a folder, and true on a path still there.
+        const bool gone = !QFileInfo::exists(canon);
+        if (!ok || !gone) {
+            done(QStringLiteral("{\"deleted\":false,\"existed\":true,\"path\":\"%1\","
+                                "\"error\":\"it is still there\"}").arg(canon));
+            return;
+        }
+        done(QStringLiteral("{\"deleted\":true,\"existed\":true,\"path\":\"%1\"}").arg(canon));
 
     } else if (name == QLatin1String("host_move") || name == QLatin1String("host_copy")) {
         const bool moving = (name == QLatin1String("host_move"));
@@ -4484,6 +4826,13 @@ void LoteiBackend::reloadMemory()
 
 void LoteiBackend::refreshMemoryFromDisk()
 {
+    // First, and outside the guard below. These are two different files, and
+    // putting this after the early return meant a missing or unreadable
+    // lotei-memory.txt silently skipped loading the proven moves as well --
+    // leaving m_skills empty. The next sync then wrote that empty list over the
+    // card, which is why actions-memory.txt kept being wiped.
+    loadProvenMoves();
+
     QFile f(loteiMemoryPath());
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) { return; }
     m_memory = QString::fromUtf8(f.readAll()).trimmed();

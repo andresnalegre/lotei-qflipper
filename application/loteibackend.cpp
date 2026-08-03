@@ -574,7 +574,72 @@ static QJsonArray loteiMemoryTools()
     return QJsonArray{ remember, listMemory, forget };
 }
 
-static QJsonArray loteiTools(bool agent)
+// Which machine is this message about? Same vocabulary the system prompt lists,
+// because the model and this function have to agree.
+enum LoteiFocus { FocusBoth = 0, FocusDevice = 1, FocusHost = 2 };
+
+// Short words have to match whole, or "led" fires on "called" and "nfc" on
+// nothing useful at all.
+static bool loteiHasWord(const QString &haystack, const QString &w)
+{
+    if (w.size() >= 5 || w.contains(QLatin1Char('/')) || w.contains(QLatin1Char('.'))
+        || w.contains(QLatin1Char(' '))) {
+        return haystack.contains(w);
+    }
+    static QHash<QString, QRegularExpression> cache;
+    if (!cache.contains(w)) {
+        cache.insert(w, QRegularExpression(QStringLiteral("\\b") + QRegularExpression::escape(w)
+                                           + QStringLiteral("\\b")));
+    }
+    return cache.value(w).match(haystack).hasMatch();
+}
+
+static int loteiMessageFocus(const QString &text)
+{
+    const QString t = text.toLower();
+    static const QStringList deviceWords = {
+        QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral("sd card"),
+        QStringLiteral("sdcard"), QStringLiteral("cartao"), QStringLiteral("cart\u00e3o"),
+        QStringLiteral("flipper"), QStringLiteral("badusb"), QStringLiteral("ducky"),
+        QStringLiteral("subghz"), QStringLiteral("sub-ghz"), QStringLiteral("nfc"),
+        QStringLiteral("rfid"), QStringLiteral("infrared"), QStringLiteral("infravermelho"),
+        QStringLiteral("ibutton"), QStringLiteral("u2f"), QStringLiteral(".sub"),
+        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral(".fap"),
+        QStringLiteral("device_info"), QStringLiteral("gpio"), QStringLiteral("vibr"),
+        QStringLiteral("led"), QStringLiteral("i2c"), QStringLiteral("onewire"),
+        QStringLiteral("uptime"), QStringLiteral("battery"), QStringLiteral("bateria")
+    };
+    static const QStringList hostWords = {
+        QStringLiteral("desktop"), QStringLiteral("area de trabalho"),
+        QStringLiteral("\u00e1rea de trabalho"), QStringLiteral("downloads"),
+        QStringLiteral("documents"), QStringLiteral("documentos"),
+        QStringLiteral("my mac"), QStringLiteral("meu mac"), QStringLiteral("macbook"),
+        QStringLiteral("computer"), QStringLiteral("computador"),
+        QStringLiteral("this machine"), QStringLiteral("minha pasta"),
+        QStringLiteral("my folder"), QStringLiteral("/users/"), QStringLiteral("~/"),
+        QStringLiteral("repo"), QStringLiteral("the project"), QStringLiteral("o projeto"),
+        QStringLiteral("source"), QStringLiteral("codigo"), QStringLiteral("c\u00f3digo"),
+        QStringLiteral("build"), QStringLiteral("compile"), QStringLiteral("compilar"),
+        QStringLiteral("git")
+    };
+
+    bool dev = false, host = false;
+    for (const QString &w : deviceWords) { if (loteiHasWord(t, w)) { dev = true; break; } }
+    for (const QString &w : hostWords)   { if (loteiHasWord(t, w)) { host = true; break; } }
+    if (dev && !host) { return FocusDevice; }
+    if (host && !dev) { return FocusHost; }
+    return FocusBoth;   // both mentioned, or neither -- don't guess, offer everything
+}
+
+// The tool list the model sees, narrowed to the machine the message is about.
+//
+// Tool COUNT is the single biggest lever on whether a small model calls a tool
+// at all. With agent mode on this list reached 22 entries, and a 3B stopped
+// calling anything -- asked to save a file to the Desktop it just answered in
+// prose. Sending one family instead of two roughly halves the choice, and it
+// also removes the mistake entirely: with save_file absent from a Desktop
+// request, there is nothing wrong to pick.
+static QJsonArray loteiTools(bool agent, int focus = FocusBoth)
 {
     const QJsonObject listFiles{
         {"type", "function"},
@@ -744,13 +809,36 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
-    QJsonArray tools{listFiles, readFile, pressButton, runCli, saveFile,
-                     makeDir, deleteFile, renameFile, fileInfo, remember, listMemory, forget};
+    // Memory always travels; it is orthogonal to which machine is in play.
+    QJsonArray tools{remember, listMemory, forget};
+
+    // The Flipper's own file tools come off the list when the message is plainly
+    // about the computer. Not to forbid anything -- runOneTool would reroute a
+    // stray call anyway -- but because a tool that isn't offered is a tool that
+    // can't be picked by mistake, and a shorter list is one a 3B can still
+    // choose from at all.
+    // Narrowing to the host only makes sense when host tools EXIST to narrow to.
+    // With agent mode off there are none, so dropping the Flipper's tools left
+    // the model holding nothing but the three memory tools -- and a model with
+    // no way to act does the only thing left: it describes acting. That is what
+    // produced "Created hello.duk on your Desktop" with no write behind it, and
+    // then a working directory invented out of nothing.
+    const bool prune = agent && (focus == FocusHost);
+    if (!prune) {
+        tools.append(listFiles);
+        tools.append(readFile);
+        tools.append(saveFile);
+        tools.append(makeDir);
+        tools.append(deleteFile);
+        tools.append(renameFile);
+        tools.append(fileInfo);
+        tools.append(pressButton);
+        tools.append(runCli);
+    }
 
     if (!agent) { return tools; }
 
-    // Host-workspace tools: only advertised when the user has opted in and set a
-    // workspace folder. They let LOTEI read/edit/build/test his own source.
+    // Host tools: only advertised when the user has turned agent mode on.
     const QJsonObject hostList{
         {"type", "function"},
         {"function", QJsonObject{
@@ -898,16 +986,18 @@ static QJsonArray loteiTools(bool agent)
         }}
     };
 
-    tools.append(hostList);
-    tools.append(hostRead);
-    tools.append(hostWrite);
-    tools.append(hostRun);
-    tools.append(hostCd);
-    tools.append(hostMkdir);
-    tools.append(hostDelete);
-    tools.append(hostMove);
-    tools.append(hostCopy);
-    tools.append(hostFind);
+    if (focus != FocusDevice) {
+        tools.append(hostList);
+        tools.append(hostRead);
+        tools.append(hostWrite);
+        tools.append(hostRun);
+        tools.append(hostCd);
+        tools.append(hostMkdir);
+        tools.append(hostDelete);
+        tools.append(hostMove);
+        tools.append(hostCopy);
+        tools.append(hostFind);
+    }
     return tools;
 }
 
@@ -949,13 +1039,18 @@ static bool messageIsFileWrite(const QString &text)
         QStringLiteral("script"), QStringLiteral("payload"), QStringLiteral("file"),
         QStringLiteral("badusb"), QStringLiteral("ducky"), QStringLiteral("subghz"),
         QStringLiteral("sub-ghz"), QStringLiteral("nfc"), QStringLiteral("rfid"),
-        QStringLiteral("infrared"), QStringLiteral(".txt"), QStringLiteral(".sub"),
-        QStringLiteral(".nfc"), QStringLiteral(".ir"), QStringLiteral("/ext")
+        QStringLiteral("infrared"), QStringLiteral("/ext"), QStringLiteral("arquivo")
     };
     for (const QString &n : fileNouns) {
         if (t.contains(n)) { return true; }
     }
-    return false;
+    // Any name.ext at all, rather than a list of extensions that will always be
+    // one behind. ".duk" wasn't on the old list, so "create hello.duk and save
+    // it" was not recognised as a write -- and the check that catches the model
+    // claiming to have written something never ran.
+    static const QRegularExpression anyFilename(
+        QStringLiteral("\\b[\\w.-]+\\.[a-z0-9]{1,6}\\b"), QRegularExpression::CaseInsensitiveOption);
+    return anyFilename.match(t).hasMatch();
 }
 
 static bool messageNeedsTools(const QString &text)
@@ -985,7 +1080,19 @@ static bool messageNeedsTools(const QString &text)
         QStringLiteral("i2c"), QStringLiteral("onewire"),
         QStringLiteral("uptime"), QStringLiteral("battery"),
         QStringLiteral("nfc"), QStringLiteral("rfid"), QStringLiteral("infrared"),
-        QStringLiteral("flipper")
+        QStringLiteral("flipper"),
+        // The computer side. Without these, "save it to my Desktop" carried no
+        // trigger at all unless it happened to name a .txt, and a turn with no
+        // tools attached cannot call one however clearly it was asked.
+        QStringLiteral("desktop"), QStringLiteral("area de trabalho"),
+        QStringLiteral("\u00e1rea de trabalho"), QStringLiteral("downloads"),
+        QStringLiteral("documents"), QStringLiteral("documentos"),
+        QStringLiteral("computer"), QStringLiteral("computador"),
+        QStringLiteral("my mac"), QStringLiteral("meu mac"), QStringLiteral("macbook"),
+        QStringLiteral("minha pasta"), QStringLiteral("my folder"),
+        QStringLiteral("/users/"), QStringLiteral("~/"),
+        QStringLiteral("repo"), QStringLiteral("compil"), QStringLiteral("build"),
+        QStringLiteral("git")
     };
     for (const QString &s : strongNouns) {
         if (t.contains(s)) { return true; }
@@ -1169,7 +1276,13 @@ LoteiBackend::LoteiBackend(QObject *parent)
     m_model = QSettings().value(QStringLiteral("lotei/model"), QString::fromUtf8(LOTEI_MODEL)).toString();
     m_setupComplete = QSettings().value(QStringLiteral("lotei/setupComplete"), false).toBool();
     m_manualName = QSettings().value(QStringLiteral("lotei/manualName")).toString();
-    m_agentEnabled = QSettings().value(QStringLiteral("lotei/agentEnabled"), false).toBool();
+    // Defaults ON. Computer access used to be opt-in behind a setting most
+    // people never find, which meant the assistant silently had no way to touch
+    // the machine it runs on -- and a model with no way to act describes acting
+    // instead. The switch is still there for anyone who wants it off; it just
+    // isn't the thing standing between a working install and "save this to my
+    // Desktop".
+    m_agentEnabled = QSettings().value(QStringLiteral("lotei/agentEnabled"), true).toBool();
     m_agentRoot = QSettings().value(QStringLiteral("lotei/agentDir")).toString();
     {   // load long-term memory (facts the user asked LOTEI to remember)
         QFile mf(loteiMemoryPath());
@@ -2263,6 +2376,11 @@ QString LoteiBackend::assistantName() const
     return QStringLiteral("Nikita");
 }
 
+// Defined further down, next to the rest of the path handling it belongs with.
+// Declared here because systemPrompt() reads the user's real folder locations
+// into every turn, and that happens earlier in this file than the definition.
+static QString loteiWellKnownDir(const QString &name);
+
 QString LoteiBackend::systemPrompt() const
 {
     QString sys = QString::fromUtf8(LOTEI_SYSTEM);
@@ -2325,6 +2443,18 @@ QString LoteiBackend::systemPrompt() const
             "so refer to yourself as \"I\", the way a person named %1 says \"I\" not their own name.").arg(name);
     }
 
+    if (!agentReady()) {
+        sys += QStringLiteral(
+            "\n\nTHIS COMPUTER IS OUT OF REACH THIS SESSION:\n"
+            "- You have NO tools for the machine LOTEI is running on. No reading it, no writing "
+            "to it, no shell, no Desktop, no Downloads, no Documents, no home folder.\n"
+            "- Everything you can touch is on the Flipper: /ext and /int.\n"
+            "- Asked to put something on their Desktop or anywhere else on their computer, say "
+            "plainly that computer access is off and that Agent mode in setup turns it on. Offer "
+            "to save it to the Flipper instead. Do NOT claim you saved it, do NOT invent a path, "
+            "and do NOT report a working directory -- you do not have one.\n");
+    }
+
     if (agentReady()) {
         sys += QStringLiteral(
             "\n\nHOST WORKSPACE -- you can edit and test your OWN source code:\n"
@@ -2333,11 +2463,17 @@ QString LoteiBackend::systemPrompt() const
             "\nWHERE YOU ARE RIGHT NOW -- read this before touching any path:\n"
             "- Current folder: \"%2\"\n"
             "- Home: \"%3\"   Workspace: \"%1\"   This computer: %4\n"
+            "- This user's real folders, resolved on THIS machine -- use these exact paths, never a guess:\n"
+            "    Desktop: \"%5\"\n"
+            "    Downloads: \"%6\"\n"
+            "    Documents: \"%7\"\n"
+            "- They are not the same on every computer. Someone else running LOTEI has a different user name, possibly a different operating system, and possibly a Desktop that isn't called Desktop. Never assemble a path like \"/Users/<name>/Desktop\" from what you have seen before -- read it from the lines above, or write \"Desktop/file.txt\" and let it be resolved for you.\n"
             "- A relative path resolves from the CURRENT FOLDER above, not from the workspace and not from home. \"notes.txt\" means \"%2/notes.txt\". If that is not what you meant, say the absolute path or move first.\n"
             "- host_cd(path) moves you and answers with where you landed and what is in it; host_cd with no path just tells you where you are. \"..\" goes up. The move STICKS for the rest of the conversation, and host_run starts there too.\n"
             "- The line above is regenerated every single turn, so it is never stale. Trust it over anything you remember from earlier in the conversation -- if you moved ten messages ago, this already reflects it, and you do NOT need a tool call to find out where you are.\n"
             "- Before writing, deleting or moving anything, be sure the folder is the one you mean. Reading a listing costs one call; writing into the wrong tree costs the user their afternoon. When a path came from the user and you are not certain how it resolves, resolve it out loud in your reply as you act.\n"
             "- host_list(path), host_read(path), host_write(path, content): browse, read and edit files anywhere. host_write creates missing folders and OVERWRITES the whole file, so read it first, then write the full new contents.\n"
+            "- Any path may start with a folder NAME instead of a location: \"Desktop/notes.txt\", \"Downloads/x.zip\", \"Documents/plan.md\". Those resolve to this user's real folders wherever they happen to live. It is the safest way to write, because it cannot be wrong on someone else's machine.\n"
             "- host_mkdir(path), host_move(from, to), host_copy(from, to), host_delete(path), host_find(path, pattern): create, move, copy, delete and search. Use these instead of shelling out to mkdir/mv/cp/rm/find -- they report what actually happened, where a shell command just hands you an exit code.\n"
             "- host_run(command, cwd): run a shell command and get the exit code plus combined stdout/stderr. It BLOCKS until the command finishes, so prefer targeted commands. Reach for it when no typed tool fits, not as the default.\n"
             "- Every one of these is shown to the user as it happens, reads included. That is not a restriction on you -- it means you never have to describe what you are about to do to keep them informed. Just do it.\n"
@@ -2345,7 +2481,10 @@ QString LoteiBackend::systemPrompt() const
             "- The workspace folder is not a boundary, just a starting point: it is where bare relative paths land and where host_run begins. Say the path you actually mean.\n"
             "- Your own core lives in application/loteibackend.cpp + .h and application/components/ under that workspace. To fix a bug in yourself: host_read the file, host_write the corrected version, then host_run the build and read the errors.\n"
             "- Nothing here is blocked, so nothing here is undone for you either. Never claim you edited a file you didn't, and never report a path you didn't get back from a tool this turn. Say what you changed and where, plainly.")
-            .arg(m_agentRoot, agentCwd(), QDir::homePath(), QSysInfo::prettyProductName());
+            .arg(m_agentRoot, agentCwd(), QDir::homePath(), QSysInfo::prettyProductName(),
+                 loteiWellKnownDir(QStringLiteral("desktop")),
+                 loteiWellKnownDir(QStringLiteral("downloads")),
+                 loteiWellKnownDir(QStringLiteral("documents")));
     }
 
     if (!m_memory.isEmpty()) {
@@ -2391,6 +2530,11 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     // from memory and invent a path. When the previous turn DID act, keep tools
     // on for this one so it can look instead of guess.
     m_turnNeedsTools = messageNeedsTools(userText) || m_lastTurnWasAction;
+    // Which machine this turn is about, decided here for the same reason
+    // m_turnNeedsTools is: dispatchToOllama() runs later and has no access to
+    // the message that started the turn.
+    m_turnFocus = loteiMessageFocus(userText);
+    m_forcedRetry = false;   // one forced retry is allowed per turn, not per round
     m_history.append(QJsonObject{{"role", "user"}, {"content", userText}});
     setThinking(true);
     dispatchToOllama();
@@ -2435,7 +2579,42 @@ void LoteiBackend::dispatchToOllama()
     if (!m_noToolModels.contains(m_model)) {
         // Action turns get the full toolset; plain conversation still gets the
         // memory tools so the assistant can learn durable facts as you talk.
-        body["tools"] = m_turnNeedsTools ? loteiTools(agentReady()) : loteiMemoryTools();
+        QJsonArray offered = m_turnNeedsTools ? loteiTools(agentReady(), m_turnFocus)
+                                              : loteiMemoryTools();
+
+        // Second attempt after the model answered in prose: hand it exactly one
+        // tool. Choosing between thirteen is where a 3B gives up and narrates;
+        // with a single entry there is nothing to choose, and "call this" is a
+        // much smaller ask than "decide what to call".
+        if (m_forcedRetry) {
+            const QString only = forcedToolName();
+            QJsonArray one;
+            for (const QJsonValue &t : offered) {
+                if (t.toObject().value("function").toObject().value("name").toString() == only) {
+                    one.append(t);
+                }
+            }
+            if (!one.isEmpty()) { offered = one; }
+        }
+        body["tools"] = offered;
+
+        // Every decision that determines whether this turn CAN act, in one line.
+        // "It didn't save and nothing showed up in the log" is unanswerable
+        // without this: there is no way to tell a model that chose not to call a
+        // tool from a model that was never handed one.
+        QStringList names;
+        for (const QJsonValue &t : offered) {
+            names += t.toObject().value("function").toObject().value("name").toString();
+        }
+        loteiLogAs(assistantName(),
+                   QStringLiteral("turn: model=%1 computer=%2 focus=%3 tools=%4 [%5]")
+                       .arg(m_model,
+                            agentReady() ? QStringLiteral("ON") : QStringLiteral("OFF"),
+                            m_turnFocus == 1 ? QStringLiteral("flipper")
+                                             : (m_turnFocus == 2 ? QStringLiteral("computer")
+                                                                 : QStringLiteral("either")))
+                       .arg(names.size())
+                       .arg(names.join(QLatin1Char(' '))));
     }
     body["stream"] = true;
     body["keep_alive"] = -1;
@@ -2490,8 +2669,35 @@ void LoteiBackend::onStreamData(QNetworkReply *reply)
     }
 }
 
+// The one tool a forced retry offers. Picked from the machine the turn is about,
+// because that decision was already made from the user's own words and is far
+// more reliable than asking the model to make it again.
+QString LoteiBackend::forcedToolName() const
+{
+    return (m_turnFocus == 2) ? QStringLiteral("host_write") : QStringLiteral("save_file");
+}
+
 void LoteiBackend::finalizeStream()
 {
+    // What the model actually decided. A turn that ends with zero tool calls on
+    // a request to write a file is the failure being chased, and until now it
+    // left no trace at all -- the log went quiet and the chat showed a confident
+    // sentence about a file that was never created.
+    if (m_streamTools.isEmpty()) {
+        loteiLogAs(assistantName(),
+                   QStringLiteral("reply: NO TOOL CALL (%1 chars) -- \"%2\"")
+                       .arg(m_streamContent.size())
+                       .arg(m_streamContent.left(160).simplified()));
+    } else {
+        QStringList called;
+        for (const QJsonValue &v : m_streamTools) {
+            called += v.toObject().value("function").toObject().value("name").toString();
+        }
+        loteiLogAs(assistantName(),
+                   QStringLiteral("reply: %1 tool call(s): %2")
+                       .arg(called.size()).arg(called.join(QLatin1Char(' '))));
+    }
+
     // A complete response arrived. Tool round, or final answer?
     // Prefer the structured tool_calls; if none came through, salvage any calls
     // the model leaked as plain text (phi3.5 does this when narrating a batch)
@@ -2539,6 +2745,31 @@ void LoteiBackend::finalizeStream()
     // an honest line and DON'T record the false claim in history, so the next
     // turn isn't reasoning on top of a fabricated save.
     const bool falseClaim = m_turnWasFileAction && !m_turnRanAnyTool;
+
+    // It was asked to write a file, it was given the tool to do it, and it
+    // replied with a sentence. Rather than relay that or apologise for it, ask
+    // once more with the choice removed. This is the difference between an
+    // assistant that reports the problem and one that gets the job done.
+    if (falseClaim && !m_forcedRetry) {
+        m_forcedRetry = true;
+        const QString only = forcedToolName();
+        loteiLogAs(assistantName(),
+                   QStringLiteral("no call -- retrying with %1 as the only tool").arg(only));
+        m_history.append(QJsonObject{
+            {"role", "user"},
+            {"content", QStringLiteral(
+                "You answered in words but called no tool, so nothing happened and the file "
+                "does not exist. Call %1 now. Only the call -- no explanation, no apology, no "
+                "code block. Give it the full path and the complete file contents.").arg(only)}
+        });
+        m_streamContent.clear();
+        m_turnText.clear();
+        m_streamTools = QJsonArray();
+        setThinking(true);
+        dispatchToOllama();
+        return;
+    }
+
     if (falseClaim) {
         text = QStringLiteral("I didn't actually write anything that time -- tell me the exact "
                               "thing you want and I'll save it to the Flipper for real.");
@@ -2724,11 +2955,13 @@ static bool loteiIsDevicePath(const QString &p)
 static bool loteiIsComputerPath(const QString &p)
 {
     const QString t = p.trimmed();
-    return t.startsWith(QLatin1String("~"))
-        || t.startsWith(QLatin1String("/Users/"))
-        || t.startsWith(QLatin1String("/home/"))
-        || t.startsWith(QLatin1String("/Volumes/"))
-        || (t.size() > 2 && t.at(1) == QLatin1Char(':') && t.at(0).isLetter());
+    if (t.startsWith(QLatin1Char('~'))) { return true; }
+    if (t.size() > 2 && t.at(1) == QLatin1Char(':') && t.at(0).isLetter()) { return true; }  // C:\...
+    // Any other absolute path. Listing /Users/ and /home/ only covered macOS and
+    // Linux desktops; it missed /var, /opt, /srv, /media, /mnt, and every layout
+    // on a machine that isn't the one this was written on. There are exactly two
+    // paths that belong to the Flipper, so everything else is here.
+    return QDir::isAbsolutePath(t) && !loteiIsDevicePath(t);
 }
 
 // The same job, in the other direction: given a tool the model picked and a
@@ -2889,6 +3122,15 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         }
         const QString line = QStringLiteral("%1 %2").arg(name, bits.join(QLatin1String(", ")));
         loteiLogAs(assistantName(), line);
+        // Wrap the callback so the ANSWER is logged too. Knowing a write was
+        // attempted is half the story; the other half is whether the tool came
+        // back with a path or with an error, and that half was invisible.
+        auto inner = done;
+        done = [this, name, inner](const QString &result) {
+            loteiLogAs(assistantName(),
+                       QStringLiteral("  -> %1: %2").arg(name, result.left(300)));
+            if (inner) { inner(result); }
+        };
         // Host actions also surface in the chat itself. The log panel is where
         // you look when something already went wrong; the chat is where you are
         // actually watching, and an agent with the run of the disk should not be
@@ -3219,6 +3461,42 @@ QString LoteiBackend::agentBaseDir() const
 // model either writes the full path every time (and gets one wrong eventually,
 // silently, in the wrong folder) or gives up and shells out to `cd x && ...`,
 // where nothing on this side can see where it went.
+// "Desktop" is not a path. It is a different path on every machine: an English
+// folder name on macOS and Windows, whatever the user's locale calls it on a
+// Linux box with xdg-user-dirs, and somewhere else entirely if they moved it.
+// Asking Qt is the only way to be right on a stranger's computer.
+//
+// Returns an empty string when the name isn't one of these.
+static QString loteiWellKnownDir(const QString &name)
+{
+    static const QHash<QString, QStandardPaths::StandardLocation> kDirs = {
+        {QStringLiteral("desktop"),   QStandardPaths::DesktopLocation},
+        {QStringLiteral("downloads"), QStandardPaths::DownloadLocation},
+        {QStringLiteral("download"),  QStandardPaths::DownloadLocation},
+        {QStringLiteral("documents"), QStandardPaths::DocumentsLocation},
+        {QStringLiteral("music"),     QStandardPaths::MusicLocation},
+        {QStringLiteral("pictures"),  QStandardPaths::PicturesLocation},
+        {QStringLiteral("movies"),    QStandardPaths::MoviesLocation},
+        {QStringLiteral("videos"),    QStandardPaths::MoviesLocation},
+        {QStringLiteral("home"),      QStandardPaths::HomeLocation},
+        {QStringLiteral("temp"),      QStandardPaths::TempLocation},
+        // The names a Portuguese-speaking user says out loud, mapped to the same
+        // real folders -- the folder on disk is still called Desktop.
+        {QStringLiteral("area de trabalho"), QStandardPaths::DesktopLocation},
+        {QStringLiteral("\u00e1rea de trabalho"), QStandardPaths::DesktopLocation},
+        {QStringLiteral("documentos"), QStandardPaths::DocumentsLocation},
+        {QStringLiteral("imagens"),    QStandardPaths::PicturesLocation},
+        {QStringLiteral("videos"),     QStandardPaths::MoviesLocation},
+        {QStringLiteral("musicas"),    QStandardPaths::MusicLocation},
+    };
+    const auto it = kDirs.constFind(name.trimmed().toLower());
+    if (it == kDirs.constEnd()) { return QString(); }
+    const QString p = QStandardPaths::writableLocation(it.value());
+    // Qt returns empty for a location the platform doesn't define. Home always
+    // exists, so fall back to a folder of that name under it.
+    return p.isEmpty() ? QDir::homePath() + QLatin1Char('/') + name : p;
+}
+
 QString LoteiBackend::agentCwd() const
 {
     if (!m_agentCwd.isEmpty() && QFileInfo(m_agentCwd).isDir()) { return m_agentCwd; }
@@ -3244,6 +3522,31 @@ QString LoteiBackend::resolveAgentPath(const QString &rel, bool mustExist) const
 
     if (cleaned == QLatin1String("~"))          { cleaned = QDir::homePath(); }
     else if (cleaned.startsWith(QLatin1String("~/"))) { cleaned.replace(0, 1, QDir::homePath()); }
+
+    // A bare well-known folder name, with or without a ~/ in front of it, lands
+    // where THIS user's copy of it actually is. Hardcoding "$HOME/Desktop" works
+    // on the machine it was written on and quietly creates a junk folder on a
+    // localised Linux install or on a machine where Desktop was relocated.
+    if (!QDir::isAbsolutePath(cleaned)) {
+        const QString head = cleaned.section(QLatin1Char('/'), 0, 0);
+        const QString wk = loteiWellKnownDir(head);
+        if (!wk.isEmpty()) {
+            const QString rest = cleaned.section(QLatin1Char('/'), 1);
+            cleaned = rest.isEmpty() ? wk : wk + QLatin1Char('/') + rest;
+        }
+    } else {
+        // Same for "$HOME/Desktop/x" when Desktop is somewhere else here.
+        const QString home = QDir::homePath();
+        if (cleaned.startsWith(home + QLatin1Char('/'))) {
+            const QString after = cleaned.mid(home.size() + 1);
+            const QString head = after.section(QLatin1Char('/'), 0, 0);
+            const QString wk = loteiWellKnownDir(head);
+            if (!wk.isEmpty() && wk != home + QLatin1Char('/') + head) {
+                const QString rest = after.section(QLatin1Char('/'), 1);
+                cleaned = rest.isEmpty() ? wk : wk + QLatin1Char('/') + rest;
+            }
+        }
+    }
 
     const QString joined = QDir::isAbsolutePath(cleaned)
                                ? QDir::cleanPath(cleaned)

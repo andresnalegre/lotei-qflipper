@@ -263,6 +263,14 @@ private:
     QString    m_deviceContext;  // latest diagnostics snapshot from QML
     int        m_toolRounds = 0;
     bool       m_turnNeedsTools = false;   // set per turn by the intent router
+    // Which machine the turn is about (0 both / 1 Flipper / 2 this computer).
+    // Decided when the message arrives, used later when the request is built --
+    // dispatchToOllama() no longer has the message in hand by then.
+    int        m_turnFocus = 0;
+    // A turn gets one forced retry: when the model answers a write request in
+    // prose instead of calling anything, it is asked again with a single tool.
+    bool       m_forcedRetry = false;
+    QString    forcedToolName() const;
     // Anti-hallucination bookkeeping (see finalizeStream) + "edit the same file":
     bool       m_turnWasFileAction = false;  // this user turn asked to save/create/write a file
     bool       m_turnRanAnyTool    = false;  // at least one tool actually executed this turn
@@ -282,7 +290,7 @@ private:
     bool        m_setupComplete = false;
     bool        m_ollamaOnline = false;
     QString     m_manualName;   // Flipper name from setup (fallback when no device)
-    bool        m_agentEnabled = false;  // host-workspace self-edit tools opt-in
+    bool        m_agentEnabled = true;   // computer tools; on unless explicitly turned off
     QString     m_agentRoot;             // absolute workspace folder LOTEI may edit
     // SD-card backup. Entries are copied one at a time so the device is never
     // asked for two transfers at once.

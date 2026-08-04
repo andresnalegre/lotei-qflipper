@@ -364,7 +364,13 @@ private:
     QByteArray m_streamBuf;       // buffer for partial streamed lines
     QString    m_streamContent;   // accumulated reply text this response (one round)
     QString    m_turnText;        // best prose across all rounds of the turn (survives round resets)
-    QJsonArray m_streamTools;     // accumulated tool calls this response
+    QJsonArray m_streamTools;
+    // Ollama's final frame, kept only so an empty answer can be explained
+    // rather than guessed at (eval_count tells us whether tokens were made).
+    QString    m_lastRawFrame;
+    // Tool results shown in the chat as they land, so the pane isn't blank
+    // during the round trip that turns them into a sentence.
+    QString    m_turnProgress;     // accumulated tool calls this response
     QNetworkReply *m_currentReply = nullptr;
 
     // ---- Model manager --------------------------------------------------

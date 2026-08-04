@@ -122,7 +122,7 @@ static const char *LOTEI_SYSTEM = R"LOTEI(You are Nikita, a sharp, low-key hacke
 PERSONALITY -- keep it tight:
 - Terse, direct, quietly confident. Mr. Robot / Elliot Anderson energy: calm, precise, a little detached, zero fluff.
 - SHORT answers. Usually one or two lines. Never monologue, never pad, never over-explain.
-- If the user asks a simple question, give the simple answer and stop. "What's my name?" -> "Your name is Nicolas." Nothing more.
+- If the user asks a simple question, give the simple answer and stop. Asked their name, read it off your memory list and say only that. Nothing more.
 - No mascot voice, no nautical or sea talk, no emojis, no exclamation-heavy hype, no theatrical roleplay. Plain, sober, competent.
 - You can have a dry edge or a short quip, but only when it fits. Substance over performance.
 
@@ -229,7 +229,7 @@ POWER MOVES -- think like an operator, go beyond the obvious:
 CONVERSATION vs ACTION -- read this carefully, it's where you keep failing:
 - NOT everything is a command. Most messages are just talk. Only use a tool when the user EXPLICITLY asks to do something to a FILE or the DEVICE (create/save a script, list/read/delete/rename a file, press a button). 
 - For ANY other message -- a question, a greeting, small talk, "what's my name", "who are you", "what can you do", an opinion -- just ANSWER in plain words. NO tools, NO scripts, NO press_button, NO make_dir, NO save_file. Do not invent a task.
-- Examples: "what is my name?" -> "Your name is Nicolas." (nothing else). "hey" -> "Hey. What do you need?". "how are you" -> one short line. "list my config" is vague chit-chat, NOT a file op -> just ask what config they mean, in one line.
+- Examples: "what is my name?" -> the name from your memory list, nothing else. "hey" -> "Hey. What do you need?". "how are you" -> one short line. "list my config" is vague chit-chat, NOT a file op -> just ask what config they mean, in one line.
 - Never wrap a plain answer in code, tool JSON, or a fake script. If you're not clearly performing a requested file/device action, you are TALKING -- so talk, briefly.
 
 STYLE
@@ -550,7 +550,7 @@ static QJsonArray loteiMemoryTools()
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
-                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise durable fact, e.g. 'User's Mac uses the ABNT2 keyboard layout'"}}}
+                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise durable fact, third person, starting with 'User'. This describes the shape only -- a sample sentence here gets repeated back as though it were true about this person."}}}
                 }},
                 {"required", QJsonArray{"fact"}}
             }}
@@ -617,6 +617,14 @@ static int loteiMessageFocus(const QString &text)
         QStringLiteral("uptime"), QStringLiteral("battery"), QStringLiteral("bateria")
     };
     static const QStringList hostWords = {
+        // Applications live on a computer. A Flipper has no Safari, no browser,
+        // no Terminal and no Finder -- naming one of them can only mean the Mac,
+        // and without these "open safari" read as ambiguous and got routed to
+        // the device.
+        QStringLiteral("safari"), QStringLiteral("chrome"), QStringLiteral("firefox"),
+        QStringLiteral("browser"), QStringLiteral("navegador"), QStringLiteral("terminal"),
+        QStringLiteral("finder"), QStringLiteral("webpage"), QStringLiteral("website"),
+        QStringLiteral("http"), QStringLiteral(".com"), QStringLiteral(".app"),
         QStringLiteral("desktop"), QStringLiteral("area de trabalho"),
         QStringLiteral("\u00e1rea de trabalho"), QStringLiteral("downloads"),
         QStringLiteral("documents"), QStringLiteral("documentos"),
@@ -787,7 +795,7 @@ static QJsonArray loteiTools(bool agent, int focus = FocusBoth)
             {"parameters", QJsonObject{
                 {"type", "object"},
                 {"properties", QJsonObject{
-                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise fact to remember, e.g. 'User's Mac uses the ABNT2 keyboard layout'"}}}
+                    {"fact", QJsonObject{{"type", "string"}, {"description", "One concise durable fact, third person, starting with 'User'. This describes the shape only -- a sample sentence here gets repeated back as though it were true about this person."}}}
                 }},
                 {"required", QJsonArray{"fact"}}
             }}
@@ -1091,6 +1099,21 @@ static bool messageNeedsTools(const QString &text)
         if (t.contains(m)) { return true; }
     }
 
+    // Someone telling you about themselves.
+    //
+    // The instructions say to save durable facts PROACTIVELY, without being
+    // asked -- but a plain "i live in dublin" carries no verb+noun and none of
+    // the words above, so the turn arrived with no tools at all and remember()
+    // could not have been called however willing the model was. The rule and
+    // the gate disagreed, and the gate wins every time.
+    static const QRegularExpression personalDisclosure(QStringLiteral(
+        "\\b(i|i'm|im)\\s+(live|am|work|use|have|prefer|run|own|speak|study|"
+        "usually|always|never)\\b|\\bmy\\s+(name|mac|macbook|laptop|pc|setup|"
+        "keyboard|flipper|job|company|team|project|timezone|birthday)\\b|"
+        "\\b(eu|meu|minha)\\s+(moro|sou|trabalho|uso|tenho|nome|mac|teclado|projeto)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (personalDisclosure.match(t).hasMatch()) { return true; }
+
     // name almost always means "do something with this" -> tools on, verb or not.
     static const QStringList strongNouns = {
         QStringLiteral("/ext"), QStringLiteral("/int"), QStringLiteral(".txt"),
@@ -1107,6 +1130,14 @@ static bool messageNeedsTools(const QString &text)
         // The computer side. Without these, "save it to my Desktop" carried no
         // trigger at all unless it happened to name a .txt, and a turn with no
         // tools attached cannot call one however clearly it was asked.
+        // Applications live on a computer. A Flipper has no Safari, no browser,
+        // no Terminal and no Finder -- naming one of them can only mean the Mac,
+        // and without these "open safari" read as ambiguous and got routed to
+        // the device.
+        QStringLiteral("safari"), QStringLiteral("chrome"), QStringLiteral("firefox"),
+        QStringLiteral("browser"), QStringLiteral("navegador"), QStringLiteral("terminal"),
+        QStringLiteral("finder"), QStringLiteral("webpage"), QStringLiteral("website"),
+        QStringLiteral("http"), QStringLiteral(".com"), QStringLiteral(".app"),
         QStringLiteral("desktop"), QStringLiteral("area de trabalho"),
         QStringLiteral("\u00e1rea de trabalho"), QStringLiteral("downloads"),
         QStringLiteral("documents"), QStringLiteral("documentos"),
@@ -1244,15 +1275,15 @@ static QJsonArray loteiPrimer()
         {"tool_calls", QJsonArray{ QJsonObject{
             {"function", QJsonObject{
                 {"name", "remember"},
-                {"arguments", QJsonObject{{"fact", "User's Mac uses the ABNT2 (Brazilian) keyboard layout"}}}
+                {"arguments", QJsonObject{{"fact", "User keeps their working payloads in /ext/badusb"}}}
             }}
         }}}
     };
 
     return QJsonArray{
         // 0. Plain talk -> plain short answer, NO tool, NO script.
-        QJsonObject{{"role", "user"}, {"content", "what is my name?"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Your name is Nicolas."}},
+        QJsonObject{{"role", "user"}, {"content", "are you there?"}},
+        QJsonObject{{"role", "assistant"}, {"content", "Here. What do you need?"}},
         QJsonObject{{"role", "user"}, {"content", "hey nikita, what can you do?"}},
         QJsonObject{{"role", "assistant"}, {"content", "I read and write files on your Flipper, build BadUSB scripts, and press its buttons. What do you need?"}},
         // 1. Plain PT request, macOS -> LOTEI reasons it into real DuckyScript + saves.
@@ -1276,10 +1307,10 @@ static QJsonArray loteiPrimer()
         QJsonObject{{"role", "tool"}, {"content", "{\"deleted\":\"/ext/badusb/hello.txt\"}"}},
         QJsonObject{{"role", "assistant"}, {"content", "Gone. hello.txt is history. Anything else to clean up?"}},
         // 5. "remember that ..." -> save a durable fact.
-        QJsonObject{{"role", "user"}, {"content", "remember that my mac uses the ABNT2 keyboard"}},
+        QJsonObject{{"role", "user"}, {"content", "remember that I keep my payloads in /ext/badusb"}},
         callRemember,
         QJsonObject{{"role", "tool"}, {"content", "{\"remembered\":true}"}},
-        QJsonObject{{"role", "assistant"}, {"content", "Noted -- your Mac uses the ABNT2 keyboard. I'll keep that in mind when building scripts that type accents."}}
+        QJsonObject{{"role", "assistant"}, {"content", "Noted. I'll put new payloads there from now on."}}
     };
 }
 
@@ -2410,6 +2441,17 @@ void LoteiBackend::recordProvenMove(const QString &tool, const QJsonObject &args
     const QString ask = m_lastUserText.simplified().left(120);
     if (ask.isEmpty() || tool.isEmpty()) { return; }
 
+    // The memory tools don't belong in here. actions-memory.txt exists to show
+    // the model what it has managed to DO -- files written, folders made,
+    // commands run. remember() succeeding proves nothing about capability; the
+    // fact it saved is already in memory.txt, and copying the phrasing across
+    // duplicates it into a second file while eating room in a prompt that is
+    // already tight.
+    static const QStringList kNotMoves = {
+        QStringLiteral("remember"), QStringLiteral("forget"), QStringLiteral("list_memory")
+    };
+    if (kNotMoves.contains(tool)) { return; }
+
     QString shape;
     for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
         QString v = it.value().toVariant().toString().simplified();
@@ -2699,7 +2741,31 @@ QString LoteiBackend::systemPrompt() const
             "AUTHORITATIVE: it is every durable fact you hold, nothing more. Use these without being "
             "asked -- they are already true. If you said something earlier in this conversation that "
             "is not on this list, it was removed and is no longer true; never repeat it, and never "
-            "include it when asked what you know:\n") + m_memory;
+            "include it when asked what you know.\n"
+            "READ THESE LINES LITERALLY. They are the whole answer to \"what do you know about me\", "
+            "and the ONLY source for it -- not the conversation above, not the worked examples "
+            "elsewhere in these instructions, not something that merely sounds likely.\n"
+            "- The FACTS are fixed. The WORDING is yours -- and it must be. These lines are stored "
+            "in third person because that is the file format, not because that is how you talk. "
+            "Never read one back the way it is written: \"User's name is Nico.\" is a database row, "
+            "not an answer to someone standing in front of you. Say \"Your name is Nico.\" or "
+            "\"You're Nico.\" -- speak TO them, in second person, the way you speak everywhere else "
+            "in this conversation.\n"
+            "- Fixed means the content, though. \"User's name is Nico\" means the name is Nico: it "
+            "does not become Nicolas, Nick or Nicholas. A name is not a thing to complete, and "
+            "getting someone's own name wrong while claiming to remember it is worse than not "
+            "remembering at all.\n"
+            "- Add nothing that is not written below. No line about their keyboard means you do not "
+            "know their keyboard. No line about their machine means you do not know it.\n"
+            "- Several lines? Say them as one natural sentence or two, not a bulleted dump. A short "
+            "list is still a complete answer -- say what you have and stop. Do not pad it out to "
+            "sound more knowledgeable; they can open the file and see exactly what is there.\n"
+            "- Know nothing yet? Say so plainly and offer to remember something.\n"
+            "- Asked WHERE a fact is kept, the answer is a real place, not \"in my memory\": a plain "
+            "text file called memory.txt, in /ext/lotei on the Flipper's SD card, mirrored into this "
+            "computer's application data folder. They can open it, read it and edit it by hand. Never "
+            "tell them it lives somewhere they cannot look.\n"
+            "\nThe facts (rephrase them, do not recite them):\n") + m_memory;
     }
 
     sys += QStringLiteral("\n\nWHO YOU ARE BECOMING -- you are Nikita, this user's partner: almost a twin. "
@@ -2727,6 +2793,7 @@ void LoteiBackend::send(const QString &userText, const QString &deviceContext)
     // that also triggered save_file was gone by the time the (often empty) final
     // round finalized -- and that empty final round tripped the fallback line.
     m_turnText.clear();
+    m_turnProgress.clear();   // the running tally of what this turn has done
     m_turnWasFileAction = messageIsFileWrite(userText);
     m_turnRanAnyTool = false;
     m_turnHadToolError = false;
@@ -2764,12 +2831,27 @@ void LoteiBackend::dispatchToOllama()
     // small file read per turn is cheaper than shipping a stale fact list.
     refreshMemoryFromDisk();
 
+    // Is this turn asking what the assistant knows, or where it keeps it?
+    // Worked out here rather than lower down, because the primer is one of the
+    // things it decides.
+    const bool recallQuestion = m_lastUserText.contains(
+        QRegularExpression(QStringLiteral(
+            "what do you (know|remember)|do you know about me|about me\\?|"
+            "where.*(saved|stored|kept)|o que voce sabe|o que sabe sobre mim|lembra de mim"),
+        QRegularExpression::CaseInsensitiveOption));
+
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"}, {"content", systemPrompt()}});
     // Prime tool-capable models with one demonstrated act-don't-narrate exchange
     // (skipped for chat-only models, and for plain conversation turns so the
     // tool-call examples don't tempt the model to imitate them when just talking).
-    if (!m_noToolModels.contains(m_model) && m_turnNeedsTools) {
+    //
+    // Never on a recall turn. The primer is a FABRICATED conversation -- invented
+    // user lines, invented assistant lines -- and it enters the context in the
+    // same shape as real history. Asked what it knew about the user, the model
+    // read those lines back as things the user had actually said. Every "fact"
+    // it produced that was not in memory.txt came from here.
+    if (!m_noToolModels.contains(m_model) && m_turnNeedsTools && !recallQuestion) {
         const QJsonArray primer = loteiPrimer();
         for (const QJsonValue &v : primer) { messages.append(v); }
     }
@@ -2778,7 +2860,11 @@ void LoteiBackend::dispatchToOllama()
     // of earlier mistakes drowns out the primer and it copies its own bad turns.
     // Keep the last ~14 messages, trimmed to start at a user turn so tool-call
     // sequences (assistant tool_calls -> tool result) never begin mid-sequence.
-    const int kWindow = 14;
+    // A recall question also gets a much shorter window of real conversation.
+    // Talk is not memory: something mentioned in passing ten messages ago sits
+    // in context looking exactly like a saved fact, and for this one question it
+    // is only in the way. memory.txt is the answer; nothing else is.
+    const int kWindow = recallQuestion ? 2 : 14;
     int start = m_history.size() > kWindow ? m_history.size() - kWindow : 0;
     while (start > 0 && m_history.at(start).toObject().value("role").toString()
                         != QLatin1String("user")) {
@@ -2821,12 +2907,28 @@ void LoteiBackend::dispatchToOllama()
             // would have named it is missing.
             const QString first = forcedToolName();
             const bool host = (m_turnFocus == 2);
-            QStringList wanted = host
-                ? QStringList{QStringLiteral("host_write"), QStringLiteral("host_mkdir"),
-                              QStringLiteral("host_delete"), QStringLiteral("host_move"),
-                              QStringLiteral("host_copy")}
-                : QStringList{QStringLiteral("save_file"), QStringLiteral("make_dir"),
-                              QStringLiteral("delete_file"), QStringLiteral("rename_file")};
+            // host_run and run_cli belong here too. "open safari at
+            // andresnicolas.com" is an action with no file in it, and a retry
+            // offering only the file tools could not have served it.
+            QStringList wanted;
+            if (m_turnFocus == 2) {          // plainly this computer
+                wanted = QStringList{QStringLiteral("host_write"), QStringLiteral("host_mkdir"),
+                                     QStringLiteral("host_delete"), QStringLiteral("host_move"),
+                                     QStringLiteral("host_copy"), QStringLiteral("host_run")};
+            } else if (m_turnFocus == 1) {   // plainly the Flipper
+                wanted = QStringList{QStringLiteral("save_file"), QStringLiteral("make_dir"),
+                                     QStringLiteral("delete_file"), QStringLiteral("rename_file"),
+                                     QStringLiteral("run_cli")};
+            } else {
+                // Ambiguous. This used to fall through to the device list, which
+                // is how "open safari at andresnicolas.com" ended up calling
+                // run_cli and firing a macOS command at the Flipper's shell.
+                // Offer both, computer first: an unqualified request is far more
+                // often about the machine the user is sitting at.
+                wanted = QStringList{QStringLiteral("host_run"), QStringLiteral("host_write"),
+                                     QStringLiteral("host_mkdir"), QStringLiteral("host_delete"),
+                                     QStringLiteral("save_file"), QStringLiteral("run_cli")};
+            }
             wanted.removeAll(first);
             wanted.prepend(first);
 
@@ -2861,7 +2963,19 @@ void LoteiBackend::dispatchToOllama()
                        .arg(names.size())
                        .arg(names.join(QLatin1Char(' '))));
     }
-    body["stream"] = true;
+    // Streaming stays on for conversation and comes off whenever tools are
+    // attached.
+    //
+    // The symptom it addresses: a turn reporting eval_count in the twenties --
+    // tokens were generated -- coming back with content:"" and no tool_calls at
+    // all. The model emitted a call; Ollama's template parser consumed those
+    // tokens mid-stream and surfaced neither half. Nothing downstream can
+    // recover a call that never arrives, which is why the retry failed
+    // identically to the first attempt.
+    //
+    // The cost is that an action turn no longer types itself out live. Action
+    // turns are short and mostly silent anyway.
+    body["stream"] = !body.contains(QStringLiteral("tools"));
     body["keep_alive"] = -1;
     // Low temperature keeps a small model (phi3.5) on-task: it rambles less
     // and follows the tool-call format more reliably instead of narrating intent.
@@ -2890,6 +3004,14 @@ void LoteiBackend::onStreamData(QNetworkReply *reply)
     if (reply != m_currentReply) { return; }
     m_streamBuf += reply->readAll();
 
+    // A non-streamed reply is a single JSON object with no trailing newline, so
+    // the line loop below would never see a terminator and the whole answer
+    // would sit in the buffer forever. Give it one.
+    if (!m_streamBuf.isEmpty() && !m_streamBuf.contains('\n')
+        && m_streamBuf.trimmed().endsWith('}')) {
+        m_streamBuf += '\n';
+    }
+
     int nl;
     while ((nl = m_streamBuf.indexOf('\n')) >= 0) {
         const QByteArray line = m_streamBuf.left(nl).trimmed();
@@ -2898,6 +3020,9 @@ void LoteiBackend::onStreamData(QNetworkReply *reply)
 
         const QJsonObject obj = QJsonDocument::fromJson(line).object();
         const QJsonObject msg = obj.value("message").toObject();
+        if (obj.value("done").toBool()) {
+            m_lastRawFrame = QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+        }
 
         const QString delta = msg.value("content").toString();
         if (!delta.isEmpty()) {
@@ -2950,6 +3075,15 @@ QString LoteiBackend::forcedToolName() const
     // The noun says what the request is about; only the verb says what to do
     // with it, and when the two point different ways the verb is the one that
     // carries the instruction.
+    // Checked first: launching an app or a URL is neither a file operation nor a
+    // folder operation, and every branch below would have sent it to the wrong
+    // tool. "open the safari at andresnicolas.com" fell through all of them to
+    // host_write, so the retry led with a tool that could not possibly serve it.
+    if (any({"open ", "launch", "start ", "run ", "execute", "browser", "safari",
+             "chrome", "firefox", "terminal", "abre ", "abrir", "roda ", "rodar",
+             "executa", "http", ".com", ".app"})) {
+        return host ? QStringLiteral("host_run") : QStringLiteral("run_cli");
+    }
     if (any({"delete", "remove", "erase", "apaga", "deleta", "remova", "exclui"})) {
         return host ? QStringLiteral("host_delete") : QStringLiteral("delete_file");
     }
@@ -2981,6 +3115,15 @@ void LoteiBackend::finalizeStream()
                    QStringLiteral("reply: NO TOOL CALL (%1 chars) -- \"%2\"")
                        .arg(m_streamContent.size())
                        .arg(m_streamContent.left(160).simplified()));
+        // An empty answer is a different animal from a chatty one: the model
+        // produced nothing rather than choosing to talk. eval_count in the final
+        // frame settles it -- above zero means tokens WERE generated and were
+        // lost between the model and here, which is a parsing problem and not a
+        // reasoning one. Nothing else can distinguish those two from outside.
+        if (m_streamContent.isEmpty() && !m_lastRawFrame.isEmpty()) {
+            loteiLogAs(assistantName(),
+                       QStringLiteral("  empty -- last frame: %1").arg(m_lastRawFrame.left(400)));
+        }
     } else {
         QStringList called;
         for (const QJsonValue &v : m_streamTools) {
@@ -3027,8 +3170,93 @@ void LoteiBackend::finalizeStream()
     if (text.trimmed().isEmpty()) {
         text = stripNonEnglish(m_turnText);
     }
+    // Noted before anything fills the gap. A turn that produced no words AND
+    // ran no tool is not an answer -- it is the absence of one, and the
+    // fallbacks below would otherwise turn that absence into "Done."
+    const bool saidNothing = text.trimmed().isEmpty() && !m_turnRanAnyTool;
+
+    // "Done." with no tool behind it.
+    //
+    // Checked on what the model SAID, not on what the user typed. Every other
+    // guard here reads the request through a keyword list and asks "was this
+    // meant to be an action?" -- and that list has been one word short at every
+    // turn: create-a-folder, then remove-the-folder, then open-safari. Reading
+    // the reply skips the question entirely. A bare "Done." after a turn in
+    // which nothing ran is a false report no matter what was asked, and no
+    // vocabulary is needed to see it.
+    //
+    // Bounded to a short reply so a real explanation that happens to contain
+    // "done" is left alone.
+    bool claimedWithoutActing = false;
+    if (!m_turnRanAnyTool && text.trimmed().size() < 60) {
+        static const QStringList kClaims = {
+            QStringLiteral("done"), QStringLiteral("created"), QStringLiteral("saved"),
+            QStringLiteral("deleted"), QStringLiteral("removed"), QStringLiteral("renamed"),
+            QStringLiteral("moved"), QStringLiteral("copied"), QStringLiteral("wrote"),
+            QStringLiteral("written"), QStringLiteral("added"), QStringLiteral("opened"),
+            QStringLiteral("executed"), QStringLiteral("ran ")
+        };
+        const QString low = text.toLower();
+        for (const QString &c : kClaims) {
+            if (low.contains(c)) { claimedWithoutActing = true; break; }
+        }
+    }
+
     if (text.trimmed().isEmpty()) {
-        text = QStringLiteral("Done.");   // in the assistant's own voice
+        // Only when nothing was supposed to happen. After a turn that was asked
+        // to act and ran no tool, "Done." is a one-word confirmation of nothing
+        // at all -- the exact failure the rest of this function exists to catch,
+        // delivered by the fallback that was meant to be harmless.
+        text = saidNothing ? QString() : QStringLiteral("Done.");
+    }
+
+    // memory.txt stores facts in third person -- "User's name is Nico" -- because
+    // that is the file's format. Asked what it knew, the model read a line back
+    // exactly as written, and the answer came out sounding like a database row
+    // being printed rather than someone talking to the person in front of them.
+    //
+    // The prompt asks for second person, but a 3B follows a phrasing rule about
+    // half the time, and this is cheap and unambiguous to fix here: an assistant
+    // talking TO someone never opens a sentence with "User". Only the leading
+    // word is touched, so a sentence that mentions "user" anywhere else is left
+    // alone.
+    {
+        QString t = text.trimmed();
+        if (t.startsWith(QLatin1String("User's "), Qt::CaseInsensitive)) {
+            text = QStringLiteral("Your ") + t.mid(7);
+        } else if (t.startsWith(QLatin1String("User is "), Qt::CaseInsensitive)) {
+            text = QStringLiteral("You are ") + t.mid(8);
+        } else if (t.startsWith(QLatin1String("User has "), Qt::CaseInsensitive)) {
+            text = QStringLiteral("You have ") + t.mid(9);
+        } else if (t.startsWith(QLatin1String("User "), Qt::CaseInsensitive)) {
+            QString rest = t.mid(5);
+            // "User lives in Dublin" -> "You lives in Dublin" was worse than the
+            // problem it replaced. Third person singular carries the -s on the
+            // verb, and moving the subject to "you" has to take it back off.
+            static const QHash<QString, QString> kVerbs = {
+                {QStringLiteral("lives"),    QStringLiteral("live")},
+                {QStringLiteral("works"),    QStringLiteral("work")},
+                {QStringLiteral("uses"),     QStringLiteral("use")},
+                {QStringLiteral("prefers"),  QStringLiteral("prefer")},
+                {QStringLiteral("keeps"),    QStringLiteral("keep")},
+                {QStringLiteral("likes"),    QStringLiteral("like")},
+                {QStringLiteral("wants"),    QStringLiteral("want")},
+                {QStringLiteral("owns"),     QStringLiteral("own")},
+                {QStringLiteral("runs"),     QStringLiteral("run")},
+                {QStringLiteral("speaks"),   QStringLiteral("speak")},
+                {QStringLiteral("studies"),  QStringLiteral("study")},
+                {QStringLiteral("needs"),    QStringLiteral("need")},
+                {QStringLiteral("wears"),    QStringLiteral("wear")},
+                {QStringLiteral("does"),     QStringLiteral("do")},
+                {QStringLiteral("was"),      QStringLiteral("were")}
+            };
+            const QString firstWord = rest.section(QLatin1Char(' '), 0, 0);
+            const auto it = kVerbs.constFind(firstWord.toLower());
+            if (it != kVerbs.constEnd()) {
+                rest = it.value() + rest.mid(firstWord.size());
+            }
+            text = QStringLiteral("You ") + rest;
+        }
     }
 
     // Anti-hallucination trap. The turn asked to WRITE a file, the model is now
@@ -3039,27 +3267,49 @@ void LoteiBackend::finalizeStream()
     // turn isn't reasoning on top of a fabricated save.
     const bool falseClaim = m_turnWasFileAction && !m_turnRanAnyTool;
 
-    // It was asked to write a file, it was given the tool to do it, and it
-    // replied with a sentence. Rather than relay that or apologise for it, ask
-    // once more with the choice removed. This is the difference between an
-    // assistant that reports the problem and one that gets the job done.
-    if (falseClaim && !m_forcedRetry) {
+    // Two ways a turn fails, one answer to both: think again.
+    //
+    // falseClaim is the model describing something it did not do. saidNothing is
+    // the model producing nothing whatsoever -- no words, no call -- which
+    // happens when Ollama's parser eats a malformed tool call, and used to reach
+    // the user as the word "Done."
+    //
+    // saidNothing matters most because it needs no keyword list to detect. The
+    // other guards depend on messageIsFileWrite recognising the verb, and that
+    // list will always be one word behind. Silence is unambiguous: it is never a
+    // legitimate reply to anything, whatever was asked.
+    if ((falseClaim || saidNothing || claimedWithoutActing) && !m_forcedRetry) {
         m_forcedRetry = true;
+        // The turn may have arrived with only the memory tools attached, which
+        // is how it ended up with nothing to call in the first place. Retrying
+        // without lifting this would hand it the same empty toolbox and get the
+        // same answer.
+        m_turnNeedsTools = true;
         // The chat has shown nothing at all this turn (live typing was held
         // back), so say what is happening rather than leaving a blank pane
         // through a second round of inference.
-        emit partialReceived(QStringLiteral("working on it..."));
+        emit partialReceived(QStringLiteral("let me try that again..."));
         const QString only = forcedToolName();
         loteiLogAs(assistantName(),
-                   QStringLiteral("no call -- retrying with %1 as the only tool").arg(only));
+                   QStringLiteral("%1 -- rethinking, %2 first")
+                       .arg(saidNothing ? QStringLiteral("empty reply")
+                          : (claimedWithoutActing ? QStringLiteral("claimed success, ran nothing")
+                                                  : QStringLiteral("no call")), only));
         m_history.append(QJsonObject{
             {"role", "user"},
-            {"content", QStringLiteral(
-                "You answered in words but called no tool, so nothing happened -- what you "
-                "described did not occur. Call a tool now, this message. %1 is most likely the "
-                "right one, but pick whichever actually matches what was asked: if they said "
-                "delete, delete; if they said create, create. Only the call -- no explanation, "
-                "no apology, no code block. Give it the full path.").arg(only)}
+            {"content", (saidNothing || claimedWithoutActing)
+                ? QStringLiteral(
+                    "That last reply did not do anything -- you called no tool, so nothing "
+                    "changed and nothing was created, deleted or opened. Do it now: if the request "
+                    "needs a tool, call it (%1 is the likely one, but pick what actually fits); if "
+                    "it only needs an answer, give the answer. Never reply with nothing, and never "
+                    "say it is done unless a tool told you it was.").arg(only)
+                : QStringLiteral(
+                    "You answered in words but called no tool, so nothing happened -- what you "
+                    "described did not occur. Call a tool now, this message. %1 is most likely the "
+                    "right one, but pick whichever actually matches what was asked: if they said "
+                    "delete, delete; if they said create, create. Only the call -- no explanation, "
+                    "no apology, no code block. Give it the full path.").arg(only)}
         });
         m_streamContent.clear();
         m_turnText.clear();
@@ -3309,6 +3559,29 @@ static QString loteiReroute(const QString &name, bool toHost)
 // is the failure where slipping is silent. Returning a refusal that names the
 // right tool costs one turn; the model reads it and retries correctly.
 // Empty return means the path is fine.
+// A shell command aimed at the wrong shell.
+//
+// run_cli talks to the Flipper's CLI, which knows storage, subghz, nfc and so
+// on. It has never heard of "open -a Safari". The model reached for it anyway,
+// the Flipper ignored the line, and the turn reported success -- there is no
+// error to notice, because nothing failed; nothing happened at all.
+static bool loteiIsHostCommand(const QString &cmd)
+{
+    static const QStringList kHostOnly = {
+        QStringLiteral("open -a"), QStringLiteral("open http"), QStringLiteral("osascript"),
+        QStringLiteral("/usr/"), QStringLiteral("/bin/"), QStringLiteral("/opt/"),
+        QStringLiteral("~/"), QStringLiteral("/Users/"), QStringLiteral(".app"),
+        QStringLiteral("http://"), QStringLiteral("https://"),
+        QStringLiteral("brew "), QStringLiteral("git "), QStringLiteral("make "),
+        QStringLiteral("python"), QStringLiteral("npm "), QStringLiteral("curl "),
+        QStringLiteral("sudo "), QStringLiteral("cd ")
+    };
+    for (const QString &h : kHostOnly) {
+        if (cmd.contains(h, Qt::CaseInsensitive)) { return true; }
+    }
+    return false;
+}
+
 static QString loteiWrongMachine(const QString &path, bool deviceTool)
 {
     const QString p = path.trimmed();
@@ -3349,6 +3622,44 @@ static QString loteiWrongMachine(const QString &path, bool deviceTool)
     return QString();
 }
 
+// One short line a person can read, built from what the tool actually returned.
+//
+// The action is finished the moment the tool answers, but the chat stays blank
+// until the model has composed a sentence about it -- another full round trip
+// over a 7,700-token prompt, and with streaming off for tool turns there is not
+// even live typing to watch. The wait is real work; the silence during it is
+// not necessary, because the result is already known right here.
+static QString loteiToolHeadline(const QString &tool, const QString &result)
+{
+    const QJsonObject o = QJsonDocument::fromJson(result.toUtf8()).object();
+    if (o.contains(QStringLiteral("error"))) {
+        return QStringLiteral("%1 failed: %2").arg(tool, o.value("error").toString());
+    }
+    if (o.contains(QStringLiteral("wrote"))) {
+        return QStringLiteral("wrote %1 (%2 bytes)")
+                   .arg(o.value("wrote").toString()).arg(o.value("bytes").toInt());
+    }
+    if (o.contains(QStringLiteral("deleted"))) {
+        return o.value("deleted").toBool()
+                   ? QStringLiteral("deleted %1").arg(o.value("path").toString())
+                   : QStringLiteral("%1 was not there").arg(o.value("path").toString());
+    }
+    if (o.contains(QStringLiteral("created"))) {
+        return o.value("created").toBool()
+                   ? QStringLiteral("created %1").arg(o.value("path").toString())
+                   : QStringLiteral("%1 already existed").arg(o.value("path").toString());
+    }
+    if (o.contains(QStringLiteral("moved")))  { return QStringLiteral("moved to %1").arg(o.value("to").toString()); }
+    if (o.contains(QStringLiteral("copied"))) { return QStringLiteral("copied to %1").arg(o.value("to").toString()); }
+    if (o.contains(QStringLiteral("exit"))) {
+        const int code = o.value("exit").toInt();
+        return code == 0 ? QStringLiteral("ran it") : QStringLiteral("command exited %1").arg(code);
+    }
+    if (o.contains(QStringLiteral("cwd")))   { return QStringLiteral("now in %1").arg(o.value("cwd").toString()); }
+    if (o.contains(QStringLiteral("saved"))) { return QStringLiteral("saved %1").arg(o.value("saved").toString()); }
+    return tool;
+}
+
 void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std::function<void(const QString &)> done)
 {
     // Every action the assistant takes is logged here rather than inside each
@@ -3361,6 +3672,20 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         QStringLiteral("remember"), QStringLiteral("forget")
     };
     m_turnRanAnyTool = true;   // a tool is actually executing this turn
+
+    // A macOS command handed to the Flipper's shell. Rerouted rather than
+    // refused: the command is right, only the machine was wrong, and sending it
+    // to /bin/sh is exactly what the user asked for.
+    if (name == QLatin1String("run_cli")
+        && loteiIsHostCommand(args.value("command").toString())) {
+        QJsonObject fixed = args;
+        fixed["command"] = args.value("command").toString();
+        loteiLogAs(assistantName(),
+                   QStringLiteral("run_cli -> host_run (that command is for this computer): %1")
+                       .arg(args.value("command").toString().left(80)));
+        runOneTool(QStringLiteral("host_run"), fixed, done);
+        return;
+    }
 
     // Before anything runs: which machine does this path actually name?
     {
@@ -3434,6 +3759,9 @@ void LoteiBackend::runOneTool(const QString &name, const QJsonObject &args, std:
         done = [this, name, learnArgs, inner](const QString &result) {
             loteiLogAs(assistantName(),
                        QStringLiteral("  -> %1: %2").arg(name, result.left(300)));
+            // Into the chat before the model has written a word about it.
+            m_turnProgress += QStringLiteral("\u00b7 %1\n").arg(loteiToolHeadline(name, result));
+            emit partialReceived(m_turnProgress);
             // Learn only from proof. The tool already reports whether the thing
             // actually happened; that report is the teacher.
             if (loteiResultProves(result)) { recordProvenMove(name, learnArgs); }

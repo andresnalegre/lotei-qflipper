@@ -135,7 +135,7 @@ Rectangle {
     }
     Shortcut {
         sequences: [StandardKey.SelectAll]
-        enabled: root.visible && !input.activeFocus && !Cli.open
+        enabled: root.visible && !Cli.open
         onActivated: root.selectAllMessages()
     }
 
@@ -1163,6 +1163,31 @@ Rectangle {
                                 color: "#39ff14"
                                 font.family: "Share Tech Mono"; font.pixelSize: 10
                             }
+                            Rectangle {
+                                visible: model.installed && !model.active
+                                Layout.preferredWidth: equipLabel.implicitWidth + 14
+                                Layout.preferredHeight: 16
+                                radius: 3
+                                color: equipMouse.containsMouse ? Theme.color.lightorange2 : "transparent"
+                                border.width: 1
+                                border.color: Theme.color.lightorange2
+                                Text {
+                                    id: equipLabel
+                                    anchors.centerIn: parent
+                                    text: "EQUIP"
+                                    color: equipMouse.containsMouse ? "#0b0410" : Theme.color.lightorange2
+                                    font.family: "Share Tech Mono"; font.pixelSize: 10; font.bold: true
+                                }
+                                MouseArea {
+                                    id: equipMouse
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: Nikita.modelOpKind === ""
+                                    onClicked: Nikita.setModel(model.tag)
+                                }
+                            }
                         }
 
                         Text {
@@ -1312,31 +1337,6 @@ Rectangle {
                                     cursorShape: Qt.PointingHandCursor
                                     enabled: Nikita.modelOpKind === ""
                                     onClicked: Nikita.installModel(model.tag)
-                                }
-                            }
-                            Rectangle {
-                                visible: model.installed && !model.active
-                                Layout.preferredWidth: equipLabel.implicitWidth + 14
-                                Layout.preferredHeight: 18
-                                radius: 3
-                                color: equipMouse.containsMouse ? Theme.color.lightorange2 : "transparent"
-                                border.width: 1
-                                border.color: Theme.color.lightorange2
-                                Text {
-                                    id: equipLabel
-                                    anchors.centerIn: parent
-                                    text: "EQUIP"
-                                    color: equipMouse.containsMouse ? "#0b0410" : Theme.color.lightorange2
-                                    font.family: "Share Tech Mono"; font.pixelSize: 10; font.bold: true
-                                }
-                                MouseArea {
-                                    id: equipMouse
-                                    anchors.fill: parent
-                                    anchors.margins: -4
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    enabled: Nikita.modelOpKind === ""
-                                    onClicked: Nikita.setModel(model.tag)
                                 }
                             }
                             Text {

@@ -90,12 +90,12 @@ struct NikitaCatalogEntry {
     const char *blurb;
 };
 static const NikitaCatalogEntry NIKITA_CATALOG[] = {
-    { "qwen2.5:3b",  "Qwen 2.5 3B",     "1.9 GB", "Lighter and faster -- runs on a weaker GPU, or on CPU alone." },
-    { "qwen2.5:7b",  "Qwen 2.5 7B",     "4.7 GB", "Reliable tool-calling, good balance of speed and quality." },
-    { "llama3.1:8b", "Llama 3.1 8B",    "4.7 GB", "Strong general-purpose alternative, solid tool support." },
-    { "mistral:7b",  "Mistral 7B",      "4.1 GB", "Fast, capable, tool-calling supported." },
-    { "phi3.5",      "Phi-3.5 Mini",    "2.2 GB", "Small and quick. Weaker at following the tool-call format than the others." },
-    { "gemma2:9b",   "Gemma 2 9B",      "5.4 GB", "Chat-only in NIKITA: Ollama does not support tool-calling for this model." },
+    { "qwen2.5:3b",  "Qwen 2.5 3B",     "1.9 GB", "Fast and lightweight. Great for low performance computers." },
+    { "qwen2.5:7b",  "Qwen 2.5 7B",     "4.7 GB", "Better quality and tool calling. Needs more resources." },
+    { "llama3.1:8b", "Llama 3.1 8B",    "4.7 GB", "Strong general purpose model. Needs more resources." },
+    { "mistral:7b",  "Mistral 7B",      "4.1 GB", "Fast and capable. Supports tool calling." },
+    { "phi3.5:latest",      "Phi-3.5 Mini",    "2.2 GB", "Small and fast, but less reliable at tool calling." },
+    { "gemma2:9b",   "Gemma 2 9B",      "5.4 GB", "Good for chat. No tool calling support in NIKITA." },
 };
 static const int NIKITA_CATALOG_COUNT = int(sizeof(NIKITA_CATALOG) / sizeof(NIKITA_CATALOG[0]));
 
@@ -5198,25 +5198,25 @@ FirmwareStore::FirmwareStore(QObject *parent)
     m_sources = {
         { QStringLiteral("Official"),    Kind::DirJson,
           QStringLiteral("https://update.flipperzero.one/firmware/directory.json"),
-          QStringLiteral("Stock Flipper Devices firmware."),      {},  rel, {}, {}, {}, {}, {} },
+          QStringLiteral("The original Flipper Devices firmware."),      {},  rel, {}, {}, {}, {}, {} },
         { QStringLiteral("Momentum"),    Kind::DirJson,
           QStringLiteral("https://up.momentum-fw.dev/firmware/directory.json"),
-          QStringLiteral("Feature-rich community firmware."),     {},  rel, {}, {}, {}, {}, {} },
+          QStringLiteral("A feature rich community firmware."),     {},  rel, {}, {}, {}, {}, {} },
         { QStringLiteral("Unleashed"),   Kind::GitHub,
           QStringLiteral("DarkFlippers/unleashed-firmware"),
-          QStringLiteral("Popular unlocked community firmware."), git, rel, {}, {}, {}, {}, {} },
+          QStringLiteral("A popular community firmware with expanded features."), git, rel, {}, {}, {}, {}, {} },
         { QStringLiteral("RogueMaster"), Kind::GitHub,
           QStringLiteral("RogueMaster/flipperzero-firmware-wPlugins"),
-          QStringLiteral("Everything, plus the kitchen sink."),   git, rel, {}, {}, {}, {}, {} },
+          QStringLiteral("A feature packed community firmware."),   git, rel, {}, {}, {}, {}, {} },
         // ARF ships only dev-tagged releases, so give it a single "dev" channel.
         { QStringLiteral("ARF"),         Kind::GitHub,
           QStringLiteral("D4C1-Labs/Flipper-ARF"),
-          QStringLiteral("Automotive research: car keyfobs / Sub-GHz. Niche."),
+          QStringLiteral("A firmware for automotive and Sub GHz research."),
           { QStringLiteral("dev") }, QStringLiteral("dev"), {}, {}, {}, {}, {} },
         // Xero publishes versioned releases (flipper-z-f7-update-local.tgz).
         { QStringLiteral("Xero"),        Kind::GitHub,
           QStringLiteral("noproto/xero-firmware"),
-          QStringLiteral("Lean official-based community firmware."),
+          QStringLiteral("A lightweight firmware based on the official one."),
           { QStringLiteral("release") }, QStringLiteral("release"), {}, {}, {}, {}, {} },
     };
 

@@ -163,7 +163,7 @@ Item {
 
         TextLabel {
             id: versionLabel
-            visible: false
+            visible: true
 
             anchors.top: parent.top
             anchors.right: parent.right

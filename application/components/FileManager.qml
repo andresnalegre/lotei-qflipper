@@ -15,12 +15,12 @@ Item {
     property MessageDialog messageDialog
     property ConfirmationDialog confirmationDialog
 
-    // ---- multi-selection model (drag-band, Cmd+click, Cmd+A) ----
+    // ---- multi selection (drag band, Cmd+click, Cmd+A) ----
     property var selectedList: []                       // selected row indices
     function isSelected(i) { return selectedList.indexOf(i) >= 0 }
     // Clearing the selection has to drop the current item too. The delegate
-    // paints at full opacity for EITHER multiSelected OR isCurrent, so emptying
-    // selectedList on its own left the last-clicked file looking selected even
+    // paints at full opacity for either multiSelected or isCurrent, so emptying
+    // selectedList on its own left the last clicked file looking selected even
     // though nothing was.
     function clearSel() { selectedList = []; fileView.currentIndex = -1 }
     function selectOnly(i) { selectedList = [i] }
@@ -32,7 +32,6 @@ Item {
     }
     function selectAll() {
         var a = [];
-        var count = Backend.fileManager.rowCount ? Backend.fileManager.rowCount() : fileView.count;
         for(var i = 0; i < fileView.count; ++i) { a.push(i); }
         selectedList = a;
     }
@@ -198,13 +197,15 @@ Item {
 
                 boundsBehavior: Flickable.StopAtBounds
 
-                // Selection overlay: sits above the delegates, owns click/drag/dbl-click.
+                // Selection overlay: sits above the delegates and owns click,
+                // drag and double click. Right clicks on an item are passed
+                // through so the delegate can open its own menu.
                 MouseArea {
                     id: bandArea
                     z: 100
                     anchors.fill: parent
                     hoverEnabled: false
-                    preventStealing: true   // keep the drag from the Flickable so band works (wheel still scrolls)
+                    preventStealing: true   // keep the drag from the Flickable so the band works (wheel still scrolls)
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.BackButton | Qt.ForwardButton
 
                     property real startX: 0
@@ -219,7 +220,7 @@ Item {
                         if(idx < 0) { return -1; }
                         // indexAt answers for the whole cell. Once the grid is
                         // full there is no truly empty space left to click, so
-                        // the padding around an icon has to count as empty --
+                        // the padding around an icon has to count as empty,
                         // otherwise the selection can never be cleared.
                         var item = fileView.itemAtIndex(idx);
                         if(item && item.hitsContent) {
@@ -235,13 +236,13 @@ Item {
 
                         if(mouse.button === Qt.RightButton) {
                             if(idx >= 0) { mouse.accepted = false; return; }   // let the delegate open its menu
-                            return;                                            // empty right-click -> handled onClicked
+                            return;                                            // empty right click, handled onClicked
                         }
                         if(mouse.button !== Qt.LeftButton) { return; }
 
-                        // Just record the start. A rubber-band only begins once the
-                        // mouse actually moves (below), so you can start a drag on top
-                        // of ANY item -- folders included -- not only on empty space.
+                        // Just record the start. A rubber band only begins once the
+                        // mouse actually moves (below), so a drag can start on top
+                        // of any item, folders included, not only on empty space.
                         bandArea.startX = mouse.x; bandArea.startY = mouse.y;
                         bandArea.didBand = false;
                         bandArea.banding = false;
@@ -258,7 +259,7 @@ Item {
                                 bandArea.didBand = true;
                                 if(!(mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { control.clearSel(); }
                             } else {
-                                return;   // not enough movement yet -> still a click
+                                return;   // not enough movement yet, still a click
                             }
                         }
 
@@ -283,7 +284,7 @@ Item {
                             return;
                         }
                         if(mouse.button !== Qt.LeftButton) { return; }
-                        if(bandArea.didBand) { return; }   // a drag just happened; keep that selection
+                        if(bandArea.didBand) { return; }   // a drag just happened, keep that selection
 
                         if(idx < 0) {
                             control.clearSel();            // click on empty space clears selection
@@ -300,19 +301,20 @@ Item {
                         if(mouse.button !== Qt.LeftButton) { return; }
                         var idx = idxAt(mouse.x, mouse.y);
                         if(idx < 0) { return; }
-                        var name = Backend.fileManager.fileNameAt(idx);
-                        if(name.length === 0) { return; }
                         if(Backend.fileManager.isDirectoryAt(idx)) {
-                            Backend.fileManager.cd(name);
+                            var name = Backend.fileManager.fileNameAt(idx);
+                            if(name.length > 0) { Backend.fileManager.cd(name); }
                         } else {
-                            var base = Backend.fileManager.currentPath;
-                            var full = (base.charAt(base.length - 1) === "/") ? (base + name) : (base + "/" + name);
-                            Lotei.openFileForEdit(full);
+                            // The model already knows the absolute path, so it
+                            // is read from there rather than rebuilt from the
+                            // current path and the name.
+                            var full = Backend.fileManager.filePathAt(idx);
+                            if(full.length > 0) { Nikita.openFileForEdit(full); }
                         }
                     }
                 }
 
-                // rubber-band selection rectangle (viewport coords)
+                // rubber band selection rectangle (viewport coords)
                 Rectangle {
                     id: band
                     z: 99
@@ -403,11 +405,7 @@ Item {
         id: newFileAction
         text: qsTr("New File")
         icon.source: "qrc:/assets/gfx/symbolic/filemgr/action-new.svg"
-        onTriggered: {
-            newFileField.text = "";
-            newFilePanel.visible = true;
-            newFileField.forceActiveFocus();
-        }
+        onTriggered: newFilePanel.show();
     }
 
     Action {
@@ -467,7 +465,13 @@ Item {
             return;
 
         case Qt.Key_Escape:
-            control.clearSel();
+            // The panel takes Escape first, so it can be dismissed without
+            // reaching for the mouse.
+            if(newFilePanel.visible) {
+                newFilePanel.hide();
+            } else {
+                control.clearSel();
+            }
             event.accepted = true;
             return;
 
@@ -531,26 +535,42 @@ Item {
         border.width: 1
         border.color: Theme.color.mediumorange2
 
+        // Set while a create is in flight, so the refresh below only fires for
+        // the file this panel just wrote and not for every save in the app.
+        property string awaitingPath: ""
+
+        function show() {
+            newFileField.text = "";
+            visible = true;
+            newFileField.forceActiveFocus();
+        }
+        function hide() {
+            visible = false;
+            fileView.forceActiveFocus();
+        }
         function createFile() {
             var name = newFileField.text.trim();
             if(name.length === 0) { return; }
             var base = Backend.fileManager.currentPath;
             var full = (base.charAt(base.length - 1) === "/") ? (base + name) : (base + "/" + name);
-            Lotei.writeFile(full, "");          // create empty file on the Flipper
-            newFilePanel.visible = false;
-            newFilePanel.pendingOpen = full;    // open it in the editor once written
+            Nikita.writeFile(full, "");          // create empty file on the Flipper
+            newFilePanel.awaitingPath = full;
+            newFilePanel.hide();
         }
-        property string pendingOpen: ""
 
         Connections {
-            target: Lotei
+            target: Nikita
             function onFileSaved(path) {
-                if(newFilePanel.pendingOpen === path) {
-                    Backend.fileManager.refresh();   // just show the new file; don't auto-open
-                    newFilePanel.pendingOpen = "";
+                if(newFilePanel.awaitingPath === path) {
+                    // Just show the new file, don't open it: the user asked for
+                    // a file, not for the editor.
+                    Backend.fileManager.refresh();
+                    newFilePanel.awaitingPath = "";
                 }
             }
         }
+
+        Keys.onEscapePressed: newFilePanel.hide()
 
         RowLayout {
             anchors.fill: parent
@@ -576,6 +596,7 @@ Item {
                     font.family: "Share Tech Mono"; font.pixelSize: 13
                     clip: true
                     onAccepted: newFilePanel.createFile()
+                    Keys.onEscapePressed: newFilePanel.hide()
                     Text {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
@@ -590,7 +611,7 @@ Item {
                 text: "cancel"
                 color: nfCancel.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
                 font.family: "Share Tech Mono"; font.pixelSize: 12
-                MouseArea { id: nfCancel; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: newFilePanel.visible = false }
+                MouseArea { id: nfCancel; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: newFilePanel.hide() }
             }
             Text {
                 text: "create"

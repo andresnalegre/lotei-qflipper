@@ -15,8 +15,6 @@ Item {
     signal expandFinished
     signal collapseStarted
     signal collapseFinished
-    signal resizeStarted
-    signal resizeFinished
 
     property alias controls: windowControls
 
@@ -26,7 +24,6 @@ Item {
     // Open height = exactly the content "screen" box (mainContent), top aligned to
     // its top edge so there's no sliver showing above the log.
     readonly property int logHeight: mainContent.height + 13
-    readonly property int minimumLogHeight: 200
 
     readonly property int shadowSize: 16
     readonly property int shadowOffset: 4
@@ -136,7 +133,6 @@ Item {
         closeEnabled: Backend.backendState <= ApplicationBackend.ScreenStreaming ||
                       Backend.backendState >= ApplicationBackend.Finished
 
-        controlPath: "qrc:/assets/gfx/controls"
 
         anchors.top: mainWindow.top
         anchors.left: mainContent.left
@@ -147,14 +143,14 @@ Item {
     }
 
     // The top-bar controls belong to the home screen, so they follow it rather
-    // than each repeating the reasoning. Every screen added since -- the update
-    // run, the finish screen, our own transfers -- meant another clause to
+    // than each repeating the reasoning. Every screen added since: the update
+    // run, the finish screen, our own transfers, meant another clause to
     // remember in four places; this is the one place it lives now.
     // A transfer keeps the backend in Ready while it runs, so that alone is not
     // enough; once it ends the backend moves to Finished or ErrorOccured and
     // takes care of the rest.
     readonly property bool homeVisible: Backend.backendState === ApplicationBackend.Ready &&
-                                        !Lotei.transferActive
+                                        !Nikita.transferActive
 
     GridBackground {
         id: mainContent
@@ -183,31 +179,6 @@ Item {
             text: App.version
 
             // TODO: Implement copy version to clipboard
-        }
-
-        TextLabel {
-            id: colorsButton
-            visible: false
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.margins: 10
-            anchors.leftMargin: 16
-
-            color: Theme.color.lightorange2
-            opacity: colorsMouse.containsMouse ? 1.0 : 0.5
-
-            font.family: "ProggySquareTT"
-            font.pixelSize: 16
-            text: "COLORS"
-
-            MouseArea {
-                id: colorsMouse
-                anchors.fill: parent
-                anchors.margins: -6
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: colorEditor.open = true
-            }
         }
 
         TextLabel {
@@ -241,8 +212,7 @@ Item {
             anchors.top: portToggle.top
             anchors.left: portToggle.right
             anchors.leftMargin: 20
-
-            visible: mainWindow.homeVisible
+            visible: mainWindow.homeVisible && Nikita.hasBle
             color: (Ble.sessionActive || Ble.connected) ? Theme.color.lightgreen : Theme.color.lightorange2
             opacity: (bleMouse.containsMouse || Ble.sessionActive) ? 1.0 : 0.5
 
@@ -292,12 +262,12 @@ Item {
 
             // Ready parks it on the right, beside the install button. The
             // WaitingForDevices screen wants it left of centre to make room for
-            // the "connect your Flipper" text. Everything in between -- the
-            // update run and the finish screen -- is a full-width overlay with
+            // the "connect your Flipper" text. Everything in between, the
+            // update run and the finish screen, is a full-width overlay with
             // the title, progress bar and status all centred, so the device has
             // to be centred too; the -100 was leaving it visibly off-axis.
             x: {
-                if(Backend.backendState === ApplicationBackend.Ready && !Lotei.transferActive) {
+                if(Backend.backendState === ApplicationBackend.Ready && !Nikita.transferActive) {
                     return Math.round(mainContent.width / 2);
                 }
                 const centred = Math.round((mainContent.width - width) / 2);
@@ -306,12 +276,12 @@ Item {
             // Ready parks it at the top of the home layout. The other screens
             // are centred full-width overlays, so it moves down with the rest of
             // their group. The finish screen shifts further than the update one
-            // because it has no status line under the button -- these mirror
+            // because it has no status line under the button; these mirror
             // contentShift in UpdateOverlay.qml and FinishOverlay.qml.
             y: {
                 // A transfer borrows the update screen, so the widget sits
                 // where that screen expects it.
-                if(Lotei.transferActive)                                 { return 94 + 26; }
+                if(Nikita.transferActive)                                 { return 94 + 26; }
                 if(Backend.backendState === ApplicationBackend.Ready)    { return 94; }
                 if(Backend.backendState === ApplicationBackend.Finished) { return 94 + 42; }
                 return 94 + 26;
@@ -341,11 +311,11 @@ Item {
             backgroundRect: bg
             anchors.fill: parent
             // Backup, restore and format reuse this screen rather than getting
-            // one of their own -- same layout, same device widget, only the
+            // one of their own: same layout, same device widget, only the
             // title and the status line differ.
             opacity: (Backend.backendState > ApplicationBackend.ScreenStreaming &&
                       Backend.backendState < ApplicationBackend.Finished) ||
-                     Lotei.transferActive ? 1 : 0
+                     Nikita.transferActive ? 1 : 0
         }
 
         FinishOverlay {
@@ -418,17 +388,6 @@ Item {
             }
         }
 
-        // Music needs QtMultimedia, which is Windows-only in this build. On Linux
-        // Lotei.hasAudio is false, so the player (and its QtMultimedia import) is
-        // never loaded and the slot collapses.
-        Loader {
-            active: Lotei.hasAudio
-            source: Lotei.hasAudio ? "qrc:/components/MusicPlayer.qml" : ""
-            visible: active
-            Layout.preferredWidth: active ? 250 : 0
-            Layout.fillHeight: true
-        }
-
         StatusBar {
             id: statusBar
             Layout.fillWidth: true
@@ -475,205 +434,30 @@ Item {
                 onTriggered: Qt.openUrlExternally(Logger.logsPath)
             }
         }
+
+    // Cmd/Ctrl+A and Cmd/Ctrl+C over the open log panel. The context menu has
+    // done both all along, but a right click is not where anyone looks first.
+    // Guarded on the panel being open, and on the panels that own the screen
+    // when they are up, so the shortcut lands where the user is looking.
+    Shortcut {
+        sequences: [StandardKey.SelectAll]
+        enabled: logView.visible && !Cli.open && !editorOverlay.open && !Firmware.open
+        onActivated: logView.content.selectAll()
+    }
+    Shortcut {
+        sequences: [StandardKey.Copy]
+        enabled: logView.visible && !Cli.open && !editorOverlay.open && !Firmware.open
+        onActivated: logView.content.copy()
+    }
     }
 
-    MouseArea {
-        id: resizer
-
-        property int prevMouseY
-
-        width: parent.width
-        height: 28
-
-        visible: false   // window is fixed size now; no drag-to-resize
-        cursorShape: Qt.SizeVerCursor
-
-        anchors.bottom: parent.bottom
-
-        preventStealing: true
-
-        onPressed: {
-            prevMouseY = mouseY;
-            mainWindow.resizeStarted();
-        }
-
-        onReleased: mainWindow.resizeFinished()
-
-        onMouseYChanged: {
-            const dy = mouseY - prevMouseY;
-            mainWindow.height = Math.max(mainWindow.height + dy, mainWindow.baseHeight + mainWindow.minimumLogHeight);
-        }
-    }
-
-    Text {
-        id: fullLogButton
-        visible: opacity
-        opacity: resizer.visible
-
-        text: "<a href=\"#\">%1</a>".arg(qsTr("Open Full Log"))
-
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 6
-
-        font.pixelSize: 14
-        font.family: "Share Tech"
-        font.capitalization: Font.AllUppercase
-
-        color: Theme.color.lightorange2
-        linkColor: Theme.color.lightorange2
-
-        onLinkActivated: Qt.openUrlExternally(Logger.logsFile)
-
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.NoButton
-            cursorShape: Qt.PointingHandCursor
-        }
-
-        Behavior on opacity {
-            PropertyAnimation {
-                duration: 200
-                easing.type: Easing.OutCubic
-            }
-        }
-    }
-
-    // ---- LOTEI color editor: live per-color palette tweaking ----
-    Item {
-        id: colorEditor
-        property bool open: false
-        anchors.fill: parent
-        visible: opacity > 0
-        opacity: open ? 1 : 0
-        z: 9999
-        Behavior on opacity { NumberAnimation { duration: 140 } }
-
-        Rectangle {
-            anchors.fill: parent
-            color: "#000000"
-            opacity: 0.55
-            MouseArea { anchors.fill: parent; onClicked: colorEditor.open = false }
-        }
-
-        Rectangle {
-            anchors.centerIn: parent
-            width: 478
-            height: Math.min(parent.height - 70, 580)
-            color: "#0b0410"
-            radius: 10
-            border.width: 2
-            border.color: Theme.color.mediumorange2
-            MouseArea {   // swallow clicks so they don't close
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.AllButtons
-                onWheel: function(wheel) { wheel.accepted = true }
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 10
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-                    Text {
-                        text: "COLOR EDITOR"
-                        color: Theme.color.lightorange2
-                        font.family: "Share Tech Mono"; font.pixelSize: 16; font.bold: true
-                        Layout.fillWidth: true
-                    }
-                    Text {
-                        text: "reset to pink"
-                        color: resetMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                        font.family: "Share Tech Mono"; font.pixelSize: 12
-                        MouseArea { id: resetMouse; anchors.fill: parent; anchors.margins: -5; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Palette.reset() }
-                    }
-                    Text {
-                        text: "✕"
-                        color: closeMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
-                        font.family: "Share Tech Mono"; font.pixelSize: 15
-                        MouseArea { id: closeMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: colorEditor.open = false }
-                    }
-                }
-
-                ListView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    model: Palette.names()
-                    spacing: 7
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {}
-
-                    delegate: RowLayout {
-                        width: ListView.view.width - 10
-                        spacing: 7
-                        property string cname: modelData
-                        property color cval: Palette.colors[cname]
-
-                        Rectangle {
-                            Layout.preferredWidth: 26; Layout.preferredHeight: 26
-                            radius: 4; color: parent.cval
-                            border.width: 1; border.color: "#666"
-                        }
-                        Text {
-                            text: parent.cname
-                            color: Theme.color.lightorange2
-                            font.family: "Share Tech Mono"; font.pixelSize: 11
-                            Layout.preferredWidth: 92
-                            elide: Text.ElideRight
-                        }
-
-                        // R / G / B sliders
-                        Item {
-                            Layout.preferredWidth: 52; Layout.preferredHeight: 16
-                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; radius: 2; color: "#3a2a3a"
-                                Rectangle { width: parent.width * cval.r; height: parent.height; radius: 2; color: "#e88888" } }
-                            Rectangle { width: 8; height: 8; radius: 4; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter; x: parent.width * cval.r - 4 }
-                            MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onPressed: Palette.setColor(cname, Qt.rgba(Math.max(0, Math.min(1, mouseX / width)), cval.g, cval.b, 1))
-                                onPositionChanged: if (pressed) Palette.setColor(cname, Qt.rgba(Math.max(0, Math.min(1, mouseX / width)), cval.g, cval.b, 1)) }
-                        }
-                        Item {
-                            Layout.preferredWidth: 52; Layout.preferredHeight: 16
-                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; radius: 2; color: "#2a3a2a"
-                                Rectangle { width: parent.width * cval.g; height: parent.height; radius: 2; color: "#88e888" } }
-                            Rectangle { width: 8; height: 8; radius: 4; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter; x: parent.width * cval.g - 4 }
-                            MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onPressed: Palette.setColor(cname, Qt.rgba(cval.r, Math.max(0, Math.min(1, mouseX / width)), cval.b, 1))
-                                onPositionChanged: if (pressed) Palette.setColor(cname, Qt.rgba(cval.r, Math.max(0, Math.min(1, mouseX / width)), cval.b, 1)) }
-                        }
-                        Item {
-                            Layout.preferredWidth: 52; Layout.preferredHeight: 16
-                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; radius: 2; color: "#2a2a3a"
-                                Rectangle { width: parent.width * cval.b; height: parent.height; radius: 2; color: "#8888e8" } }
-                            Rectangle { width: 8; height: 8; radius: 4; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter; x: parent.width * cval.b - 4 }
-                            MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onPressed: Palette.setColor(cname, Qt.rgba(cval.r, cval.g, Math.max(0, Math.min(1, mouseX / width)), 1))
-                                onPositionChanged: if (pressed) Palette.setColor(cname, Qt.rgba(cval.r, cval.g, Math.max(0, Math.min(1, mouseX / width)), 1)) }
-                        }
-
-                        Text {
-                            text: (Palette.colors, Palette.hex(cname))
-                            color: Theme.color.mediumorange4
-                            font.family: "Share Tech Mono"; font.pixelSize: 11
-                            Layout.preferredWidth: 60
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // ---- BLE connection spike (Phase 1): scan / connect / prove a byte pipe ----
     Item {
         id: bleOverlay
         property bool open: false
         anchors.fill: parent
-        visible: open
+        visible: open && Nikita.hasBle
         z: 9995
 
         Rectangle {
@@ -739,7 +523,7 @@ Item {
                     }
                 }
 
-                Text { text: "devices (click one → connects it as your ACTIVE device over BLE — device card, screen & LOTEI, all wireless):"; color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                Text { text: "devices (click one → connects it as your ACTIVE device over BLE — device card, screen & Nikita, all wireless):"; color: Theme.color.mediumorange4; font.family: "Share Tech Mono"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                 Flow {
                     Layout.fillWidth: true; spacing: 6
                     Repeater {
@@ -838,7 +622,7 @@ Item {
                     property int histIdx: 0
 
                     // ls --color, in effect. The buffer stays plain text all the
-                    // way through the backend -- the colouring is decided here,
+                    // way through the backend; the colouring is decided here,
                     // per line, so it follows the theme palette instead of
                     // baking hex codes into C++.
                     function cssColor(c) {
@@ -851,7 +635,7 @@ Item {
                     }
                     // Every substitution above is one character for one
                     // character, so document positions still line up with the
-                    // plain text -- that is what keeps the caret in place.
+                    // plain text, and that is what keeps the caret in place.
                     function span(c, t) {
                         return '<span style="color:' + cliTerm.cssColor(c) + '">' + t + '</span>';
                     }
@@ -895,7 +679,7 @@ Item {
                                         : ""
 
                     // The caret is drawn as a block over the text (see cliCaret
-                    // below), never inserted into it -- pushing a glyph in
+                    // below), never inserted into it; pushing a glyph in
                     // shifted everything to its right by one cell.
                     function setLine(s, pos) {
                         cliTerm.inputLine = s;
@@ -940,7 +724,7 @@ Item {
                     // different runs of the same paste.
                     //
                     // Terminal semantics for the split: text with no newline is
-                    // INSERTED at the caret and waits for Enter -- pasting a long
+                    // INSERTED at the caret and waits for Enter, since pasting a long
                     // path into a half-typed command must not execute it. Text with
                     // newlines runs, with anything already typed prepended to the
                     // first line, exactly as a terminal would.
@@ -967,7 +751,7 @@ Item {
 
                     // Follow the tail only while the view is already parked at the
                     // bottom. The instant the user scrolls up or selects something,
-                    // the view freezes -- otherwise a chatty command like `top`
+                    // the view freezes; otherwise a chatty command like `top`
                     // drags the scroll back down and wipes the selection every time
                     // it prints.
                     property bool follow: true
@@ -989,7 +773,7 @@ Item {
                         if (v === cliTerm.follow) { return; }
                         cliTerm.follow = v;
                         // Only re-park at the bottom when re-enabling follow. No
-                        // text swap, no deselect -- the content is stable now, so
+                        // text swap, no deselect: the content is stable now, so
                         // there's nothing to tear.
                         if (v) { Qt.callLater(cliTerm.toBottom); }
                     }
@@ -1009,7 +793,7 @@ Item {
                             // twice a second, which re-wrapped the last line and made
                             // the view hop once it was parked at the bottom.
                             textFormat: Cli.colored ? TextEdit.RichText : TextEdit.PlainText
-                            // The text is ALWAYS the live output -- never swapped
+                            // The text is ALWAYS the live output, never swapped
                             // for a frozen snapshot. Swapping the text is what tore
                             // the selection apart: the moment you selected, follow
                             // went false, the binding re-evaluated to `frozen`, and
@@ -1029,8 +813,6 @@ Item {
                             // nothing new to scroll to, and re-running toBottom on
                             // every caret blink is what produced the jitter.
                             onHeightChanged: if (cliTerm.follow) { cliTerm.toBottom(); }
-                            // Selecting anything detaches, so the next chunk of
-                            // output can't tear the selection apart.
                             // Selecting just stops the auto-scroll so incoming
                             // output doesn't drag the view (and the selection) off
                             // screen. The text no longer changes, so the selection
@@ -1084,7 +866,7 @@ Item {
                         }
                     }
 
-                    // Keyboard goes straight to the terminal -- no input box, no
+                    // Keyboard goes straight to the terminal: no input box, no
                     // send button. Lines are still assembled client-side so the
                     // shortcuts (cd, cp, ls…) keep working.
                     Item {
@@ -1099,7 +881,7 @@ Item {
                             // On macOS Qt reports Cmd as ControlModifier and the real
                             // Ctrl as MetaModifier, so copy and interrupt land on the
                             // keys a Mac user expects. Elsewhere: Ctrl+Shift+C copies,
-                            // Ctrl+C interrupts -- terminal semantics either way.
+                            // Ctrl+C interrupts; terminal semantics either way.
                             var mac = (Qt.platform.os === "osx" || Qt.platform.os === "macos");
                             var copyKey = mac ? (m & Qt.ControlModifier)
                                               : ((m & Qt.ControlModifier) && (m & Qt.ShiftModifier));
@@ -1107,7 +889,7 @@ Item {
                                               : ((m & Qt.ControlModifier) && !(m & Qt.ShiftModifier));
 
                             // Interrupt first, always. It must never be swallowed by
-                            // a leftover selection -- that's what left `top` running
+                            // a leftover selection, which is what left `top` running
                             // with no way out.
                             if ((k === Qt.Key_C && ctrlKey) || k === Qt.Key_Escape) {
                                 // Cli.interrupt() drops whatever is still queued on
@@ -1271,7 +1053,7 @@ Item {
     // ---- file editor (the ONE editor) --------------------------------------
     // Opened from two places, deliberately sharing one panel so they can never
     // look different: the CLI's "edit <path>" (Cli.editRequested) and the file
-    // manager's double-click (Lotei.fileOpened). editorOverlay.source records
+    // manager's double-click (Nikita.fileOpened). editorOverlay.source records
     // which opened it, so Save routes to the matching backend.
     Item {
         id: editorOverlay
@@ -1287,23 +1069,26 @@ Item {
         property string source: ""      // "cli" or "fm"
         property bool dirty: false
         property bool justSaved: false
+        property string errorText: ""
 
         function beginEdit(src, p, content) {
             editorOverlay.source = src;
             editorOverlay.path = p;
             cliEditArea.text = content;
             editorOverlay.dirty = false;
+            editorOverlay.errorText = "";
             editorOverlay.justSaved = false;
             editorOverlay.open = true;
             cliEditArea.forceActiveFocus();
         }
         function doSave() {
-            if (editorOverlay.source === "fm") { Lotei.writeFile(editorOverlay.path, cliEditArea.text); }
+            if (editorOverlay.source === "fm") { Nikita.writeFile(editorOverlay.path, cliEditArea.text); }
             else { Cli.saveEditedFile(editorOverlay.path, cliEditArea.text); }
         }
         function markSaved() {
             editorOverlay.dirty = false;
             editorOverlay.justSaved = true;
+            editorOverlay.errorText = "";
             cliSavedResetTimer.restart();
         }
 
@@ -1311,10 +1096,10 @@ Item {
             target: Cli
             function onEditRequested(path, content) { editorOverlay.beginEdit("cli", path, content); }
             function onEditSaved(path) { editorOverlay.markSaved(); }
-            function onEditSaveError(path, message) { cliEditStatus.text = "save failed: " + message; }
+            function onEditSaveError(path, message) { editorOverlay.errorText = "save failed: " + message; }
         }
         Connections {
-            target: Lotei
+            target: Nikita
             function onFileOpened(path, content) { editorOverlay.beginEdit("fm", path, content); }
             function onFileSaved(path) {
                 if (editorOverlay.source === "fm") {
@@ -1323,7 +1108,7 @@ Item {
                 }
             }
             function onFileEditError(msg) {
-                if (editorOverlay.source === "fm") { cliEditStatus.text = "save failed: " + msg; }
+                if (editorOverlay.source === "fm") { editorOverlay.errorText = "save failed: " + msg; }
             }
         }
 
@@ -1385,7 +1170,7 @@ Item {
                             selectByMouse: true
                             persistentSelection: true
                             color: Theme.color.lightgreen
-                            selectionColor: "#3b5bdb"
+                            selectionColor: Theme.color.mediumorange2
                             selectedTextColor: "white"
                             font.family: "Share Tech Mono"; font.pixelSize: 12
                             background: null
@@ -1405,8 +1190,12 @@ Item {
                     Layout.fillWidth: true; spacing: 10
                     Text {
                         id: cliEditStatus
-                        text: editorOverlay.justSaved ? "saved" : ""
-                        color: editorOverlay.justSaved ? Theme.color.lightgreen : Theme.color.mediumorange4
+                        // Assigning to text would kill the binding, so the error
+                        // lives in its own property and the binding reads both.
+                        text: editorOverlay.errorText.length > 0 ? editorOverlay.errorText
+                            : (editorOverlay.justSaved ? "saved" : "")
+                        color: editorOverlay.errorText.length > 0 ? Theme.color.lightred1
+                             : (editorOverlay.justSaved ? Theme.color.lightgreen : Theme.color.mediumorange4)
                         font.family: "Share Tech Mono"; font.pixelSize: 11
                         Layout.fillWidth: true
                     }
@@ -1441,7 +1230,7 @@ Item {
 
 
     // Reinstall and Update run from the tools tab and the main screen, where
-    // the store panel is closed -- and its failed()/progress() handlers live
+    // the store panel is closed, and its failed()/progress() handlers live
     // inside that panel. A download that died there failed in total silence.
     // Reopening the panel puts the error back in front of the user.
     Connections {
@@ -1454,7 +1243,7 @@ Item {
     // Hand the running firmware version to the store so it can tell which row
     // is the one already installed. Deliberately at root scope: this used to
     // live inside the store overlay, which is only visible while the panel is
-    // open -- one refactor of that Item into a Loader and the version would
+    // open: one refactor of that Item into a Loader and the version would
     // quietly stop arriving, taking the update check with it.
     Binding {
         target: Firmware
@@ -1574,7 +1363,7 @@ Item {
                                         if(!instBtn.canGo) return;
                                         const wasStaged = modelData.selected;
                                         Firmware.select(index);
-                                        // Staging is done -- send them where the
+                                        // Staging is done, so send them where the
                                         // install actually happens. Unstaging
                                         // keeps the panel open to pick another.
                                         if(!wasStaged) Firmware.open = false;
@@ -1621,7 +1410,7 @@ Item {
                                 width: fwRow.wChannel; height: 26
                                 radius: 5
                                 // A source with a single channel still shows
-                                // which one it is -- it just isn't a dropdown.
+                                // which one it is; it just isn't a dropdown.
                                 // Hiding the box entirely left the row looking
                                 // like the channel was missing rather than fixed.
                                 readonly property bool pickable: (modelData.channelCount || 0) > 1
@@ -1762,11 +1551,11 @@ Item {
         }
     }
 
-    // ---- first-run setup wizard (shown only until Lotei.setupComplete) ----
+    // ---- first-run setup wizard (shown only until Nikita.setupComplete) ----
     Item {
         id: setupWizard
         anchors.fill: parent
-        visible: !Lotei.setupComplete
+        visible: !Nikita.setupComplete
         z: 10000
         property int step: 0
 
@@ -1793,7 +1582,7 @@ Item {
                 spacing: 14
 
                 Text {
-                    text: "🐬  SET UP LOTEI"
+                    text: "🐬  SET UP Nikita"
                     color: Theme.color.lightorange2
                     font.family: "Share Tech Mono"; font.pixelSize: 20; font.bold: true
                 }
@@ -1806,7 +1595,7 @@ Item {
                     // 0 · welcome
                     ColumnLayout {
                         spacing: 12
-                        Text { text: "Meet LOTEI"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 16; font.bold: true }
+                        Text { text: "Meet Nikita"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 16; font.bold: true }
                         Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 13
                             text: "A snarky, 100% local AI dolphin lives inside your Flipper app. Let's get him set up — about 30 seconds." }
                         Item { Layout.fillHeight: true }
@@ -1817,13 +1606,13 @@ Item {
                         spacing: 12
                         Text { text: "1 · Name your Flipper"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
                         Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 13
-                            text: "LOTEI takes your Flipper's name as his own. Type it, or plug in your Flipper and read it." }
+                            text: "Nikita takes your Flipper's name as his own. Type it, or plug in your Flipper and read it." }
                         RowLayout {
                             Layout.fillWidth: true; spacing: 10
                             TextField {
                                 id: nameField
                                 Layout.fillWidth: true
-                                placeholderText: "e.g. Lotei"
+                                placeholderText: "e.g. Fl1pp3r"
                                 text: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.name) ? Backend.deviceState.info.name : ""
                             }
                             Button {
@@ -1838,26 +1627,26 @@ Item {
                     // 2 · AI brain
                     ColumnLayout {
                         spacing: 10
-                        Text { text: "2 · LOTEI's brain (local AI)"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
+                        Text { text: "2 · Nikita's brain (local AI)"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
                         Text {
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
                             font.family: "Share Tech Mono"; font.pixelSize: 13; color: Theme.color.lightorange2
-                            text: !Lotei.ollamaOnline
+                            text: !Nikita.ollamaOnline
                                   ? "Ollama isn't running. Install it from ollama.com, then run:  ollama pull phi3.5  — then hit re-check. (You can skip and set this up later.)"
-                                  : (Lotei.availableModels().length === 0
+                                  : (Nikita.availableModels().length === 0
                                      ? "Ollama's running, but no models yet. Run:  ollama pull phi3.5  — then re-check."
-                                     : "Found Ollama. Pick LOTEI's model:")
+                                     : "Found Ollama. Pick Nikita's model:")
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
                             Repeater {
-                                model: Lotei.ollamaOnline ? Lotei.availableModels() : []
+                                model: Nikita.ollamaOnline ? Nikita.availableModels() : []
                                 delegate: Rectangle {
                                     radius: 5; height: 26; width: mtxt.width + 18
-                                    color: modelData === Lotei.modelName ? Theme.color.mediumorange2 : "transparent"
+                                    color: modelData === Nikita.modelName ? Theme.color.mediumorange2 : "transparent"
                                     border.width: 1; border.color: Theme.color.mediumorange2
                                     Text { id: mtxt; anchors.centerIn: parent; text: modelData; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12 }
-                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Lotei.setModel(modelData) }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Nikita.setModel(modelData) }
                                 }
                             }
                         }
@@ -1865,7 +1654,7 @@ Item {
                             text: "↻ re-check"
                             color: recheckMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
                             font.family: "Share Tech Mono"; font.pixelSize: 12
-                            MouseArea { id: recheckMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Lotei.recheckOllama() }
+                            MouseArea { id: recheckMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Nikita.recheckOllama() }
                         }
                         Item { Layout.fillHeight: true }
                     }
@@ -1873,21 +1662,21 @@ Item {
                     // 3 · personality
                     ColumnLayout {
                         spacing: 10
-                        Text { text: "3 · Give LOTEI a personality"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
+                        Text { text: "3 · Give Nikita a personality"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 15; font.bold: true }
                         Button {
                             text: "🎭 Build one from his name" + (nameField.text.length > 0 ? " (" + nameField.text + ")" : "")
-                            onClicked: { Lotei.applyNamePersonality(); personaLabel.text = "→ personality built from the name" }
+                            onClicked: { Nikita.applyNamePersonality(); personaLabel.text = "→ personality built from the name" }
                         }
                         Text { text: "…or pick a preset:"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 13 }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
                             Repeater {
-                                model: Lotei.personalityPresets()
+                                model: Nikita.personalityPresets()
                                 delegate: Rectangle {
                                     radius: 5; height: 26; width: ptxt.width + 18
                                     color: "transparent"; border.width: 1; border.color: Theme.color.mediumorange2
                                     Text { id: ptxt; anchors.centerIn: parent; text: modelData; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 12 }
-                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { Lotei.applyPreset(modelData); personaLabel.text = "→ " + modelData } }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { Nikita.applyPreset(modelData); personaLabel.text = "→ " + modelData } }
                                 }
                             }
                         }
@@ -1896,9 +1685,9 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.color.mediumorange2; opacity: 0.4 }
                         CheckBox {
                             id: agentToggle
-                            text: "🤖 Agent mode — let LOTEI edit & test his own code"
-                            checked: Lotei.agentEnabled
-                            onToggled: Lotei.agentEnabled = checked
+                            text: "🤖 Agent mode — let Nikita edit & test his own code"
+                            checked: Nikita.agentEnabled
+                            onToggled: Nikita.agentEnabled = checked
                             contentItem: Text {
                                 text: agentToggle.text; leftPadding: agentToggle.indicator.width + 6
                                 color: Theme.color.lightorange2; font.family: "Share Tech Mono"
@@ -1906,17 +1695,17 @@ Item {
                             }
                         }
                         Button {
-                            visible: Lotei.agentEnabled
-                            text: Lotei.agentDir.length ? "📁 " + Lotei.agentDir : "📁 Pick workspace folder (your qFlipper source)"
+                            visible: Nikita.agentEnabled
+                            text: Nikita.agentDir.length ? "📁 " + Nikita.agentDir : "📁 Pick workspace folder (your qFlipper source)"
                             onClicked: agentFolderDialog.open()
                         }
                         Text {
-                            visible: Lotei.agentEnabled
+                            visible: Nikita.agentEnabled
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
-                            text: "⚠️ Lets a local model run shell commands and overwrite files inside that folder only. Keep it under git."
+                            text: "⚠️ Lets a local model run shell commands and read or overwrite files anywhere you can. The folder is where it starts, not a fence. Keep it under git."
                             color: Theme.color.lightorange3; font.family: "Share Tech Mono"; font.pixelSize: 11
                         }
-                        Pf.FolderDialog { id: agentFolderDialog; onAccepted: Lotei.agentDir = folder }
+                        Pf.FolderDialog { id: agentFolderDialog; onAccepted: Nikita.agentDir = folder }
 
                         Item { Layout.fillHeight: true }
                     }
@@ -1926,7 +1715,7 @@ Item {
                         spacing: 12
                         Text { text: "🎉  All set!"; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 16; font.bold: true }
                         Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.color.lightorange2; font.family: "Share Tech Mono"; font.pixelSize: 13
-                            text: "LOTEI's ready. You can change his model (click it in the header), voice, colors, and more any time." }
+                            text: "Nikita's ready. You can change his model (click it in the header), voice, colors, and more any time." }
                         Item { Layout.fillHeight: true }
                     }
                 }
@@ -1938,7 +1727,7 @@ Item {
                         text: "skip"
                         color: skipMouse.containsMouse ? Theme.color.lightorange2 : Theme.color.mediumorange1
                         font.family: "Share Tech Mono"; font.pixelSize: 12
-                        MouseArea { id: skipMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Lotei.completeSetup() }
+                        MouseArea { id: skipMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Nikita.completeSetup() }
                     }
                     Item { Layout.fillWidth: true }
                     Button {
@@ -1949,10 +1738,10 @@ Item {
                     Button {
                         text: setupWizard.step >= 4 ? "Finish" : "Next"
                         onClicked: {
-                            if (setupWizard.step === 1) Lotei.manualName = nameField.text.trim();
-                            if (setupWizard.step >= 4) { Lotei.completeSetup(); return; }
+                            if (setupWizard.step === 1) Nikita.manualName = nameField.text.trim();
+                            if (setupWizard.step >= 4) { Nikita.completeSetup(); return; }
                             setupWizard.step = setupWizard.step + 1;
-                            if (setupWizard.step === 2) Lotei.recheckOllama();
+                            if (setupWizard.step === 2) Nikita.recheckOllama();
                         }
                     }
                 }

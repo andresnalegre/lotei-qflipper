@@ -265,17 +265,20 @@ void ProtobufSession::startSession()
     // USB serial port from m_portInfo.
     if(m_transport) {
         // A fresh transport is built per session, so plain (non-unique) connects
-        // are correct here -- and Qt::UniqueConnection is illegal with a lambda
+        // are correct here, and Qt::UniqueConnection is illegal with a lambda
         // slot anyway (it silently drops the connection).
         connect(m_transport, &FlipperTransport::opened, this, &ProtobufSession::onTransportReady);
         connect(m_transport, &FlipperTransport::openFailed, this, [=](const QString &err) {
             qCCritical(LOG_SESSION).noquote() << "Failed to start RPC session:" << err;
+            discardTransport();
             stopEarly(BackendError::SerialError, err);
         });
 
-        if(!m_transport->open()) {
-            qCCritical(LOG_SESSION).noquote() << "Failed to start RPC session:" << m_transport->errorString();
-            stopEarly(BackendError::SerialError, m_transport->errorString());
+        if(m_transport && !m_transport->open()) {
+            const auto openErr = m_transport->errorString();
+            qCCritical(LOG_SESSION).noquote() << "Failed to start RPC session:" << openErr;
+            discardTransport();
+            stopEarly(BackendError::SerialError, openErr);
         }
 
         return;
@@ -587,6 +590,20 @@ void ProtobufSession::unloadProtobufPlugin()
         qCDebug(LOG_SESSION) << "Unloaded protobuf plugin.";
     }
 #endif
+}
+
+void ProtobufSession::discardTransport()
+{
+    if(!m_transport) {
+        return;
+    }
+
+    // A failed transport never reaches doStopSession(), so tear it down here.
+    // Leaving it around would let a later startSession() stack duplicate
+    // connections on the same dead object.
+    m_transport->disconnect(this);
+    m_transport->deleteLater();
+    m_transport = nullptr;
 }
 
 void ProtobufSession::stopEarly(BackendError::ErrorType error, const QString &errorString)

@@ -48,9 +48,9 @@ class VCPDeviceInfoHelper : public AbstractDeviceInfoHelper
 public:
     VCPDeviceInfoHelper(const USBDeviceInfo &info, QObject *parent = nullptr);
 
-    // Configure this helper to bootstrap over BLE instead of a USB serial port:
-    // the RPC session is opened on a factory-built transport and serial-port
-    // finding is skipped. Call right after construction (before the event loop).
+    // Bootstrap over BLE instead of a USB serial port. The RPC session opens on
+    // a factory-built transport and port finding is skipped. Call right after
+    // construction, before the event loop runs.
     void setBleTransport(const QString &name, const TransportFactory &factory);
 
 private:
@@ -62,11 +62,6 @@ private:
     void fetchDeviceInfo();
     void fetchDeviceInfoLegacy();
     void fetchDeviceInfoProperty();
-    // The first boot after a firmware update is legitimately slow, so this one
-    // query gets a longer deadline and a couple of retries.
-    int m_devInfoAttempts = 0;
-    // Relaunching the app races the previous instance for the serial port.
-    int m_rpcAttempts = 0;
     void checkSDCard();
     void checkManifest();
     void getTimeSkew();
@@ -78,7 +73,17 @@ private slots:
 
 private:
     static const QString &branchToChannelName(const QByteArray &branchName);
-    ProtobufSession *m_rpc;
+
+    // Null between a failed session and the retry that replaces it, so every
+    // use has to check first.
+    ProtobufSession *m_rpc = nullptr;
+
+    // The first boot after a firmware update is slow for real reasons, so
+    // devinfo gets a longer deadline and a few retries.
+    int m_devInfoAttempts = 0;
+
+    // Relaunching the app races the previous instance for the serial port.
+    int m_rpcAttempts = 0;
 };
 
 class DFUDeviceInfoHelper : public AbstractDeviceInfoHelper

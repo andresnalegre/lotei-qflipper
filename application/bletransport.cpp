@@ -194,6 +194,9 @@ void BleTransport::onCharacteristicChanged(const QLowEnergyCharacteristic &c, co
 qint64 BleTransport::write(const QByteArray &data)
 {
     if(!m_opened) {
+        // ProtobufSession turns a negative write into a session error, so give
+        // it something to show instead of an empty errorString().
+        m_error = QStringLiteral("Bluetooth link is not ready.");
         return -1;
     }
     // Queue; flush() (or the next characteristicWritten) drains it. Returning the
@@ -217,7 +220,7 @@ void BleTransport::pumpTx()
         m_writing = true;
         m_serial->writeCharacteristic(m_rx, chunk, QLowEnergyService::WriteWithResponse);
     } else {
-        // No write acknowledgements to pace on -- push it all out best-effort.
+        // No write acknowledgements to pace on; push it all out best-effort.
         while(!m_outgoing.isEmpty()) {
             const QByteArray chunk = m_outgoing.left(m_mtu);
             m_outgoing.remove(0, chunk.size());

@@ -1,18 +1,5 @@
 QT += quick serialport widgets quickcontrols2 svg network
 
-# LOTEI's voice (Piper/SAPI) and the music player both need QtMultimedia /
-# QtTextToSpeech. Those modules aren't in the Linux static-Qt build image, so
-# audio is Windows-only for now; HZUI_VOICE gates the code + the MusicPlayer.qml
-# resource (see loteibackend.* and MainWindow.qml). Linux still gets everything
-# else (chat, colors, firmware manager, screen mirror, ...).
-win32 {
-    # Voice (Piper/SAPI) + music player: QtMultimedia / QtTextToSpeech are hard
-    # to bundle in the Linux AppImage, so audio stays Windows-only (HZUI_VOICE).
-    QT += texttospeech multimedia
-    DEFINES += HZUI_VOICE
-    RESOURCES += music.qrc
-}
-
 # BLE connection -- Windows + Linux. Qt Bluetooth uses the WinRT backend on
 # Windows and the BlueZ/D-Bus backend on Linux (the Linux CI Qt now includes
 # qtconnectivity; see docker/Dockerfile). Gated behind HZUI_BLE.
@@ -36,7 +23,7 @@ SOURCES += \
         application.cpp \
         applicationupdater.cpp \
         applicationupdateregistry.cpp \
-        loteibackend.cpp \
+        nikitabackend.cpp \
         main.cpp \
         qtsingleapplication/qtlocalpeer.cpp \
         qtsingleapplication/qtlockedfile.cpp \
@@ -100,8 +87,8 @@ win32 {
         }
 
         # Strip a leading "v"/"V" (e.g. tag "V1.1.0") so the numeric Windows
-        # FILEVERSION resource stays valid -- rc.exe rejects non-numeric versions.
-        VERSION = $$replace(VERSION, ^[vV], )
+        # FILEVERSION resource stays valid; rc.exe rejects non-numeric versions.
+        VERSION = $$replace(VERSION, "^[vV]", "")
 
     } else: VERSION = 0.0.0
 }
@@ -121,7 +108,7 @@ HEADERS += \
     application.h \
     applicationupdater.h \
     applicationupdateregistry.h \
-    loteibackend.h \
+    nikitabackend.h \
     qtsingleapplication/qtlocalpeer.h \
     qtsingleapplication/qtlockedfile.h \
     qtsingleapplication/qtsingleapplication.h \

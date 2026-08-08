@@ -14,9 +14,9 @@ AbstractOverlay {
 
     // Backup, restore and format run through this same screen. They are our own
     // operations rather than qFlipper states, so the three fields below take
-    // their values from Lotei while one is running and fall back to the
+    // their values from Nikita while one is running and fall back to the
     // firmware flow otherwise.
-    readonly property bool transfer: Lotei.transferActive
+    readonly property bool transfer: Nikita.transferActive
 
     TextLabel {
         id: updateLabel
@@ -33,24 +33,24 @@ AbstractOverlay {
         font.pixelSize: 48
 
         text: {
-            if(overlay.transfer) { return Lotei.transferTitle; }
+            if(overlay.transfer) { return Nikita.transferTitle; }
 
             switch(Backend.backendState) {
-            case Backend.UpdatingDevice:
+            case ApplicationBackend.UpdatingDevice:
                 return qsTr("Updating your Flipper");
-            case Backend.RepairingDevice:
+            case ApplicationBackend.RepairingDevice:
                 return qsTr("Repairing your Flipper");
-            case Backend.CreatingBackup:
+            case ApplicationBackend.CreatingBackup:
                 return qsTr("Creating Backup");
-            case Backend.RestoringBackup:
+            case ApplicationBackend.RestoringBackup:
                 return qsTr("Restoring Backup");
-            case Backend.FactoryResetting:
+            case ApplicationBackend.FactoryResetting:
                 return qsTr("Performing Factory Reset");
-            case Backend.InstallingFirmware:
+            case ApplicationBackend.InstallingFirmware:
                 return qsTr("Installing Firmware");
-            case Backend.InstallingWirelessStack:
+            case ApplicationBackend.InstallingWirelessStack:
                 return qsTr("Installing Wireless Firmware");
-            case Backend.InstallingFUS:
+            case ApplicationBackend.InstallingFUS:
                 return qsTr("Installing FUS Firmware");
             default:
                 return text;
@@ -74,11 +74,11 @@ AbstractOverlay {
         anchors.horizontalCenter: parent.horizontalCenter
         y: 270 + overlay.contentShift
 
-        value: overlay.transfer ? (Lotei.transferProgress < 0 ? 0 : Lotei.transferProgress * 100)
+        value: overlay.transfer ? (Nikita.transferProgress < 0 ? 0 : Nikita.transferProgress * 100)
                                 : (deviceState ? deviceState.progress : 0)
         // A negative fraction means "working, but the total isn't known yet" --
         // walking the card, or packing the archive.
-        indeterminate: overlay.transfer ? Lotei.transferProgress < 0
+        indeterminate: overlay.transfer ? Nikita.transferProgress < 0
                                         : (!deviceState ? true : deviceState.progress < 0)
     }
 
@@ -92,7 +92,7 @@ AbstractOverlay {
         horizontalAlignment: Text.AlignHCenter
         width: parent.width - 80
         elide: Text.ElideMiddle
-        text: overlay.transfer ? Lotei.transferNote
+        text: overlay.transfer ? Nikita.transferNote
             : !deviceState ? text
             : deviceState.isError ? deviceState.errorString : deviceState.statusString
         color: Theme.color.lightorange2
@@ -100,7 +100,7 @@ AbstractOverlay {
 
     MouseArea {
         x: 620
-        y: 120
+        y: 120 + overlay.contentShift
 
         hoverEnabled: true
 

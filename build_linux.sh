@@ -63,7 +63,7 @@ export EXTRA_QT_PLUGINS="tls"
 # binaries dlopen() libssl.so.1.1; a distro-Qt build may only have the .so.3.
 SSL_LIBS=()
 for _soname in libssl.so.1.1 libcrypto.so.1.1 libssl.so.3 libcrypto.so.3; do
-    # NB: no early `exit` in awk -- under `set -o pipefail` that would SIGPIPE
+    # NB: no early `exit` in awk, since under `set -o pipefail` that would SIGPIPE
     # ldconfig (exit 141) and abort the build. Read all input, keep first match.
     _path=$(ldconfig -p 2>/dev/null | awk -v n="$_soname" '$1 == n && !f { print $NF; f = 1 }')
     if [ -n "${_path:-}" ] && [ -e "$_path" ]; then
@@ -74,8 +74,16 @@ if [ "${#SSL_LIBS[@]}" -eq 0 ]; then
     echo "warning: no libssl/libcrypto found via ldconfig; Qt HTTPS may fail at runtime" >&2
 fi
 
+# Never bundle the host's X11/xcb/wayland libs. They talk to the display server
+# and the graphics drivers of whatever machine runs the AppImage, so shipping
+# our own breaks on any distro other than the build one. Matters more now that
+# --plugin qt pulls in the xcb platform plugin and its dependency chain.
 linuxdeploy --appdir="$APPDIR" \
     --plugin qt \
     "${SSL_LIBS[@]}" \
     --custom-apprun="../installer-assets/appimage/AppRun" \
+    --exclude-library="libwayland*" \
+    --exclude-library="libxcb*" \
+    --exclude-library="libxkb*" \
+    --exclude-library="libX*" \
     --output appimage

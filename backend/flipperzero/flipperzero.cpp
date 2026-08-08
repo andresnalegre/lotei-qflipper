@@ -236,9 +236,13 @@ void FlipperZero::onDeviceInfoChanged()
 
     int startDelay = 100; // ms, to dodge a race in the Flipper on serial
 
-    if(deviceInfo.transportFactory) {
+    // Copy the factory out: building the transport can re-enter this slot via
+    // deviceInfoChanged, which would leave the deviceInfo reference dangling.
+    const auto transportFactory = deviceInfo.transportFactory;
+
+    if(transportFactory) {
         // Wireless: run the session over a freshly-built transport (e.g. BLE).
-        m_rpc->setTransport(deviceInfo.transportFactory(m_rpc));
+        m_rpc->setTransport(transportFactory(m_rpc));
         // The bootstrap helper just disconnected its own BLE link. On Linux/BlueZ
         // the ACL teardown is slow, and reconnecting to the same peer before it
         // completes races a half-open link ("Not Connected" on the first

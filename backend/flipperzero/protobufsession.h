@@ -133,6 +133,7 @@ private:
     bool loadProtobufPlugin();
     void unloadProtobufPlugin();
 
+    void discardTransport();
     void stopEarly(BackendError::ErrorType error, const QString &errorString);
 
     const QString prettyOperationDescription() const;

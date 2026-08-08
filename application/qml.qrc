@@ -12,7 +12,7 @@
         <file>assets/gfx/symbolic/arrow-up.svg</file>
         <file>assets/gfx/symbolic/arrow-down.svg</file>
         <file>components/HomeOverlay.qml</file>
-        <file>components/LoteiChat.qml</file>
+        <file>components/NikitaTalk.qml</file>
         <file>components/NoDeviceOverlay.qml</file>
         <file>components/LinkButton.qml</file>
         <file>components/TransparentLabel.qml</file>

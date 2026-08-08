@@ -133,6 +133,16 @@ void DeviceRegistry::connectBleDevice(const QString &name, const Flipper::Zero::
         return;
     }
 
+    // One wireless link at a time. Clicking a second entry in the scan list
+    // while the first is still bootstrapping started a second helper, and both
+    // would register a device.
+    if(isQueryInProgress()) {
+        return;
+    }
+    if(hasBleDevice()) {
+        removeBleDevice();
+    }
+
     setQueryInProgress(true);
     qCDebug(LOG_DEVREG).noquote() << "Connecting BLE device:" << name;
 
@@ -162,6 +172,9 @@ void DeviceRegistry::removeBleDevice()
     // Stop watching its session so the drop-detection lambda can't fire again
     // while the session tears itself down inside the device destructor.
     disconnect(device->rpc(), nullptr, this, nullptr);
+    // Offline first, so anything holding the device (the screen streamer above
+    // all) hears the disconnect and lets go while the object is still valid.
+    device->deviceState()->setOnline(false);
 
     m_devices.takeAt(idx)->deleteLater();
     emit deviceCountChanged();
@@ -170,18 +183,32 @@ void DeviceRegistry::removeBleDevice()
 
 void DeviceRegistry::removeOfflineDevices()
 {
-    auto it = std::remove_if(m_devices.begin(), m_devices.end(), [](Flipper::FlipperZero *arg) {
-        return !arg->deviceState()->isOnline();
-    });
+    // Collect first, then erase. The previous loop erased through an iterator
+    // and read from it on the next line, and held an end() taken before the
+    // first erase. With a single offline device that happened to work; with two
+    // it walks freed memory.
+    QVector<Flipper::FlipperZero*> offline;
 
-    for(const auto end = m_devices.end(); it != end; ++it) {
-        qCDebug(LOG_DEVREG).noquote() << "Removed offline device:" << (*it)->deviceState()->name();
-
-        m_devices.erase(it);
-        emit deviceCountChanged();
-
-        (*it)->deleteLater();
+    for(auto *device : m_devices) {
+        if(device && !device->deviceState()->isOnline()) {
+            offline.append(device);
+        }
     }
+
+    if(offline.isEmpty()) {
+        return;
+    }
+
+    for(auto *device : offline) {
+        qCDebug(LOG_DEVREG).noquote() << "Removed offline device:" << device->deviceState()->name();
+        m_devices.removeOne(device);
+        device->deleteLater();
+    }
+
+    // One notification for the batch rather than one per device: emitting from
+    // inside the loop let a handler see the registry half-updated.
+    emit deviceCountChanged();
+    emit currentDeviceChanged();
 }
 
 void DeviceRegistry::processDevice()

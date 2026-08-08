@@ -13,8 +13,8 @@ namespace Zero {
 // errorOccurred signals + write/readAll/clear/flush/close/errorString), so the
 // session becomes transport-agnostic with a near-mechanical swap.
 //
-//   SerialTransport -- wraps QSerialPort (USB CDC), unchanged behaviour.
-//   BleTransport    -- the Flipper's Serial GATT service over BLE (see the
+//   SerialTransport: wraps QSerialPort (USB CDC), unchanged behaviour.
+//   BleTransport:    the Flipper's Serial GATT service over BLE (see the
 //                      ble-spike branch for the proven ping/pong).
 class FlipperTransport : public QObject
 {

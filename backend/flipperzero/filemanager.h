@@ -54,8 +54,12 @@ public:
 
     Q_INVOKABLE void rename(const QString &oldName, const QString &newName);
     Q_INVOKABLE void remove(const QString &fileName, bool recursive = false);
-    Q_INVOKABLE QString fileNameAt(int row) const;      // name of the item at a row
-    Q_INVOKABLE bool isDirectoryAt(int row) const;      // is that item a directory
+
+    // Row lookups for the multi selection in QML, which works with indices
+    // rather than with the delegate that owns each row.
+    Q_INVOKABLE QString fileNameAt(int row) const;
+    Q_INVOKABLE QString filePathAt(int row) const;
+    Q_INVOKABLE bool isDirectoryAt(int row) const;
 
     Q_INVOKABLE void beginMkDir();
     Q_INVOKABLE void commitMkDir(const QString &dirName);
@@ -104,10 +108,12 @@ private:
 
     void setModelDataRoot();
     void setModelData(const FileInfoList &newData);
-    // label describes the action in plain words for the LOGS panel. Every
-    // device operation funnels through here, so this is the one place that can
-    // report both what was attempted and how it ended.
-    void registerOperation(AbstractOperation *operation, const QString &label = QString());
+
+    // The label describes the action in plain words for the LOGS panel. Every
+    // device operation goes through here, so this is the one place that can
+    // report both what was attempted and how it ended. Required rather than
+    // optional so a new call site can't quietly skip it.
+    void registerOperation(AbstractOperation *operation, const QString &label);
 
     const QByteArray remoteFilePath(const QString &fileName) const;
 

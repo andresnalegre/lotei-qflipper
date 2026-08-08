@@ -9,7 +9,7 @@
 #include "applicationbackend.h"
 #include "systemfiledialog.h"
 #include "applicationupdateregistry.h"
-#include "loteibackend.h"
+#include "nikitabackend.h"
 #ifdef HZUI_BLE
 #include "blespike.h"
 #endif
@@ -76,8 +76,7 @@ private:
     ApplicationUpdateRegistry m_updateRegistry;
     SystemFileDialog m_fileDialog;
     ApplicationBackend m_backend;
-    LoteiBackend m_lotei;
-    LoteiPalette m_palette;
+    NikitaBackend m_nikita;
     FirmwareStore m_firmware;
     FlipperCli m_cli;
 #ifdef HZUI_BLE

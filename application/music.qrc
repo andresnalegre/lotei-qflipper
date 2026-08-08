@@ -1,5 +1,0 @@
-<RCC>
-    <qresource prefix="/">
-        <file>components/MusicPlayer.qml</file>
-    </qresource>
-</RCC>

@@ -41,7 +41,7 @@ public:
 
     // Needed in order to work with QVariant. Qt 6.7+ additionally requires an
     // operator== for MEMBER properties (its generated moc code compares before
-    // notifying), so define both -- "always different" preserves the original
+    // notifying), so define both; "always different" preserves the original
     // behaviour of always emitting the change.
     bool operator ==(const HardwareInfo &other) const { Q_UNUSED(other) return false; }
     bool operator !=(const HardwareInfo &other) const { Q_UNUSED(other) return true; }

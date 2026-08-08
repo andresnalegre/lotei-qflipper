@@ -19,7 +19,6 @@
 #include "flipperzero/devicestate.h"
 #include "flipperzero/protobufsession.h"
 #include "flipperzero/assetmanifest.h"
-#include "flipperzero/screenstreamer.h"
 
 #include "flipperzero/helper/toplevelhelper.h"
 
@@ -135,18 +134,17 @@ bool ApplicationBackend::isQueryInProgress() const
 
 void ApplicationBackend::mainAction()
 {
-    AbstractOperationHelper *helper;
+    if(!device()) {
+        return;
+    }
 
-       if(device()->deviceState()->isRecoveryMode()) {
-           setBackendState(BackendState::RepairingDevice);
-           helper = new RepairTopLevelHelper(m_firmwareUpdateRegistry, device(), this);
-
-       } else {
-           setBackendState(BackendState::UpdatingDevice);
-           helper = new UpdateTopLevelHelper(m_firmwareUpdateRegistry, device(), this);
-       }
-
-       connect(helper, &AbstractOperationHelper::finished, helper, &QObject::deleteLater);
+    // beginRepair() and beginUpdate() held the same two branches and had no
+    // caller, so the pair was going stale next to the copy that ran.
+    if(device()->deviceState()->isRecoveryMode()) {
+        beginRepair();
+    } else {
+        beginUpdate();
+    }
 }
 
 void ApplicationBackend::createBackup(const QUrl &backupUrl)
@@ -286,6 +284,14 @@ void ApplicationBackend::reacquirePort()
 
 void ApplicationBackend::onCurrentDeviceChanged()
 {
+    // The flag belongs to a device, not to the app. Releasing the port and then
+    // unplugging left it set, so the next Flipper came up with its session
+    // running while the UI still offered to reacquire a port nobody held.
+    if(m_portReleased) {
+        m_portReleased = false;
+        emit portReleasedChanged();
+    }
+
     // Should not happen during an ongoing operation
     if(m_backendState > BackendState::ScreenStreaming && m_backendState < BackendState::Finished) {
         setBackendState(BackendState::ErrorOccured);
@@ -462,7 +468,6 @@ void ApplicationBackend::registerMetaTypes()
     qRegisterMetaType<Flipper::Zero::ScreenStreamer*>("Flipper::Zero::ScreenStreamer*");
     qRegisterMetaType<Flipper::Zero::VirtualDisplay*>("Flipper::Zero::VirtualDisplay*");
     qRegisterMetaType<Flipper::Zero::FileManager*>("Flipper::Zero::FileManager*");
-    qRegisterMetaType<Flipper::Zero::ScreenStreamer*>("Flipper::Zero::ScreenStreamer*");
 
     qRegisterMetaType<Flipper::Zero::AssetManifest::FileInfo>();
 

@@ -21,29 +21,30 @@ Item {
     readonly property bool isDirectory: !fileType
     readonly property bool isNewDirectory: Backend.fileManager.newDirectoryIndex === index
     readonly property bool isHovered: iconMouseArea.containsMouse || labelMouseArea.containsMouse
+    readonly property bool isCurrent: GridView.isCurrentItem
+
+    property var fileManager                              // set by the FileManager root
+    readonly property bool multiSelected: fileManager ? fileManager.isSelected(index) : false
+
+    property color selectionColor: Color.transparent(Theme.color.darkorange1,
+        (delegate.multiSelected || delegate.isCurrent) ? 1 : delegate.isHovered ? 0.5 : 0)
+
+    property ConfirmationDialog confirmationDialog
+
+    width: 120
+    height: 86
 
     // True when a point (in this delegate's coordinates) actually lands on the
     // icon or the label. The cell is 120x86 but the visual item only occupies
-    // the middle of it, so GridView.indexAt() answers "yes" for a click in the
-    // padding -- which is why clicking the gap between icons selected one
-    // instead of clearing the selection.
+    // the middle of it, so GridView.indexAt() answers yes for a click in the
+    // padding, which is why clicking the gap between icons selected one instead
+    // of clearing the selection.
     function hitsContent(px, py) {
         var p = delegate.mapToItem(iconMouseArea, px, py);
         if(p.x >= 0 && p.y >= 0 && p.x < iconMouseArea.width && p.y < iconMouseArea.height) { return true; }
         p = delegate.mapToItem(labelMouseArea, px, py);
         return (p.x >= 0 && p.y >= 0 && p.x < labelMouseArea.width && p.y < labelMouseArea.height);
     }
-    readonly property bool isCurrent: GridView.isCurrentItem
-    property var fileManager                              // set by the FileManager root
-    readonly property bool multiSelected: fileManager ? fileManager.isSelected(index) : false
-
-    property color selectionColor: Color.transparent(Theme.color.darkorange1,
-        delegate.multiSelected ? 1 : delegate.isCurrent ? 1 : delegate.isHovered ? 0.5 : 0)
-
-    property ConfirmationDialog confirmationDialog
-
-    width: 120
-    height: 86
 
     onIsNewDirectoryChanged: {
         if(isNewDirectory) {
@@ -78,7 +79,7 @@ Item {
 
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                onClicked: function(mouse) {delegate.rightClick(mouse);}
+                onClicked: function(mouse) {delegate.itemClick(mouse);}
                 onDoubleClicked: function(mouse) {delegate.doubleClick(mouse);}
             }
 
@@ -130,7 +131,7 @@ Item {
 
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                onClicked: function(mouse) {delegate.rightClick(mouse);}
+                onClicked: function(mouse) {delegate.itemClick(mouse);}
                 onDoubleClicked: function(mouse) {delegate.doubleClick(mouse);}
             }
 
@@ -159,7 +160,7 @@ Item {
                     } else if(delegate.filePath === "/int") {
                         return "Internal Flash";
                     } else {
-                        delegate.fileName
+                        return delegate.fileName;
                     }
                 }
             }
@@ -286,11 +287,15 @@ Item {
         onTriggered: beginDelete();
     }
 
-    function rightClick(mouse) {
+    // Reached only when the selection overlay in FileManager lets an event
+    // through, which it does for right clicks on an item. The left button path
+    // is kept so the delegate still behaves on its own if that overlay ever
+    // stops covering the grid.
+    function itemClick(mouse) {
         delegate.GridView.view.currentIndex = delegate.index
         forceActiveFocus(Qt.MouseFocusReason);
+
         if(mouse.button === Qt.LeftButton) {
-            // Cmd/Ctrl+click toggles this item; plain click selects only it.
             if(delegate.fileManager) {
                 if(mouse.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
                     delegate.fileManager.toggleSel(delegate.index);
@@ -301,10 +306,12 @@ Item {
             return;
         }
 
-        // Right-click: if this item isn't in the selection, make it the selection.
+        // Right click on an item that isn't in the selection makes it the
+        // selection, so the menu acts on what the user just pointed at.
         if(delegate.fileManager && !delegate.fileManager.isSelected(delegate.index)) {
             delegate.fileManager.selectOnly(delegate.index);
         }
+
         if(delegate.filePath === "/ext" || delegate.filePath === "/int") {
             storageMenu.popup();
         } else if(delegate.isDirectory) {
@@ -319,9 +326,9 @@ Item {
             return;
         }
         if(delegate.isDirectory) {
-            Backend.fileManager.cd(delegate.fileName)
+            Backend.fileManager.cd(delegate.fileName);
         } else {
-            Lotei.openFileForEdit(delegate.filePath)   // open in the in-app editor
+            Nikita.openFileForEdit(delegate.filePath);
         }
     }
 
@@ -352,6 +359,8 @@ Item {
 
     function beginDelete() {
         var fm = delegate.fileManager;
+        // Deleting acts on the whole selection when this item is part of it,
+        // and on this item alone otherwise.
         var sel = (fm && fm.selectedList.length > 1 && fm.isSelected(delegate.index))
                   ? fm.selectedList.slice() : [delegate.index];
 
@@ -382,16 +391,17 @@ Item {
 
         confirmationDialog.openWithMessage(doRemove, msgObj);
     }
-    function beginDownload() {
-            SystemFileDialog.accepted.connect(function() {
-                Backend.fileManager.download(delegate.fileName, SystemFileDialog.fileUrls[0], delegate.isDirectory);
-            });
 
-            if(delegate.isDirectory) {
-                SystemFileDialog.beginSaveDir(SystemFileDialog.LastLocation);
-            } else {
-                SystemFileDialog.beginSaveFile(SystemFileDialog.LastLocation, [ "All files (*)" ], delegate.fileName);
-            }
+    function beginDownload() {
+        SystemFileDialog.accepted.connect(function() {
+            Backend.fileManager.download(delegate.fileName, SystemFileDialog.fileUrls[0], delegate.isDirectory);
+        });
+
+        if(delegate.isDirectory) {
+            SystemFileDialog.beginSaveDir(SystemFileDialog.LastLocation);
+        } else {
+            SystemFileDialog.beginSaveFile(SystemFileDialog.LastLocation, [ "All files (*)" ], delegate.fileName);
+        }
     }
 
     Keys.onPressed: function(event) {

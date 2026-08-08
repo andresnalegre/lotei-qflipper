@@ -17,7 +17,6 @@ RowLayout {
     signal closeRequested
 
     property bool closeEnabled: true
-    property string controlPath
 
     readonly property int style: {
         // TODO: additional Linux style?
@@ -25,18 +24,6 @@ RowLayout {
             return WindowControls.Style.MacOS
         } else {
             return WindowControls.Style.Windows
-        }
-    }
-
-    readonly property string iconPath: {
-        const p = controlPath + "/%1";
-
-        switch(style) {
-        case WindowControls.Style.MacOS:
-           return p.arg("mac");
-
-        case WindowControls.Style.Windows: default:
-           return p.arg("windows");
         }
     }
 
@@ -70,7 +57,10 @@ RowLayout {
         Layout.fillWidth: true
     }
 
-    // Minimize ( - )
+    // Both buttons are drawn rather than loaded from SVG, so they follow the
+    // palette like everything else on screen. The glyphs are plain rectangles
+    // for the same reason: a font that lacks the character would render the
+    // cross at a different weight than the minus beside it.
     Rectangle {
         id: minimizeButton
         Layout.preferredWidth: 22
@@ -78,13 +68,16 @@ RowLayout {
         radius: 4
         border.width: 1
         border.color: Theme.color.mediumorange2
-        color: minMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+        color: minMouse.pressed        ? Theme.color.mediumorange1
+             : minMouse.containsMouse  ? Theme.color.mediumorange2
+             : Theme.color.transparent
 
         Rectangle {
             width: 11; height: 2; radius: 1
             color: Theme.color.lightorange2
             anchors.centerIn: parent
         }
+
         MouseArea {
             id: minMouse
             anchors.fill: parent
@@ -94,7 +87,6 @@ RowLayout {
         }
     }
 
-    // Close ( X )
     Rectangle {
         id: closeButton
         enabled: control.closeEnabled
@@ -104,18 +96,27 @@ RowLayout {
         radius: 4
         border.width: 1
         border.color: Theme.color.mediumorange2
-        color: closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+        color: closeMouse.pressed       ? Theme.color.mediumorange1
+             : closeMouse.containsMouse ? Theme.color.mediumorange2
+             : Theme.color.transparent
 
-        Text {
-            anchors.centerIn: parent
-            text: "✕"
+        // Two bars crossed, same size and weight as the minimize one.
+        Rectangle {
+            width: 11; height: 2; radius: 1
             color: Theme.color.lightorange2
-            font.family: "Share Tech Mono"; font.pixelSize: 14; font.bold: true
+            anchors.centerIn: parent
+            rotation: 45
         }
+        Rectangle {
+            width: 11; height: 2; radius: 1
+            color: Theme.color.lightorange2
+            anchors.centerIn: parent
+            rotation: -45
+        }
+
         MouseArea {
             id: closeMouse
             anchors.fill: parent
-            enabled: control.closeEnabled
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: closeRequested()

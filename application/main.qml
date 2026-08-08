@@ -42,17 +42,6 @@ Window {
             root.height = root.minimumHeight;
             root.maximumHeight = root.minimumHeight;
         }
-
-        onResizeStarted: {
-            root.maximumHeight = root.Screen.height - root.y;
-            root.height = root.maximumHeight;
-        }
-
-        onResizeFinished: {
-            root.height = mainWindow.height + mainWindow.shadowSize * 2;
-            root.maximumHeight = root.height;
-            root.minimumHeight = root.height;
-        }
     }
 
     Component.onCompleted: {

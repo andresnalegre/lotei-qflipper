@@ -13,7 +13,7 @@ AbstractOverlay {
 
     // qFlipper's own firmwareUpdateState only ever compares the device against
     // the OFFICIAL channel. On a Flipper running Unleashed or Momentum that
-    // comparison is meaningless -- it reports "Update" and, if pressed, quietly
+    // comparison is meaningless: it reports "Update" and, if pressed, quietly
     // replaces the fork with official firmware. So when a fork is detected the
     // button is driven by the firmware store instead, which knows the right
     // source to compare against.
@@ -105,7 +105,7 @@ AbstractOverlay {
         ]
     }
 
-    LoteiChat {
+    NikitaTalk {
         z: 150
         visible: tabs.currentIndex === 0
     }
@@ -246,7 +246,7 @@ AbstractOverlay {
                     return qsTr("Install %1 %2 imported from the firmware store")
                            .arg(Firmware.selectedName).arg(Firmware.selectedVersion);
                 }
-                if(Lotei.sdFormatted) {
+                if(Nikita.sdFormatted) {
                     return qsTr("The card was formatted. Import a firmware from Custom firmware to put it back, then Restore your files.");
                 }
                 if(overlay.onFork) {
@@ -350,7 +350,7 @@ AbstractOverlay {
 
         enabled: Firmware.hasSelection
                  ? !Firmware.busy
-                 : Lotei.sdFormatted
+                 : Nikita.sdFormatted
                  ? false
                  : overlay.onFork
                  ? ((Firmware.updateAvailable || !Firmware.installedReady) && !Firmware.busy)
@@ -366,9 +366,9 @@ AbstractOverlay {
 
             // After a format the card has none of the resources the firmware
             // expects, so what is on the device is not something to update or
-            // repair -- it needs a full install. Importing one from Custom
+            // repair; it needs a full install. Importing one from Custom
             // firmware is the way back, and that is the branch just above.
-            if(Lotei.sdFormatted) return qsTr("No data");
+            if(Nikita.sdFormatted) return qsTr("No data");
 
             // On a fork the only honest offer is "update to a newer build of
             // the SAME firmware". Installing something else stays behind the
@@ -454,9 +454,9 @@ AbstractOverlay {
     Action {
        id: customFirmwareAction
        // Once something is staged, this line is what shows it on the main
-       // screen -- and reopening the panel is how it gets changed or dropped.
+       // screen, and reopening the panel is how it gets changed or dropped.
        // Name only. The link is centred with no width limit, so a version
-       // string like "RM0722-1811-ff9f4feb" ran off the panel -- and a line
+       // string like "RM0722-1811-ff9f4feb" ran off the panel, and a line
        // that changes width with the pick reads as inconsistent anyway. The
        // exact version is in the panel and in the confirmation before flashing.
        text: Firmware.hasSelection ? Firmware.selectedName : qsTr("Custom firmware")
@@ -464,7 +464,7 @@ AbstractOverlay {
     }
 
     function updateButtonFunc() {
-        // Nothing known about the running fork yet -- this press is a retry,
+        // Nothing known about the running fork yet: this press is a retry,
         // not an install.
         if(overlay.onFork && !Firmware.hasSelection && !Firmware.installedReady) {
             Firmware.refresh();
@@ -558,7 +558,7 @@ AbstractOverlay {
             confirmationDialog.openWithMessage(actionFunc, messageObj);
         });
 
-        // Same list as before, minus "All files (*.*)" -- that entry let a
+        // Same list as before, minus "All files (*.*)": that entry let a
         // backup .tgz through, which has no update.fuf inside and only fails
         // after being uploaded to the card. Kept as two entries on purpose:
         // with a single filter macOS hides the type selector entirely and the
@@ -567,29 +567,46 @@ AbstractOverlay {
         SystemFileDialog.beginOpenFile(SystemFileDialog.LastLocation, nameFilters);
     }
 
-    // Backs up the SD card -- the captures, scripts, dumps and folders the user
+    // Backs up the SD card: the captures, scripts, dumps and folders the user
     // made. The stock action saved /int instead (pairing keys, dolphin state,
     // region), which is settings: useful, but not what is lost when a card dies
     // and not what anyone means by "my files".
     function backupDevice() {
+        // Reconnect each time: the handler closes over nothing, but leaving old
+        // connections around would fire one confirmation per cancelled attempt.
+        SystemFileDialog.accepted.disconnect(onBackupAccepted);
+        SystemFileDialog.accepted.connect(onBackupAccepted);
+
+        const defaultName = "%1-backup-%2.tgz".arg(deviceInfo.name)
+                            .arg(Qt.formatDateTime(new Date(), "yyyyMMdd-hhmmss"));
+        SystemFileDialog.beginSaveFile(SystemFileDialog.LastLocation,
+                                       ["Flipper backup (*.tgz)"], defaultName);
+    }
+
+    // Fires once per accepted pick, then unhooks itself so a later Backup does
+    // not stack handlers.
+    function onBackupAccepted() {
+        SystemFileDialog.accepted.disconnect(onBackupAccepted);
+
+        const target = SystemFileDialog.fileUrl;
         const messageObj = {
             title : qsTr("Let's Back Up!"),
             customText: qsTr("Backup"),
             message: qsTr("Your files will be saved to:<br/>"
-                        + "<font color=\"%1\">Desktop / Nikita-QFlipper / bkp.tgz</font><br/><br/>"
+                        + "<font color=\"%1\">%2</font><br/><br/>"
                         + "Firmware, apps, and updates won't be saved.")
-                     .arg(Theme.color.lightgreen)
+                     .arg(Theme.color.lightgreen).arg(baseName(target))
         };
 
-        confirmationDialog.openWithMessage(function() { Lotei.backupSdCard(); }, messageObj);
+        confirmationDialog.openWithMessage(function() { Nikita.backupSdCard(target); }, messageObj);
     }
 
     // No result dialogs here: the operation already asked for confirmation
-    // before starting, and it reports its outcome on the finish screen -- the
+    // before starting, and it reports its outcome on the finish screen, the
     // same one a firmware install uses. A second popup was asking the user to
     // approve something they had already approved.
     Connections {
-        target: Lotei
+        target: Nikita
 
         function onFormatFinished() {
             confirmationDialog.openWithMessage(function() { Backend.factoryReset(); }, {
@@ -603,7 +620,7 @@ AbstractOverlay {
 
 
     // The mirror of backupDevice(): puts a backup folder back onto /ext. The
-    // stock action restored a /int tarball, which is settings -- it could never
+    // stock action restored a /int tarball, which is settings; it could never
     // bring back a capture or a script.
     function restoreDevice() {
         SystemFileDialog.accepted.connect(function() {
@@ -616,11 +633,11 @@ AbstractOverlay {
                          .arg(Theme.color.lightgreen).arg(baseName(folder))
             };
 
-            confirmationDialog.openWithMessage(function() { Lotei.restoreSdCard(folder); }, messageObj);
+            confirmationDialog.openWithMessage(function() { Nikita.restoreSdCard(folder); }, messageObj);
         });
 
         // Picks the archive. A folder from an older backup still restores --
-        // restoreSdCard() takes either -- but this matches what Backup makes now.
+        // restoreSdCard() takes either, but this matches what Backup makes now.
         SystemFileDialog.beginOpenFile(SystemFileDialog.LastLocation,
                                        ["Flipper backup (*.tgz)", "All files (*.*)"]);
     }
@@ -628,7 +645,7 @@ AbstractOverlay {
     // Empties the card first; the /int reset is offered afterwards, from
     // onFormatFinished(). The two live in different storage and there is no
     // single RPC that clears both.
-    function eraseDevice() {
+    function formatDevice() {
         const messageObj = {
             title : qsTr("Format Your Flipper?"),
             message: qsTr("<font color=\"%1\">Everything on the SD card will be deleted:</font><br/>"
@@ -638,12 +655,12 @@ AbstractOverlay {
             customText: qsTr("Format")
         };
 
-        confirmationDialog.openWithMessage(function() { Lotei.formatSdCard(); }, messageObj);
+        confirmationDialog.openWithMessage(function() { Nikita.formatSdCard(); }, messageObj);
     }
 
     function reinstallFirmware() {
         // Backend.mainAction installs the OFFICIAL channel. On a fork that is
-        // not a reinstall at all -- it swaps the firmware for a different one.
+        // not a reinstall at all; it swaps the firmware for a different one.
         // When the running build has a known source, re-flash from there.
         const viaStore = Firmware.installedReady && Firmware.installedName !== "Official";
 
@@ -714,7 +731,7 @@ AbstractOverlay {
     Component.onCompleted: {
         deviceActions.backupAction.triggered.connect(backupDevice);
         deviceActions.restoreAction.triggered.connect(restoreDevice);
-        deviceActions.eraseAction.triggered.connect(eraseDevice);
+        deviceActions.formatAction.triggered.connect(formatDevice);
         deviceActions.reinstallAction.triggered.connect(reinstallFirmware);
         deviceActions.selfUpdateAction.triggered.connect(selfUpdateRequested);
         developerActions.installRadioAction.triggered.connect(installWirelessStack);

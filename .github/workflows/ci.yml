@@ -40,7 +40,9 @@ jobs:
         id: name
         run: |
           VER="${{ github.event.release.tag_name }}"
-          [ -z "$VER" ] && VER="$(git describe --tags --always)"
+          if [ -z "$VER" ]; then
+            VER="$(git describe --tags --always)"
+          fi
           mkdir -p dist
           cp build/qFlipper-x86_64.AppImage "dist/Hyper-Zero-UI-${VER}-x86_64.AppImage"
           ls -lh dist

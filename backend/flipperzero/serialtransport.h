@@ -10,7 +10,7 @@ namespace Flipper {
 namespace Zero {
 
 // FlipperTransport over USB CDC. Wraps an already-opened QSerialPort (as produced
-// by SerialInitHelper) and takes ownership of it -- behaviour is byte-for-byte
+// by SerialInitHelper) and takes ownership of it; behaviour is byte-for-byte
 // what ProtobufSession did before, just behind the transport interface.
 class SerialTransport : public FlipperTransport
 {

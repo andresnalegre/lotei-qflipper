@@ -12,7 +12,7 @@
 #include <QLowEnergyDescriptor>
 
 // FlipperTransport over Bluetooth LE. Speaks the Flipper's Serial GATT service,
-// which carries the exact same RPC/protobuf byte stream as USB CDC -- so once the
+// which carries the exact same RPC/protobuf byte stream as USB CDC, so once the
 // link is up, ProtobufSession neither knows nor cares that it is wireless.
 //
 // Distilled from the ble-spike (proven ping/pong on real hardware). The important

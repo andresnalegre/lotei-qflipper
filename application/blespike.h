@@ -52,7 +52,7 @@ public:
     Q_INVOKABLE void disconnectSession();
 
     // Phase 3: register the chosen Flipper as the app's ACTIVE device over BLE
-    // (device card, screen mirror, LOTEI tools -- all wireless). disconnectAll
+    // (device card, screen mirror, Nikita tools -- all wireless). disconnectAll
     // tears down whatever BLE link is up (registered device, proof session, spike).
     Q_INVOKABLE void connectDevice(int index);
     Q_INVOKABLE void disconnectAll();

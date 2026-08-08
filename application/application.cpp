@@ -124,16 +124,16 @@ void Application::initConnections()
     connect(&m_updateRegistry, &Flipper::UpdateRegistry::latestVersionChanged, this, &Application::onLatestVersionChanged);
     connect(&m_backend, &ApplicationBackend::currentDeviceChanged, this, &Application::onCurrentDeviceChanged);
 
-    m_lotei.setAppBackend(&m_backend);
+    m_nikita.setAppBackend(&m_backend);
     m_cli.setAppBackend(&m_backend);
-    m_lotei.setCli(&m_cli);   // give the assistant access to the Flipper CLI (run_cli)
+    m_nikita.setCli(&m_cli);   // give the assistant access to the Flipper CLI (run_cli)
 
 #ifdef HZUI_BLE
     // Let the BLE panel register a wireless Flipper as the app's active device.
     m_ble.setDeviceRegistry(m_backend.deviceRegistry());
 #endif
 
-    // Shut LOTEI's brain (Ollama) down when qFlipper really quits, so it never
+    // Shut Nikita's brain (Ollama) down when qFlipper really quits, so it never
     // lingers, piles up duplicate servers, or hogs RAM. Only the primary
     // instance reaches here (a second launch exits early via isRunning()).
     connect(this, &QCoreApplication::aboutToQuit, this, []() {
@@ -215,8 +215,7 @@ void Application::initQmlTypes()
     qmlRegisterSingletonInstance("QFlipper", 1, 0, "Logger", globalLogger);
     qmlRegisterSingletonInstance("QFlipper", 1, 0, "Preferences", globalPrefs);
     qmlRegisterSingletonInstance("QFlipper", 1, 0, "Backend", &m_backend);
-    qmlRegisterSingletonInstance("QFlipper", 1, 0, "Lotei", &m_lotei);
-    qmlRegisterSingletonInstance("QFlipper", 1, 0, "Palette", &m_palette);
+    qmlRegisterSingletonInstance("QFlipper", 1, 0, "Nikita", &m_nikita);
     qmlRegisterSingletonInstance("QFlipper", 1, 0, "Firmware", &m_firmware);
     qmlRegisterSingletonInstance("QFlipper", 1, 0, "Cli", &m_cli);
 #ifdef HZUI_BLE

@@ -72,8 +72,8 @@ void VCPDeviceInfoHelper::nextStateLogic()
 {
     if(state() == AbstractDeviceInfoHelper::Ready) {
         if(m_deviceInfo.transportFactory) {
-            // BLE: no serial port to find -- go straight to opening the session
-            // over the injected transport.
+            // BLE has no serial port to find, so open the session straight away
+            // on the injected transport.
             setState(VCPDeviceInfoHelper::StartingRPCSession);
             startRPCSession();
         } else {
@@ -230,12 +230,11 @@ void VCPDeviceInfoHelper::fetchDeviceInfoProperty()
 {
     auto *operation = m_rpc->propertyGet(QByteArrayLiteral("devinfo"));
 
-    // On the first boot after an update the Flipper is unpacking resources and
-    // rebuilding its databases while this asks for devinfo. The generic 30s
-    // deadline expires, the helper reports an invalid device, and the update
-    // operation never completes -- which left the "Installing Firmware" screen
-    // on forever even though the flash had succeeded. Give this specific query
-    // room, and treat a miss as "still busy" rather than "broken device".
+    // On the first boot after an update the Flipper is still unpacking
+    // resources when this asks for devinfo. The generic 30s deadline expired,
+    // the helper called it an invalid device, and the update never finished, so
+    // the "Installing Firmware" screen stayed up even though the flash worked.
+    // Give this query room and treat a miss as still busy, not as broken.
     operation->setTimeout(90000);
     ++m_devInfoAttempts;
 
@@ -243,7 +242,7 @@ void VCPDeviceInfoHelper::fetchDeviceInfoProperty()
         if(operation->isError()) {
             if(m_devInfoAttempts < 3) {
                 qCInfo(CATEGORY_DEBUG).noquote()
-                    << QStringLiteral("devinfo attempt %1 failed (%2) -- retrying")
+                    << QStringLiteral("devinfo attempt %1 failed (%2), retrying")
                        .arg(m_devInfoAttempts).arg(operation->errorString());
                 QTimer::singleShot(3000, this, [=]() { fetchDeviceInfoProperty(); });
                 return;
@@ -364,30 +363,36 @@ void VCPDeviceInfoHelper::syncTime()
 
 void VCPDeviceInfoHelper::stopRPCSession()
 {
+    // A retry that never got to run leaves this null, and there is nothing to
+    // stop in that case.
+    if(!m_rpc) {
+        finish();
+        return;
+    }
+
     m_rpc->stopSession();
 }
 
 void VCPDeviceInfoHelper::onSessionStatusChanged()
 {
     if(m_rpc->isError()) {
-        // "Resource busy" on start-up is almost always the previous instance of
-        // this app still holding the port -- rebuild, relaunch, and the old
-        // process has not finished letting go yet. The OS frees it a moment
-        // later, so failing here permanently forced a cable reconnect for
-        // something that fixes itself. Retry before giving up.
+        // "Resource busy" at start-up is almost always the previous instance of
+        // this app still holding the port after a rebuild and relaunch. The OS
+        // frees it a moment later, so giving up here forced a cable reconnect
+        // for something that fixes itself.
         //
-        // Sized from a measured case: macOS took longer than a 6 x 800ms window
-        // to release the handle, and the run only recovered because a retry one
-        // layer up happened to land after it. 20 x 600ms gives ~12s, which
-        // covers that with room to spare; a port held by something other than a
-        // dying instance still surfaces the real error at the end.
+        // The window comes from a measured case: macOS took longer than 6 x
+        // 800ms to release the handle, and that run only recovered because a
+        // retry one layer up happened to land after it. 20 x 600ms gives about
+        // 12s. A port held by something else still surfaces the real error at
+        // the end.
         if(state() == VCPDeviceInfoHelper::StartingRPCSession && m_rpcAttempts < 20) {
             ++m_rpcAttempts;
-            // Only the first few are worth reading; after that it is the same
-            // line over and over while the OS catches up.
+            // Only the first few are worth reading; the rest is the same line
+            // repeated while the OS catches up.
             if(m_rpcAttempts <= 3) {
                 qCInfo(CATEGORY_DEBUG).noquote()
-                    << QStringLiteral("RPC session attempt %1 failed (%2) -- port may still be held, retrying")
+                    << QStringLiteral("RPC session attempt %1 failed (%2), port may still be held, retrying")
                        .arg(m_rpcAttempts).arg(m_rpc->errorString());
             }
 
@@ -401,7 +406,7 @@ void VCPDeviceInfoHelper::onSessionStatusChanged()
             return;
         }
 
-        qCInfo(CATEGORY_DEBUG).noquote()
+        qCWarning(CATEGORY_DEBUG).noquote()
             << QStringLiteral("RPC session gave up after %1 attempts: %2")
                .arg(m_rpcAttempts).arg(m_rpc->errorString());
         finishWithError(m_rpc->error(), QStringLiteral("Protobuf session error: %1").arg(m_rpc->errorString()));

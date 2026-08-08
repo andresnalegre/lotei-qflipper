@@ -47,8 +47,8 @@ win32 {
         }
 
         # Strip a leading "v"/"V" (e.g. tag "V1.1.0") so the numeric Windows
-        # FILEVERSION resource stays valid -- rc.exe rejects non-numeric versions.
-        VERSION = $$replace(VERSION, ^[vV], )
+        # FILEVERSION resource stays valid; rc.exe rejects non-numeric versions.
+        VERSION = $$replace(VERSION, "^[vV]", "")
 
     } else: VERSION = 0.0.0
 }

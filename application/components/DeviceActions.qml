@@ -213,7 +213,7 @@ Item {
             id: rebootAction
             text: qsTr("Reboot")
             // Restarting needs nothing but a live connection.
-            enabled: Backend.state === ApplicationBackend.Ready
+            enabled: Backend.deviceState && !Backend.deviceState.isRecoveryMode
         }
 
         Action {

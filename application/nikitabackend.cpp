@@ -2338,13 +2338,9 @@ void NikitaBackend::logAction(const QString &what) const
 
 QString NikitaBackend::assistantName() const
 {
-    static const QRegularExpression nameRe(QStringLiteral("(?m)^Name:\\s*(.+)$"));
-    const QRegularExpressionMatch nm = nameRe.match(m_deviceContext);
-    if (nm.hasMatch()) {
-        const QString n = nm.captured(1).trimmed();
-        if (!n.isEmpty()) { return n; }
-    }
-    if (!m_manualName.isEmpty()) { return m_manualName; }
+    // The assistant is Nikita; the Flipper has its own name, set on the device.
+    // Deriving one from the other meant a device with no name left the assistant
+    // without one either.
     return QStringLiteral("Nikita");
 }
 

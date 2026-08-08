@@ -196,10 +196,10 @@ Rectangle {
     readonly property int minH: 44
     property int streamIdx: -1   // index of the message currently being streamed
     property bool showScreen: false   // mirror the live Flipper screen in-panel
-    // The assistant takes the connected Flipper's name as its own (fallback Nikita).
-    readonly property string aiName: (Backend.deviceState && Backend.deviceState.info && Backend.deviceState.info.name && Backend.deviceState.info.name.length > 0)
-                                     ? Backend.deviceState.info.name
-                                     : (Nikita.manualName.length > 0 ? Nikita.manualName : "NIKITA")
+    // The assistant is Nikita. The Flipper has its own name, set on the device,
+    // and it is shown in the header. Deriving one from the other meant a device
+    // with no name left the assistant without one too.
+    readonly property string aiName: "Nikita"
 
     x: viewState === "max" ? 14 : dockX
     y: viewState === "max" ? 78 : dockY

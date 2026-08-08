@@ -20,6 +20,13 @@ AbstractOverlay {
     readonly property bool onFork: Firmware.installedIndex >= 0 &&
                                    Firmware.installedName !== "Official"
 
+    // The device reports whether /ext still holds the Manifest and folders the
+    // firmware expects. Truer than a "we just formatted" flag, which does not
+    // survive closing the app and misses a card that arrived empty from
+    // somewhere else.
+    readonly property bool assetsMissing: deviceInfo && deviceInfo.storage &&
+                                          !deviceInfo.storage.isAssetsInstalled
+
     readonly property int centerX: 590
     readonly property int centerOffset: Math.min(overlay.width - (centerX + systemPathLabel.width + 34), 0)
 
@@ -246,8 +253,9 @@ AbstractOverlay {
                     return qsTr("Install %1 %2 imported from the firmware store")
                            .arg(Firmware.selectedName).arg(Firmware.selectedVersion);
                 }
-                if(Nikita.sdFormatted) {
-                    return qsTr("The card was formatted. Import a firmware from Custom firmware to put it back, then Restore your files.");
+                if(overlay.assetsMissing) {
+                    return qsTr("The card is missing the apps and resources this firmware needs. Reinstalling %1 puts them back.")
+                           .arg(Firmware.installedLatest);
                 }
                 if(overlay.onFork) {
                     if(!Firmware.installedReady) {
@@ -350,8 +358,8 @@ AbstractOverlay {
 
         enabled: Firmware.hasSelection
                  ? !Firmware.busy
-                 : Nikita.sdFormatted
-                 ? false
+                 : overlay.assetsMissing
+                 ? (Firmware.installedReady && !Firmware.busy)
                  : overlay.onFork
                  ? ((Firmware.updateAvailable || !Firmware.installedReady) && !Firmware.busy)
                  : (Backend.firmwareUpdateState === ApplicationBackend.CanUpdate ||
@@ -363,12 +371,10 @@ AbstractOverlay {
             // A firmware imported from the store is an explicit choice, so it
             // outranks any automatic update offer.
             if(Firmware.hasSelection) return qsTr("Install");
-
-            // After a format the card has none of the resources the firmware
-            // expects, so what is on the device is not something to update or
-            // repair; it needs a full install. Importing one from Custom
-            // firmware is the way back, and that is the branch just above.
-            if(Nikita.sdFormatted) return qsTr("No data");
+            // After a format the firmware on the chip is still fine, but every
+            // resource it expects is gone from the card. Reinstalling the same
+            // build is what puts them back, so the offer is a repair.
+            if(overlay.assetsMissing) return qsTr("Repair");
 
             // On a fork the only honest offer is "update to a newer build of
             // the SAME firmware". Installing something else stays behind the
@@ -490,6 +496,21 @@ AbstractOverlay {
             } else {
                 sdWarningDialog.open();
             }
+            return;
+        }
+
+        // The card was formatted: the firmware on the chip is fine, but every
+        // resource it expects is gone. Reinstalling the same build is what puts
+        // them back, so this is a repair and not an update.
+        if(overlay.assetsMissing && Firmware.installedReady) {
+            const fixObj = {
+                title : qsTr("Repair Device?"),
+                customText: qsTr("Repair"),
+                message: qsTr("Firmware <font color=\"%1\">%2</font><br/>will be reinstalled to restore what the card lost")
+                         .arg(Theme.color.lightgreen)
+                         .arg(Firmware.installedLatest)
+            };
+            confirmationDialog.openWithMessage(function() { Firmware.reinstallInstalled(); }, fixObj);
             return;
         }
 

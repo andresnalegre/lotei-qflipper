@@ -4,6 +4,7 @@
 /build_linux
 /dist
 .qmake.stash
+.DS_Store
 
 # distributables
 *.dmg

@@ -374,7 +374,7 @@ AbstractOverlay {
             // After a format the firmware on the chip is still fine, but every
             // resource it expects is gone from the card. Reinstalling the same
             // build is what puts them back, so the offer is a repair.
-            if(overlay.assetsMissing) return qsTr("Repair");
+            if(overlay.assetsMissing) return qsTr("Update");
 
             // On a fork the only honest offer is "update to a newer build of
             // the SAME firmware". Installing something else stays behind the
@@ -504,9 +504,9 @@ AbstractOverlay {
         // them back, so this is a repair and not an update.
         if(overlay.assetsMissing && Firmware.installedReady) {
             const fixObj = {
-                title : qsTr("Repair Device?"),
-                customText: qsTr("Repair"),
-                message: qsTr("Firmware <font color=\"%1\">%2</font><br/>will be reinstalled to restore what the card lost")
+                title : qsTr("Update firmware?"),
+                customText: qsTr("Update"),
+                message: qsTr("Firmware <font color=\"%1\">%2</font><br/>will be flashed again to restore what the card lost")
                          .arg(Theme.color.lightgreen)
                          .arg(Firmware.installedLatest)
             };
@@ -611,11 +611,11 @@ AbstractOverlay {
 
         const target = SystemFileDialog.fileUrl;
         const messageObj = {
-            title : qsTr("Let's Back Up!"),
-            customText: qsTr("Backup"),
+            title : qsTr("Back Up Your Flipper?"),
+            customText: qsTr("Back up"),
             message: qsTr("Your files will be saved to:<br/>"
                         + "<font color=\"%1\">%2</font><br/><br/>"
-                        + "Firmware, apps, and updates won't be saved.")
+                        + "Firmware and apps won't be saved.")
                      .arg(Theme.color.lightgreen).arg(baseName(target))
         };
 
@@ -626,17 +626,6 @@ AbstractOverlay {
     // before starting, and it reports its outcome on the finish screen, the
     // same one a firmware install uses. A second popup was asking the user to
     // approve something they had already approved.
-    Connections {
-        target: Nikita
-
-        function onFormatFinished() {
-            confirmationDialog.openWithMessage(function() { Backend.factoryReset(); }, {
-                title : qsTr("Card emptied"),
-                customText: qsTr("Reset settings"),
-                message: qsTr("The SD card is now empty.<br/><br/>Reset the device settings as well?")
-            });
-        }
-    }
 
 
 
@@ -649,8 +638,8 @@ AbstractOverlay {
             const messageObj = {
                 title : qsTr("Restore your files?"),
                 customText: qsTr("Restore"),
-                message: qsTr("Contents of<br/><font color=\"%1\">%2</font><br/>will be written to the SD card.<br/><br/>"
-                            + "Anything with the same name is overwritten; nothing else on the card is touched.")
+                message: qsTr("Files from<br/><font color=\"%1\">%2</font><br/>will be restored to the SD card.<br/><br/>"
+                            + "Files with the same name will be overwritten.")
                          .arg(Theme.color.lightgreen).arg(baseName(folder))
             };
 
@@ -669,14 +658,24 @@ AbstractOverlay {
     function formatDevice() {
         const messageObj = {
             title : qsTr("Format Your Flipper?"),
-            message: qsTr("<font color=\"%1\">Everything on the SD card will be deleted:</font><br/>"
-                        + "Captures, scripts, dumps, and apps.<br/><br/>This can't be undone. Back up first if needed.")
+            message: qsTr("<font color=\"%1\">Everything on the SD card will be deleted and this can't be undone!</font>"
+                        + "<br/><br/>Backup your Flipper Zero before you continue.")
                      .arg(Theme.color.lightred1),
             suggestedRole: ConfirmationDialog.RejectRole,
             customText: qsTr("Format")
         };
 
         confirmationDialog.openWithMessage(function() { Nikita.formatSdCard(); }, messageObj);
+    }
+
+    // Just restarts the device. The session already knows how to ask for it.
+    function rebootFlipper() {
+        const messageObj = {
+            title : qsTr("Reboot Your Flipper?"),
+            customText: qsTr("Reboot"),
+            message: qsTr("The Flipper will restart.<br/><br/>Anything running on it right now will stop.")
+        };
+        confirmationDialog.openWithMessage(function() { Nikita.rebootDevice(); }, messageObj);
     }
 
     function reinstallFirmware() {
@@ -753,7 +752,7 @@ AbstractOverlay {
         deviceActions.backupAction.triggered.connect(backupDevice);
         deviceActions.restoreAction.triggered.connect(restoreDevice);
         deviceActions.formatAction.triggered.connect(formatDevice);
-        deviceActions.reinstallAction.triggered.connect(reinstallFirmware);
+        deviceActions.rebootAction.triggered.connect(rebootFlipper);
         deviceActions.selfUpdateAction.triggered.connect(selfUpdateRequested);
         developerActions.installRadioAction.triggered.connect(installWirelessStack);
         developerActions.installFusAction.triggered.connect(installFUSDangerDanger);

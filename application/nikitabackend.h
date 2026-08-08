@@ -140,6 +140,9 @@ public:
     // Empties the SD card. /int is reset separately, by the factory reset the
     // QML chains after this one finishes.
     Q_INVOKABLE void formatSdCard();
+    // Straight reboot into the OS. The session already knows how; this just
+    // gives the UI a way to ask for it.
+    Q_INVOKABLE void rebootDevice();
     // True once the card has been emptied and before anything is installed onto
     // it again: a reinstall repairs an existing install, and after a format
     // there is nothing on the card left to repair.

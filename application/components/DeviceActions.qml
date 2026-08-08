@@ -12,7 +12,7 @@ Item {
     property alias backupAction: backupAction
     property alias restoreAction: restoreAction
     property alias formatAction: formatAction
-    property alias reinstallAction: reinstallAction
+    property alias rebootAction: rebootAction
     property alias clearImportAction: clearImportAction
     property alias selfUpdateAction: selfUpdateAction
 
@@ -137,7 +137,7 @@ Item {
             }
 
             SmallButton {
-                action: reinstallAction
+                action: rebootAction
                 Layout.fillWidth: true
 
                 icon.source: "qrc:/assets/gfx/symbolic/update-symbolic.svg"
@@ -146,12 +146,9 @@ Item {
 
                 ToolTip {
                     visible: parent.hovered
-                    // Says which of the two reasons it's greyed out.
-                    text: reinstallAction.enabled
-                          ? qsTr("Install the current firmware version again. Not for everyday use.")
-                          : Nikita.sdFormatted
-                            ? qsTr("The card was formatted, so there is nothing to repair. Run a full install instead.")
-                            : qsTr("No known source for the firmware currently installed.")
+                    text: rebootAction.enabled
+                          ? qsTr("Restart the Flipper.")
+                          : qsTr("Connect a Flipper first.")
                     implicitWidth: 250
                 }
             }
@@ -213,14 +210,10 @@ Item {
         }
 
         Action {
-            id: reinstallAction
-            text: qsTr("Reinstall")
-            // The old check asked the official channel for "no updates", which
-            // rarely happens on a fork, so the button stayed dead. What it needs
-            // is a known source for the installed build. After a format there is
-            // nothing left to repair, so only a full install works.
-            enabled: !Nikita.sdFormatted &&
-                     (Firmware.installedReady || Backend.firmwareUpdateState === Backend.NoUpdates)
+            id: rebootAction
+            text: qsTr("Reboot")
+            // Restarting needs nothing but a live connection.
+            enabled: Backend.state === ApplicationBackend.Ready
         }
 
         Action {

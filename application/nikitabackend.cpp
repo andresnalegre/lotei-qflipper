@@ -4713,6 +4713,15 @@ void NikitaBackend::backupPackArchive()
     emit backupFinished(m_backupArchive, m_backupFiles);
 }
 
+void NikitaBackend::rebootDevice()
+{
+    Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
+    const bool ready = m_appBackend && dev &&
+                       m_appBackend->backendState() == ApplicationBackend::BackendState::Ready;
+    if (!ready) { return; }
+    dev->rpc()->rebootToOS();
+}
+
 void NikitaBackend::formatSdCard()
 {
     Flipper::FlipperZero *dev = m_appBackend ? m_appBackend->device() : nullptr;
